@@ -1,0 +1,48 @@
+name: TranslateHUD
+options:
+  bundleIdPrefix: com.qi
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: 2.3.0
+
+targets:
+  TranslateHUD:
+    type: application
+    platform: macOS
+    sources:
+      - path: TranslateHUD
+        excludes:
+          - "Resources/Info.plist"
+    info:
+      path: TranslateHUD/Resources/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleDisplayName: TranslateHUD
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSHumanReadableCopyright: "© 2026"
+        NSScreenCaptureDescription: "TranslateHUD 需要屏幕录制权限来截取你选定的区域并翻译图中的文字。"
+        NSAppleEventsUsageDescription: "TranslateHUD 需要发送 Apple Event 以读取其他应用中的选中文字。"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.qi.TranslateHUD
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ENABLE_HARDENED_RUNTIME: NO   # 自签名 + AX 兜底用 CGEvent 时关掉硬化运行时更省心
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "TranslateHUD Local Sign"
+        CODE_SIGNING_REQUIRED: YES
+        CODE_SIGNING_ALLOWED: YES
+        DEVELOPMENT_TEAM: ""
+        SWIFT_VERSION: "5.9"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES
+    dependencies:
+      - package: KeyboardShortcuts

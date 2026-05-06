@@ -153,7 +153,7 @@ private struct ResultView: View {
     @ViewBuilder
     private var statusBlock: some View {
         switch progress.state {
-        case .loading:
+        case .loading, .streaming:   // 截图走批量，不会出现 .streaming；归到 loading 处理
             VStack(spacing: 12) {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)

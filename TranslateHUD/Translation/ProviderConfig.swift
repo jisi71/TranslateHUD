@@ -29,7 +29,7 @@ struct ProviderPreset: Identifiable, Hashable {
 
     static let all: [ProviderPreset] = [
         .init(displayName: "OpenAI",          baseURL: "https://api.openai.com/v1",                            suggestedModel: "gpt-4o-mini"),
-        .init(displayName: "DeepSeek",        baseURL: "https://api.deepseek.com/v1",                          suggestedModel: "deepseek-chat"),
+        .init(displayName: "DeepSeek",        baseURL: "https://api.deepseek.com/v1",                          suggestedModel: "deepseek-v4-flash"),
         .init(displayName: "月之暗面 Kimi",    baseURL: "https://api.moonshot.cn/v1",                           suggestedModel: "moonshot-v1-8k"),
         .init(displayName: "智谱 GLM",         baseURL: "https://open.bigmodel.cn/api/paas/v4",                 suggestedModel: "glm-4-flash"),
         .init(displayName: "通义千问",         baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",    suggestedModel: "qwen-turbo"),

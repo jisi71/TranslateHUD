@@ -65,8 +65,10 @@ enum TargetLanguage: String, CaseIterable, Identifiable {
 
         // 简 + 繁 中文置信度合计；≥0.85 才视为「全是中文」，避免混合文本误切
         let chineseScore = (hyp[.simplifiedChinese] ?? 0) + (hyp[.traditionalChinese] ?? 0)
+        let englishScore = hyp[.english] ?? 0
+        AppLog.info("语言识别: zh=\(String(format: "%.2f", chineseScore)) en=\(String(format: "%.2f", englishScore)) configured=\(configured.rawValue)")
         if chineseScore >= 0.85 {
-            AppLog.debug("目标语言自动切换：configured=zh-Hans + 输入中文置信度 \(chineseScore) → 改为 English")
+            AppLog.info("目标语言自动切换：zh→en（输入中文置信度 \(chineseScore)）")
             return .english
         }
         return configured

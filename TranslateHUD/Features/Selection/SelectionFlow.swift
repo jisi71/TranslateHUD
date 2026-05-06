@@ -58,12 +58,12 @@ enum SelectionFlow {
         )
         popover.show()
 
-        // 4. 异步翻译；progress 状态变化驱动浮窗 UI
+        // 4. 异步流式翻译；progress 状态变化驱动浮窗 UI
         let translator = OpenAICompatibleTranslator(config: config)
         let target = TargetLanguage.resolved(
             for: [selection.text],
             configured: SettingsStore.shared.targetLanguage
         )
-        progress.start(translator: translator, originals: [selection.text], target: target)
+        progress.startStreaming(translator: translator, original: selection.text, target: target)
     }
 }

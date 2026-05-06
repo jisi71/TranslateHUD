@@ -14,11 +14,12 @@ final class FloatingTranslationPopover {
     init(original: String, progress: TranslationProgress, rectTopLeft: CGRect?, fallbackPoint: NSPoint) {
         self.progress = progress
 
-        let size = NSSize(width: 380, height: 180)
+        // 初始尺寸只是个起点；窗口可拖拽放大，超出由内部 ScrollView 处理。
+        let size = NSSize(width: 420, height: 320)
 
         window = PopoverWindow(
             contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -29,6 +30,8 @@ final class FloatingTranslationPopover {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isReleasedWhenClosed = false
         window.hidesOnDeactivate = false
+        window.minSize = NSSize(width: 320, height: 180)
+        window.maxSize = NSSize(width: 720, height: 720)
 
         // 闭包先用占位，下面再替换为真实实现（init 顺序限制）
         var closeRef: (@MainActor () -> Void)?
@@ -138,21 +141,22 @@ private struct PopoverContent: View {
     var onRetry: @MainActor () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(original)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .lineLimit(4)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(original)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-            Divider().opacity(0.3)
+                Divider().opacity(0.3)
 
-            statusArea
-                .frame(maxWidth: .infinity, alignment: .leading)
+                statusArea
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(12)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
@@ -174,11 +178,27 @@ private struct PopoverContent: View {
                     .buttonStyle(.borderless)
                     .controlSize(.small)
             }
+        case .streaming(let partial):
+            VStack(alignment: .leading, spacing: 6) {
+                Text(partial)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("\(progress.elapsedSeconds)s")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("取消", action: onCancel)
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                }
+            }
         case .success(let pairs):
             Text(pairs.first?.translated ?? "")
                 .font(.body)
                 .textSelection(.enabled)
-                .lineLimit(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .timedOut:
             HStack(spacing: 8) {

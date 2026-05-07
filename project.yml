@@ -33,8 +33,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qi.TranslateHUD
         MACOSX_DEPLOYMENT_TARGET: "14.0"
-        MARKETING_VERSION: "0.1.1"
-        CURRENT_PROJECT_VERSION: "2"
+        MARKETING_VERSION: "0.1.2"
+        CURRENT_PROJECT_VERSION: "3"
         ENABLE_HARDENED_RUNTIME: NO   # 自签名 + AX 兜底用 CGEvent 时关掉硬化运行时更省心
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "TranslateHUD Local Sign"

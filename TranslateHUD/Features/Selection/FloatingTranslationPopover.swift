@@ -30,6 +30,7 @@ final class FloatingTranslationPopover {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isReleasedWhenClosed = false
         window.hidesOnDeactivate = false
+        window.isMovableByWindowBackground = true   // 允许拖任意背景区域移动浮窗
         window.minSize = NSSize(width: 320, height: 180)
         window.maxSize = NSSize(width: 720, height: 720)
 

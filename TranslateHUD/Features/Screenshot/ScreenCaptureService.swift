@@ -33,7 +33,7 @@ enum ScreenCaptureService {
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("translatehud_\(UUID().uuidString).png")
 
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+        let status = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Int32, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -46,12 +46,15 @@ enum ScreenCaptureService {
                     return
                 }
                 p.waitUntilExit()
-                if p.terminationStatus != 0 {
-                    cont.resume(throwing: CaptureError.spawnFailed("退出码 \(p.terminationStatus)"))
-                    return
-                }
-                cont.resume()
+                cont.resume(returning: p.terminationStatus)
             }
+        }
+
+        if status != 0 {
+            if !FileManager.default.fileExists(atPath: outURL.path) {
+                throw CaptureError.userCancelled
+            }
+            throw CaptureError.spawnFailed("退出码 \(status)")
         }
 
         guard FileManager.default.fileExists(atPath: outURL.path) else {

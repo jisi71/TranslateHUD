@@ -1,7 +1,7 @@
 import Foundation
 
 /// LLM 服务商配置（OpenAI 兼容协议）。
-struct ProviderConfig: Equatable {
+struct ProviderConfig: Equatable, Sendable {
     var baseURL: String      // e.g. https://api.openai.com/v1
     var model: String        // e.g. gpt-4o-mini
     var apiKey: String       // 仅在内存里持有；持久化走 Keychain
@@ -21,7 +21,7 @@ struct ProviderConfig: Equatable {
 }
 
 /// 服务商预设：选完会预填 baseURL + 推荐 model，用户只需填 key 与按需改 model。
-struct ProviderPreset: Identifiable, Hashable {
+struct ProviderPreset: Identifiable, Hashable, Sendable {
     var id: String { displayName }
     let displayName: String
     let baseURL: String

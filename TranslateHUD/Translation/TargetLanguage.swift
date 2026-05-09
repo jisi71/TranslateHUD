@@ -2,7 +2,7 @@ import Foundation
 import NaturalLanguage
 
 /// 翻译目标语言。使用 BCP-47 风格的代码做存储 key；显示名给用户看；prompt 名给 LLM 用。
-enum TargetLanguage: String, CaseIterable, Identifiable {
+enum TargetLanguage: String, CaseIterable, Identifiable, Sendable {
     case english    = "en"
     case chinese    = "zh-Hans"
     case japanese   = "ja"

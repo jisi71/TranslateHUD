@@ -3,19 +3,64 @@ import Foundation
 struct OpenAICompatibleTranslator: Translator {
     let config: ProviderConfig
 
+    /// 标志位：第二次（严格）尝试时的探测错误。仅在 translator 内部流转。
+    private struct EchoDetected: Error {}
+
+    // MARK: - 批量
+
     func translate(_ texts: [String], to target: TargetLanguage) async throws -> [String] {
         guard !texts.isEmpty else { throw TranslationError.empty }
+
+        // 第一次尝试（标准 prompt + 低温）
+        let attempt1 = try await performBatch(texts: texts, to: target, strict: false)
+
+        // 验证：① 单条失败模式 ② 整批合并后的 under-translation（截图 OCR 多行场景必须）
+        let failures = batchValidate(originals: texts, translations: attempt1, target: target)
+        let batchUnder = TranslationValidator.isBatchUnderTranslated(originals: texts, translations: attempt1, target: target)
+
+        if failures.isEmpty && !batchUnder {
+            return attempt1
+        }
+        if batchUnder {
+            AppLog.info("批量整批 under-translation（identifier 大量原样保留）→ 重试（严格 prompt）")
+        } else {
+            AppLog.info("批量首次有 \(failures.count) 条疑似失败 → 重试（严格 prompt）")
+        }
+        let attempt2 = try await performBatch(texts: texts, to: target, strict: true)
+        return attempt2
+    }
+
+    private func performBatch(texts: [String], to target: TargetLanguage, strict: Bool) async throws -> [String] {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
             throw TranslationError.missingConfig("baseURL 或 model 为空")
         }
 
+        let example = batchExampleBlock(for: target)
+        let strictPrefix = strict ? """
+        ⚠️ CRITICAL: A previous attempt failed because most English identifiers were NOT translated. This is wrong. You MUST translate:
+        - Every JSON key (e.g. "text" → "文本", "confidence" → "置信度", "start_ms" → "开始毫秒", "final" → "最终")
+        - Every bare function name and variable name
+        - Every snake_case / camelCase identifier
+        even if they look like code field names. Only structural punctuation, numbers, and content already in \(target.promptName) stay unchanged.
+
+        """ : ""
+
         let systemPrompt = """
-        You are a professional multilingual translator. You will receive a JSON array, each item like {"i": <integer index>, "text": <source>}.
-        For each text:
-          - If it is already in \(target.promptName), return it unchanged.
-          - Otherwise translate it to \(target.promptName).
-        Output a strict JSON array, each item like {"i": <index>, "t": <translation or original>}, with indices matching the input one-to-one.
-        No explanations, no markdown code fences, just the JSON.
+        \(strictPrefix)You are a translation engine. The input is a JSON array; for each item, translate its "text" into \(target.promptName).
+
+        TRANSLATE every non-\(target.promptName) lexical token, including:
+        - Plain words, phrases, sentences.
+        - snake_case / camelCase / kebab-case identifiers (e.g. "promise_to_pay").
+        - Function names, variable names, comments, code labels.
+
+        KEEP UNCHANGED:
+        - Numbers, dates (e.g. "2026-05-12"), version strings, URLs, file paths, ISO codes, hash strings.
+        - Structural punctuation: `{}`, `[]`, `()`, quotes, commas, colons, semicolons, equals.
+        - Any portion already in \(target.promptName).
+
+        DO NOT echo non-\(target.promptName) text back unchanged because it looks like code — translate it.
+        \(example)
+        Output a strict JSON array, each item like {"i": <index>, "t": <translated>}, indices matching the input one-to-one. No explanations, no markdown code fences, just the JSON.
         """
 
         let inputArr: [[String: Any]] = texts.enumerated().map { ["i": $0.offset, "text": $0.element] }
@@ -28,15 +73,15 @@ struct OpenAICompatibleTranslator: Translator {
                 ["role": "system", "content": systemPrompt],
                 ["role": "user",   "content": inputStr]
             ],
-            "temperature": 0.2
+            "temperature": strict ? 0.4 : 0.2
         ]
         applyVendorParams(into: &body)
+        applyJSONResponseFormat(into: &body)
 
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.timeoutInterval = 60
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // apiKey 为空时跳过 Authorization（兼容本地 Ollama / LM Studio 等无鉴权服务）。
         if !config.apiKey.isEmpty {
             req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         }
@@ -65,7 +110,6 @@ struct OpenAICompatibleTranslator: Translator {
             throw TranslationError.parse("content 非 utf8")
         }
 
-        // 优先按数组解析；若返回 {"results":[...]} 类对象，从中找数组
         let parsed = try JSONSerialization.jsonObject(with: cData)
         let arr: [[String: Any]]
         if let direct = parsed as? [[String: Any]] {
@@ -84,20 +128,48 @@ struct OpenAICompatibleTranslator: Translator {
             guard let i = item["i"] as? Int, i >= 0, i < texts.count else { continue }
             if let t = item["t"] as? String { out[i] = t }
         }
-        // 没拿到的位置兜底为原文
         for i in 0..<out.count where out[i].isEmpty {
             out[i] = texts[i]
         }
         return out
     }
 
-    // MARK: - 流式：单条 / 纯文本 / SSE
+    private func batchValidate(originals: [String], translations: [String], target: TargetLanguage) -> [Int] {
+        var failed: [Int] = []
+        for (i, (o, t)) in zip(originals, translations).enumerated() {
+            let r = TranslationValidator.validate(input: o, output: t, target: target)
+            if !r.isEmpty {
+                AppLog.info("批量第 \(i) 条疑似失败：\(r) | input=\(o.prefix(40))")
+                failed.append(i)
+            }
+        }
+        return failed
+    }
 
-    func translateStreaming(_ text: String, to target: TargetLanguage) -> AsyncThrowingStream<String, Error> {
+    // MARK: - 流式
+
+    func translateStreaming(_ text: String, to target: TargetLanguage) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    try await streamImpl(text: text, to: target, continuation: continuation)
+                    // 第一次：标准 prompt
+                    do {
+                        try await streamOnce(text: text, to: target, strict: false, continuation: continuation)
+                        continuation.finish()
+                        return
+                    } catch is EchoDetected {
+                        // 落入下面的重试
+                    }
+
+                    // 第二次：发 reset 信号 + 严格 prompt
+                    AppLog.info("流式重试（升温 + 严格 prompt）")
+                    continuation.yield(.reset(reason: "原文回吐，重试中"))
+                    do {
+                        try await streamOnce(text: text, to: target, strict: true, continuation: continuation)
+                    } catch is EchoDetected {
+                        // 重试还是 echo —— 把累积输出（可能是原文）当成 success 交出去，让用户看到原文
+                        AppLog.info("重试仍 echo，停手")
+                    }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -107,20 +179,30 @@ struct OpenAICompatibleTranslator: Translator {
         }
     }
 
-    private func streamImpl(
+    /// 单轮流式请求。如果检测到原文回吐，抛 `EchoDetected` 让上层决定重试。
+    private func streamOnce(
         text: String,
         to target: TargetLanguage,
-        continuation: AsyncThrowingStream<String, Error>.Continuation
+        strict: Bool,
+        continuation: AsyncThrowingStream<TranslationStreamEvent, Error>.Continuation
     ) async throws {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
             throw TranslationError.missingConfig("baseURL 或 model 为空")
         }
-        AppLog.info("流式请求: endpoint=\(endpoint.absoluteString) model=\(config.model) target=\(target.rawValue) inLen=\(text.count)")
+        AppLog.info("流式请求(strict=\(strict)): endpoint=\(endpoint.absoluteString) model=\(config.model) target=\(target.rawValue) inLen=\(text.count)")
 
         let example = exampleBlock(for: target)
+        let strictPrefix = strict ? """
+        ⚠️ CRITICAL: A previous attempt failed because the input was returned unchanged. You MUST produce a \(target.promptName) rendering for EVERY non-\(target.promptName) word — including:
+        - JSON keys, bare function names, variable names, snake_case/camelCase identifiers.
+        - Technical terms / loanwords commonly used as-is in \(target.promptName) (e.g. "sigmoid" → "S 形函数（sigmoid）", "softmax" → "归一化指数（softmax）", "transformer" → "变换器", "embedding" → "嵌入向量").
+        - Acronyms — provide a \(target.promptName) gloss in parentheses if the acronym is widely used (e.g. "API" → "API（应用程序接口）").
+        Only pure numbers, dates, version strings, URLs, and structural punctuation stay unchanged.
+
+        """ : ""
 
         let systemPrompt = """
-        You are a translation engine. Translate the user's input into \(target.promptName), as if rendering it for a \(target.promptName) reader to understand.
+        \(strictPrefix)You are a translation engine. Translate the user's input into \(target.promptName), as if rendering it for a \(target.promptName) reader to understand.
 
         TRANSLATE every non-\(target.promptName) lexical token, including:
         - Plain words, phrases, sentences.
@@ -135,6 +217,7 @@ struct OpenAICompatibleTranslator: Translator {
         - All line breaks, indentation, whitespace.
         - Any portion already in \(target.promptName).
 
+        Preserve the exact number of input lines. Do NOT add missing code lines, closing parentheses, braces, summaries, or context that is not present in the input.
         DO NOT echo non-\(target.promptName) text back unchanged because it looks like "code" — translate it. Output length should generally NOT equal input length.
         \(example)
         Output ONLY the translated text. No quotes wrapping the whole output, no explanations, no markdown fences, no preamble.
@@ -146,7 +229,7 @@ struct OpenAICompatibleTranslator: Translator {
                 ["role": "system", "content": systemPrompt],
                 ["role": "user",   "content": text]
             ],
-            "temperature": 0.2,
+            "temperature": strict ? 0.4 : 0.2,
             "stream": true
         ]
         applyVendorParams(into: &body)
@@ -164,7 +247,6 @@ struct OpenAICompatibleTranslator: Translator {
         let (bytes, response) = try await URLSession.shared.bytes(for: req)
         let http = response as? HTTPURLResponse
         guard let code = http?.statusCode, (200..<300).contains(code) else {
-            // 非 2xx：把响应体当错误消息读出来
             var err = ""
             for try await line in bytes.lines {
                 err += line + "\n"
@@ -174,72 +256,148 @@ struct OpenAICompatibleTranslator: Translator {
         }
 
         var accumulated = ""
-        var rawSample = ""             // 头 1KB 原始 SSE 用于排错
-        var lineCount = 0
-        var dataLineCount = 0
+        var rawSample = ""
+        var dataLines: [String] = []
+        var eventCount = 0
         var contentChunkCount = 0
-        for try await line in bytes.lines {
-            try Task.checkCancellation()
-            lineCount += 1
-            if rawSample.count < 1024 {
-                rawSample += line + "\n"
-            }
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("data:") else { continue }
-            dataLineCount += 1
-            let payload = String(trimmed.dropFirst("data:".count))
-                .trimmingCharacters(in: .whitespaces)
-            if payload.isEmpty || payload == "[DONE]" {
-                if payload == "[DONE]" { break }
-                continue
-            }
+
+        // 处理一个完整的 SSE event（多个 data: 行用 "\n" 拼接成 payload）。
+        // 返回 true → 收到 [DONE]，调用方 break。
+        func emitEvent() throws -> Bool {
+            let payload = dataLines.joined(separator: "\n")
+            dataLines.removeAll(keepingCapacity: true)
+            eventCount += 1
+
+            if payload == "[DONE]" { return true }
+            if payload.isEmpty { return false }
+
             guard
                 let data = payload.data(using: .utf8),
                 let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                 let choices = json["choices"] as? [[String: Any]],
                 let first = choices.first
-            else { continue }
-
-            // OpenAI 流式 chunk 在 delta.content；非流式回退在 message.content
+            else {
+                AppLog.debug("SSE event JSON parse miss: \(payload.prefix(200))")
+                return false
+            }
             let dlt = first["delta"] as? [String: Any] ?? first["message"] as? [String: Any]
-            guard let chunk = dlt?["content"] as? String, !chunk.isEmpty else { continue }
+            guard let chunk = dlt?["content"] as? String, !chunk.isEmpty else { return false }
 
             contentChunkCount += 1
             accumulated += chunk
-            continuation.yield(accumulated)
+
+            // 早期 echo 检测：仅 strict=false 时启用
+            if !strict,
+               TranslationValidator.looksLikeEarlyEcho(accumulated: accumulated, fullInput: text, target: target) {
+                AppLog.info("流式早期检测到原文回吐（累积 \(accumulated.count) 字符匹配原文前缀），中断重试")
+                throw EchoDetected()
+            }
+
+            continuation.yield(.delta(accumulated))
+            return false
         }
 
-        AppLog.info("流式完结: lines=\(lineCount) dataLines=\(dataLineCount) contentChunks=\(contentChunkCount) outLen=\(accumulated.count)")
+        func bufferedPayloadIsComplete() -> Bool {
+            let payload = dataLines.joined(separator: "\n")
+            if payload == "[DONE]" { return true }
+            guard let data = payload.data(using: .utf8) else { return false }
+            return (try? JSONSerialization.jsonObject(with: data)) != nil
+        }
+
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            if rawSample.count < 1024 { rawSample += line + "\n" }
+
+            // SSE 事件以空行结束：把已缓存的 data: 行拼成完整 payload
+            if line.isEmpty {
+                if !dataLines.isEmpty {
+                    if try emitEvent() { break }
+                }
+                continue
+            }
+            // 注释行
+            if line.hasPrefix(":") { continue }
+            // data: 行（支持多行；每行 SSE 规范允许一个 leading space）
+            if line.hasPrefix("data:") {
+                var value = String(line.dropFirst("data:".count))
+                if value.hasPrefix(" ") { value.removeFirst() }
+
+                // Some OpenAI-compatible providers stream one JSON object per `data:` line
+                // without the blank-line event separator required by SSE. If the current
+                // buffer is already a complete payload, flush it before starting the next one.
+                if !dataLines.isEmpty, bufferedPayloadIsComplete() {
+                    if try emitEvent() { break }
+                }
+                dataLines.append(value)
+            }
+            // 其他字段（event:/id:/retry:）忽略
+        }
+        // 流结束但末尾没有空行收尾 → 把残留的 data 行兜底 emit 一次
+        if !dataLines.isEmpty {
+            _ = try emitEvent()
+        }
+
+        AppLog.info("流式完结(strict=\(strict)): events=\(eventCount) contentChunks=\(contentChunkCount) outLen=\(accumulated.count)")
+
+        // contentChunkCount=0 → 协议异常（非 2xx 已早返；这里多半是鉴权 / 模型不存在 / 服务返回了非 OpenAI 格式）。
+        // 之前是静默成空译文，现在抛错让上层走 .failed 状态展示给用户。
         if contentChunkCount == 0 {
-            AppLog.error("流式 contentChunks=0；前 1KB 原始 SSE：\n\(rawSample)")
-        } else if accumulated.count <= 100 {
-            AppLog.info("流式完整输出: \(accumulated)")
+            AppLog.error("流式响应未产出任何 content chunk；前 1KB 原始 SSE：\n\(rawSample)")
+            throw TranslationError.parse("流式响应未产出任何 content chunk")
+        }
+
+        // 终末检查：流跑完了但翻译质量不达标（echo / under-translated / 拒绝 / 代码块包裹）
+        if !strict, !accumulated.isEmpty {
+            let failures = TranslationValidator.validate(input: text, output: accumulated, target: target)
+            if !failures.isEmpty {
+                AppLog.info("流式终末检测到失败 \(failures)，重试")
+                throw EchoDetected()
+            }
+        }
+    }
+
+    // MARK: - response_format（json_object）
+
+    /// 已知支持 OpenAI 风格 `response_format: {"type": "json_object"}` 的服务商。
+    /// 仅对批量请求添加；流式 + json_object 在某些厂商上有问题。
+    private func applyJSONResponseFormat(into body: inout [String: Any]) {
+        let host = URL(string: config.baseURL)?.host?.lowercased() ?? ""
+        let supporters = [
+            "api.openai.com",
+            "api.deepseek.com",
+            "api.moonshot.cn",
+            "open.bigmodel.cn",
+            "dashscope.aliyuncs.com",
+            "openrouter.ai"
+        ]
+        if supporters.contains(where: { host.contains($0) }) {
+            body["response_format"] = ["type": "json_object"]
         }
     }
 
     // MARK: - Few-shot 示例
 
-    /// 给定 target 语言，返回一段「示例输入 → 示例输出」用于 few-shot prompt。
-    /// 模型对纯文字规则的执行远不如对具体例子的模仿，这一段对 JSON / 代码类输入是关键。
-    private func exampleBlock(for target: TargetLanguage) -> String {
+    private func batchExampleBlock(for target: TargetLanguage) -> String {
         switch target {
         case .chinese:
             return """
 
-            EXAMPLE
+            EXAMPLE — translate ALL English tokens including bare function/variable names:
             Input:
-            "identity_signal": "self_claimed",
-            "slots": {
-              "promise_amount": "8000"
-            },
-            "asr_confidence": 0.91
+            [{"i":0,"text":"def step():"},
+             {"i":1,"text":"    signals = {"},
+             {"i":2,"text":"        \\"identity_confirm\\": detect_identity_confirm(txt),"},
+             {"i":3,"text":"        \\"anger\\": anger_count,"},
+             {"i":4,"text":"# user already promised to pay"}]
 
             Output:
-            "身份信号": "已自称",
-            "槽位": {
-              "承诺金额": "8000"
-            },
-            "ASR置信度": 0.91
+            [{"i":0,"t":"def 步骤():"},
+             {"i":1,"t":"    信号 = {"},
+             {"i":2,"t":"        \\"身份确认\\": 检测身份确认(文本),"},
+             {"i":3,"t":"        \\"愤怒\\": 愤怒计数,"},
+             {"i":4,"t":"# 用户已承诺还款"}]
+
+            Notice: `signals`, `detect_identity_confirm`, `txt`, `anger_count` are bare identifiers (not in quotes) — they MUST also be translated. Only `def` (Python keyword) and structural punctuation stay.
 
             """
         case .english:
@@ -247,16 +405,53 @@ struct OpenAICompatibleTranslator: Translator {
 
             EXAMPLE
             Input:
-            "用户意图": "承诺还款",
-            "槽位": {
-              "承诺日期": "2026-05-12"
-            }
+            [{"i":0,"text":"def 步骤():"},
+             {"i":1,"text":"    信号 = 检测身份确认(文本)"}]
 
             Output:
-            "user_intent": "promise_to_pay",
-            "slots": {
-              "promise_date": "2026-05-12"
-            }
+            [{"i":0,"t":"def step():"},
+             {"i":1,"t":"    signals = detect_identity_confirm(txt)"}]
+
+            """
+        default:
+            return ""
+        }
+    }
+
+    private func exampleBlock(for target: TargetLanguage) -> String {
+        switch target {
+        case .chinese:
+            return """
+
+            EXAMPLE — translate ALL English tokens including bare function/variable names:
+            Input:
+            def step():
+                signals = {
+                    "identity_confirm": detect_identity_confirm(txt),
+                    "anger": anger_count,
+                }
+
+            Output:
+            def 步骤():
+                信号 = {
+                    "身份确认": 检测身份确认(文本),
+                    "愤怒": 愤怒计数,
+                }
+
+            Notice: bare identifiers `signals`, `detect_identity_confirm`, `txt`, `anger_count` are NOT in quotes but MUST still be translated. Only `def` (Python keyword) and structural punctuation stay.
+
+            """
+        case .english:
+            return """
+
+            EXAMPLE
+            Input:
+            def 步骤():
+                信号 = 检测身份确认(文本)
+
+            Output:
+            def step():
+                signals = detect_identity_confirm(txt)
 
             """
         default:
@@ -266,12 +461,9 @@ struct OpenAICompatibleTranslator: Translator {
 
     // MARK: - 厂商专属参数
 
-    /// 翻译任务不需要 reasoning。对支持 thinking 模式的厂商主动关掉，避免 first-byte 延迟过长。
-    /// - DeepSeek V4 系列 (`deepseek-v4-flash` / `deepseek-v4-pro`) 默认开启，必须显式关闭。
     private func applyVendorParams(into body: inout [String: Any]) {
         let host = URL(string: config.baseURL)?.host?.lowercased() ?? ""
         if host.contains("deepseek.com") {
-            // DeepSeek V4 thinking 关闭参数；旧 deepseek-chat 收到此字段会 silently 忽略
             body["thinking"] = ["type": "disabled"]
         }
     }
@@ -281,7 +473,6 @@ struct OpenAICompatibleTranslator: Translator {
     private func stripCodeFence(_ s: String) -> String {
         var t = s.trimmingCharacters(in: .whitespacesAndNewlines)
         guard t.hasPrefix("```") else { return t }
-        // 去掉首行（可能是 ```json 或 ```）
         if let nl = t.firstIndex(of: "\n") {
             t = String(t[t.index(after: nl)...])
         }

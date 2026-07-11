@@ -7,10 +7,19 @@ import SwiftUI
 final class FloatingScreenshotWindow {
     private let window: DraggableWindow
     private let progress: TranslationProgress
+    private let termProgress: TermExplanationProgress
+    private let speech = SpeechController()
     private var keyMonitor: Any?
+    private var hostingController: NSHostingController<ResultView>?
 
-    init(image: NSImage, originals: [String], progress: TranslationProgress) {
+    init(
+        image: NSImage,
+        originals: [String],
+        progress: TranslationProgress,
+        termProgress: TermExplanationProgress
+    ) {
         self.progress = progress
+        self.termProgress = termProgress
 
         let initialSize = NSSize(width: 540, height: 560)
         window = DraggableWindow(
@@ -34,12 +43,15 @@ final class FloatingScreenshotWindow {
             image: image,
             originals: originals,
             progress: progress,
+            termProgress: termProgress,
+            speech: speech,
             onClose:  { closeRef?() },
             onRetry:  { retryRef?() }
         )
         let host = NSHostingController(rootView: view)
         host.view.frame = NSRect(origin: .zero, size: initialSize)
         window.contentView = host.view
+        hostingController = host
 
         if let screen = NSScreen.main {
             let f = screen.visibleFrame
@@ -62,8 +74,11 @@ final class FloatingScreenshotWindow {
 
     func close() {
         progress.cancel()
+        termProgress.cancel()
+        speech.stop()
         removeEscMonitor()
         window.orderOut(nil)
+        hostingController = nil
         WindowRegistry.shared.remove(self)
     }
 
@@ -99,6 +114,8 @@ private struct ResultView: View {
     let image: NSImage
     let originals: [String]
     @ObservedObject var progress: TranslationProgress
+    @ObservedObject var termProgress: TermExplanationProgress
+    @ObservedObject var speech: SpeechController
     var onClose: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
 
@@ -119,7 +136,13 @@ private struct ResultView: View {
 
                     statusBlock
                         .padding(.horizontal, 14)
-                        .padding(.bottom, 14)
+                    if !originals.isEmpty {
+                        Divider().opacity(0.2)
+                            .padding(.horizontal, 14)
+                        TermExplanationView(progress: termProgress)
+                            .padding(.horizontal, 14)
+                    }
+                    Spacer(minLength: 14)
                 }
             }
         }
@@ -192,7 +215,7 @@ private struct ResultView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 VStack(spacing: 10) {
-                    ForEach(pairs) { p in PairRow(pair: p) }
+                    ForEach(pairs) { p in PairRow(pair: p, speech: speech) }
                 }
             }
         case .timedOut:
@@ -264,17 +287,32 @@ private struct ResultView: View {
 
 private struct PairRow: View {
     let pair: TranslationProgress.Pair
+    @ObservedObject var speech: SpeechController
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(pair.original)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-            if pair.original != pair.translated {
+            HStack(alignment: .top, spacing: 8) {
+                Text(pair.original)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                SpeechButton(
+                    text: pair.original,
+                    id: "screenshot.\(pair.id.uuidString).original",
+                    speech: speech
+                )
+            }
+            HStack(alignment: .top, spacing: 8) {
                 Text(pair.translated)
                     .font(.body)
                     .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                SpeechButton(
+                    text: pair.translated,
+                    id: "screenshot.\(pair.id.uuidString).translated",
+                    speech: speech
+                )
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

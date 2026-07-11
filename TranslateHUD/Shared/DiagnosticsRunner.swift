@@ -3,6 +3,13 @@ import AppKit
 /// 一键诊断：把 AX 信任状态、当前选中文字、AX 选区坐标 一起 dump 到 toast + 日志。
 enum DiagnosticsRunner {
     static func run() {
+        Task { @MainActor in
+            await runAsync()
+        }
+    }
+
+    @MainActor
+    private static func runAsync() async {
         let trusted = PermissionManager.shared.isAccessibilityTrusted()
         let bundleID = Bundle.main.bundleIdentifier ?? "?"
         let exePath = Bundle.main.executablePath ?? "?"
@@ -13,7 +20,8 @@ enum DiagnosticsRunner {
         lines.append("Exec: \(exePath)")
 
         if trusted {
-            if let sel = SelectionFetcher.fetch() {
+            let context = SelectionTriggerContext.capture()
+            if case .found(let sel) = await SelectionFetcher.fetch(expectedApplicationPID: context.applicationPID) {
                 let preview = String(sel.text.prefix(60))
                 lines.append("选中文字: \(preview.isEmpty ? "(空)" : preview)")
                 if let r = sel.screenRectTopLeft {

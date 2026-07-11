@@ -9,6 +9,7 @@ enum TranslationValidator {
         case refusalDetected    // 输出含「I cannot translate / 抱歉无法...」之类拒绝词
         case codeFenceWrapped   // 整段被 ``` 包裹（应当只有内层译文）
         case underTranslated    // 部分翻译：bare identifier 没翻译（snake_case 或长 ASCII 单词大量保留）
+        case missingTargetLanguageContent // 短专有名词只返回原文，没有任何目标语言信息
     }
 
     /// 单条文本验证。
@@ -30,6 +31,9 @@ enum TranslationValidator {
         if isUnderTranslated(input: trimmedIn, output: trimmedOut, target: target) {
             failures.append(.underTranslated)
         }
+        if isMissingTargetLanguageContent(input: trimmedIn, output: trimmedOut, target: target) {
+            failures.append(.missingTargetLanguageContent)
+        }
 
         return failures
     }
@@ -42,6 +46,7 @@ enum TranslationValidator {
     static func isUnderTranslated(input: String, output: String, target: TargetLanguage) -> Bool {
         let nonLatinTargets: Set<TargetLanguage> = [.chinese, .japanese, .korean, .russian, .arabic]
         guard nonLatinTargets.contains(target) else { return false }
+        guard !isProtectedLiteral(input) else { return false }
 
         let inputTokens = extractIdentifierTokens(from: input)
         guard inputTokens.count >= 3 else { return false }
@@ -92,6 +97,7 @@ enum TranslationValidator {
         let n = accumulated.count
         guard n >= 30, n <= 120 else { return false }
         guard fullInput.count >= n else { return false }
+        guard !isProtectedLiteral(fullInput) else { return false }
 
         // accumulated 必须是 fullInput 的前缀
         guard fullInput.hasPrefix(accumulated) else { return false }
@@ -102,10 +108,55 @@ enum TranslationValidator {
         return true
     }
 
+    /// 中文目标下，短品牌名/人名/术语不允许只返回拉丁原文。没有公认译名时，模型应输出
+    /// “原名 + 中文类别说明”，因此至少需要出现一个汉字。
+    private static func isMissingTargetLanguageContent(
+        input: String,
+        output: String,
+        target: TargetLanguage
+    ) -> Bool {
+        guard target == .chinese else { return false }
+        guard input.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) && $0.isASCII }) else {
+            return false
+        }
+        guard !containsHan(input), !isProtectedLiteral(input) else { return false }
+        return !containsHan(output)
+    }
+
+    private static func containsHan(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    private static func isProtectedLiteral(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+        if lower.hasPrefix("http://") || lower.hasPrefix("https://") { return true }
+        if trimmed.hasPrefix("/") || trimmed.hasPrefix("~/") { return true }
+        if !trimmed.contains(" "), trimmed.contains("@"), trimmed.contains(".") { return true }
+        if matches(#"^v?\d+(\.\d+)+$"#, text: trimmed) { return true }
+        if matches(#"^[A-Za-z]{2,3}[-_][A-Z]{2}$"#, text: trimmed) { return true }
+        if trimmed.count >= 8, trimmed.allSatisfy({ $0.isHexDigit }) { return true }
+        return false
+    }
+
+    private static func matches(_ pattern: String, text: String) -> Bool {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.firstMatch(in: text, range: range)?.range == range
+    }
+
     // MARK: - 内部判断
 
     private static func isEcho(input: String, output: String, target: TargetLanguage) -> Bool {
         guard input == output else { return false }
+        guard !isProtectedLiteral(input) else { return false }
         // 必须有足够字母才考虑「该被翻译」——纯数字 / 纯标点 / 版本号原样返回是正常的
         let letterCount = input.unicodeScalars.filter { CharacterSet.letters.contains($0) }.count
         guard letterCount >= 3 else { return false }

@@ -10,6 +10,9 @@ final class SettingsStore: ObservableObject {
         static let model = "translation.model"
         static let apiKey = "translation.apiKey"  // Keychain account
         static let targetLanguage = "translation.targetLanguage"
+        static let chineseVoiceIdentifier = "speech.chineseVoiceIdentifier"
+        static let englishVoiceIdentifier = "speech.englishVoiceIdentifier"
+        static let speechRate = "speech.rate"
     }
 
     @Published var baseURL: String {
@@ -36,6 +39,24 @@ final class SettingsStore: ObservableObject {
             UserDefaults.standard.set(targetLanguage.rawValue, forKey: K.targetLanguage)
         }
     }
+    @Published var chineseVoiceIdentifier: String {
+        didSet {
+            guard !suppressPersist else { return }
+            UserDefaults.standard.set(chineseVoiceIdentifier, forKey: K.chineseVoiceIdentifier)
+        }
+    }
+    @Published var englishVoiceIdentifier: String {
+        didSet {
+            guard !suppressPersist else { return }
+            UserDefaults.standard.set(englishVoiceIdentifier, forKey: K.englishVoiceIdentifier)
+        }
+    }
+    @Published var speechRate: Double {
+        didSet {
+            guard !suppressPersist else { return }
+            UserDefaults.standard.set(speechRate, forKey: K.speechRate)
+        }
+    }
 
     private var suppressPersist = false
 
@@ -44,6 +65,10 @@ final class SettingsStore: ObservableObject {
         baseURL = UserDefaults.standard.string(forKey: K.baseURL) ?? "https://api.openai.com/v1"
         model   = UserDefaults.standard.string(forKey: K.model)   ?? "gpt-4o-mini"
         apiKey  = KeychainHelper.get(K.apiKey) ?? ""
+        chineseVoiceIdentifier = UserDefaults.standard.string(forKey: K.chineseVoiceIdentifier) ?? ""
+        englishVoiceIdentifier = UserDefaults.standard.string(forKey: K.englishVoiceIdentifier) ?? ""
+        let savedSpeechRate = UserDefaults.standard.object(forKey: K.speechRate) as? Double
+        speechRate = min(max(savedSpeechRate ?? 0.46, 0.35), 0.55)
         if let raw = UserDefaults.standard.string(forKey: K.targetLanguage),
            let lang = TargetLanguage(rawValue: raw) {
             targetLanguage = lang

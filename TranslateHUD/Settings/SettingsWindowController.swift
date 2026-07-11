@@ -19,7 +19,7 @@ final class SettingsWindowController {
         let win = NSWindow(contentViewController: hosting)
         win.title = "TranslateHUD 设置"
         win.styleMask = [.titled, .closable, .miniaturizable]
-        win.setContentSize(NSSize(width: 520, height: 460))
+        win.setContentSize(NSSize(width: 560, height: 620))
         win.center()
         win.isReleasedWhenClosed = false
         self.window = win
@@ -27,4 +27,3 @@ final class SettingsWindowController {
         NSApp.activate(ignoringOtherApps: true)
     }
 }
-

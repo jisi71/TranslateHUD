@@ -8,19 +8,31 @@ import Combine
 final class FloatingTranslationPopover {
     private let window: PopoverWindow
     private let progress: TranslationProgress
+    private let termProgress: TermExplanationProgress
+    private let speech = SpeechController()
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var keyMonitor: Any?
 
-    /// 浮窗的「顶部左上角」期望屏幕坐标。窗口高度随内容变化时，origin.y 会重算让 top-left 不动。
-    private var topLeftAnchor: NSPoint = .zero
+    private let placementContext: PopoverPlacementContext
     /// 强引用：window.contentView 只持有 host.view，不持有 controller；weak 时 controller 会被释放掉。
     private var hostingController: NSHostingController<PopoverContent>?
-    private var stateCancellable: AnyCancellable?
+    private var stateCancellables = Set<AnyCancellable>()
     private var isAdjustScheduled = false
 
-    init(original: String, progress: TranslationProgress, rectTopLeft: CGRect?, fallbackPoint: NSPoint) {
+    init(
+        original: String,
+        progress: TranslationProgress,
+        termProgress: TermExplanationProgress,
+        rectTopLeft: CGRect?,
+        fallbackPoint: NSPoint
+    ) {
         self.progress = progress
+        self.termProgress = termProgress
+        self.placementContext = PopoverPlacementContext(
+            selectionRectTopLeft: rectTopLeft,
+            mouseLocation: fallbackPoint
+        )
 
         // 初始尺寸 —— 之后会随 progress.state 变化动态计算并调整。
         let initialSize = NSSize(width: PopoverContent.fixedWidth, height: 120)
@@ -45,6 +57,8 @@ final class FloatingTranslationPopover {
         let view = PopoverContent(
             original: original,
             progress: progress,
+            termProgress: termProgress,
+            speech: speech,
             onCancel: { closeRef?() },
             onRetry:  { retryRef?() }
         )
@@ -52,8 +66,6 @@ final class FloatingTranslationPopover {
         host.view.frame = NSRect(origin: .zero, size: initialSize)
         window.contentView = host.view
         self.hostingController = host
-
-        topLeftAnchor = Self.computeTopLeft(rectTopLeft: rectTopLeft, fallbackPoint: fallbackPoint)
 
         window.escapeHandler = { [weak self] in self?.close() }
 
@@ -69,15 +81,23 @@ final class FloatingTranslationPopover {
         installDismissMonitors()
 
         // 订阅状态变化：每次 state 变化（loading → streaming → success / timedOut / failed）就重算尺寸
-        stateCancellable = progress.$state.sink { [weak self] _ in
-            self?.scheduleContentSizeAdjustment()
-        }
+        progress.$state
+            .sink { [weak self] _ in self?.scheduleContentSizeAdjustment() }
+            .store(in: &stateCancellables)
+        termProgress.$state
+            .sink { [weak self] _ in self?.scheduleContentSizeAdjustment() }
+            .store(in: &stateCancellables)
+        termProgress.$isExpanded
+            .sink { [weak self] _ in self?.scheduleContentSizeAdjustment() }
+            .store(in: &stateCancellables)
     }
 
     func close() {
-        stateCancellable?.cancel()
-        stateCancellable = nil
+        stateCancellables.forEach { $0.cancel() }
+        stateCancellables.removeAll()
         progress.cancel()
+        termProgress.cancel()
+        speech.stop()
         removeDismissMonitors()
         window.orderOut(nil)
         // 主动释放 hosting controller，断开 SwiftUI ↔ Combine 依赖
@@ -111,39 +131,22 @@ final class FloatingTranslationPopover {
             : 320
         let height = max(80, min(measuredHeight, PopoverContent.maxHeight))
 
-        let screen = NSScreen.screenContaining(topLeftPoint: topLeftAnchor) ?? NSScreen.main ?? NSScreen.screens.first!
-        let visible = screen.visibleFrame
-
-        var x = topLeftAnchor.x
-        var y = topLeftAnchor.y - height
-        if x < visible.minX + 8 { x = visible.minX + 8 }
-        if x + width > visible.maxX - 8 { x = visible.maxX - 8 - width }
-        if y < visible.minY + 8 { y = visible.minY + 8 }
-        if y + height > visible.maxY - 8 { y = visible.maxY - 8 - height }
-
-        let newFrame = NSRect(x: x, y: y, width: width, height: height)
+        let availableScreens = NSScreen.screens
+        guard let mainScreen = NSScreen.main ?? availableScreens.first else { return }
+        let screens = availableScreens.map {
+            PopoverScreenDescriptor(frame: $0.frame, visibleFrame: $0.visibleFrame)
+        }
+        let newFrame = PopoverPositioner.frame(
+            context: placementContext,
+            windowSize: NSSize(width: width, height: height),
+            screens: screens,
+            mainScreenFrame: mainScreen.frame
+        )
         if window.frame != newFrame {
             window.setFrame(newFrame, display: true, animate: false)
             host.view.frame = NSRect(origin: .zero, size: newFrame.size)
         }
     }
-
-    // MARK: - 定位
-
-    /// 期望的浮窗左上角屏幕坐标（macOS 屏幕坐标系，原点左下）。
-    /// 优先以选区底边下方 8px 居中对齐；选区拿不到坐标时贴鼠标下方 16px。
-    /// 不考虑窗口高度——applyTopLeft() 在每次 resize 时把 origin.y = anchor.y - height。
-    private static func computeTopLeft(rectTopLeft: CGRect?, fallbackPoint: NSPoint) -> NSPoint {
-        let width = PopoverContent.fixedWidth
-        if let r = rectTopLeft {
-            let topReferenceY = NSScreen.unifiedTopLeftReferenceY()
-            let selectionBottomY = topReferenceY - r.maxY
-            return NSPoint(x: r.midX - width / 2, y: selectionBottomY - 8)
-        } else {
-            return NSPoint(x: fallbackPoint.x - width / 2, y: fallbackPoint.y - 16)
-        }
-    }
-
 
     // MARK: - 自动消失
 
@@ -185,31 +188,44 @@ private final class PopoverWindow: NSWindow {
     }
 }
 
-private struct PopoverContent: View {
+struct PopoverContent: View {
     static let fixedWidth: CGFloat = 420
     static let maxHeight: CGFloat = 560     // 超过这个就 ScrollView 截断，避免占满整屏
+    static let maxScrollableHeight: CGFloat = 536
 
     let original: String
     @ObservedObject var progress: TranslationProgress
+    @ObservedObject var termProgress: TermExplanationProgress
+    @ObservedObject var speech: SpeechController
     var onCancel: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(original)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(original)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SpeechButton(text: original, id: "selection.original", speech: speech)
+                }
 
-            Divider().opacity(0.3)
+                Divider().opacity(0.3)
 
-            statusArea
-                .frame(maxWidth: .infinity, alignment: .leading)
+                statusArea
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Divider().opacity(0.3)
+                TermExplanationView(progress: termProgress)
+            }
+            .padding(12)
         }
-        .padding(12)
+        .frame(maxHeight: Self.maxScrollableHeight)
+        .fixedSize(horizontal: false, vertical: true)
         .frame(width: Self.fixedWidth, alignment: .leading)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -252,12 +268,16 @@ private struct PopoverContent: View {
                 }
             }
         case .success(let pairs):
-            Text(pairs.first?.translated ?? "")
-                .font(.body)
-                .textSelection(.enabled)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            let translated = pairs.first?.translated ?? ""
+            HStack(alignment: .top, spacing: 8) {
+                Text(translated)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                SpeechButton(text: translated, id: "selection.translated", speech: speech)
+            }
         case .timedOut:
             HStack(spacing: 8) {
                 Image(systemName: "clock.badge.exclamationmark.fill")
@@ -288,23 +308,5 @@ private struct PopoverContent: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - NSScreen 工具
-
-private extension NSScreen {
-    static func screenContaining(topLeftPoint pt: NSPoint) -> NSScreen? {
-        for screen in NSScreen.screens {
-            if screen.frame.minX <= pt.x && pt.x <= screen.frame.maxX {
-                return screen
-            }
-        }
-        return NSScreen.main
-    }
-
-    static func unifiedTopLeftReferenceY() -> CGFloat {
-        let main = NSScreen.main ?? NSScreen.screens.first!
-        return main.frame.maxY
     }
 }

@@ -41,13 +41,23 @@ enum ScreenshotFlow {
         }
 
         let originals = lines.map { $0.text }
+        let target = TargetLanguage.resolved(
+            for: originals,
+            configured: SettingsStore.shared.targetLanguage
+        )
+        let termProgress = TermExplanationProgress(
+            explainer: OpenAICompatibleTermExplainer(config: config),
+            texts: originals,
+            language: .chinese
+        )
 
         // 4. 立刻展示浮窗（loading 状态 + 已识别的原文）
         let progress = TranslationProgress()
         let window = FloatingScreenshotWindow(
             image: image,
             originals: originals,
-            progress: progress
+            progress: progress,
+            termProgress: termProgress
         )
         window.show()
 
@@ -57,17 +67,13 @@ enum ScreenshotFlow {
             progress.start(
                 translator: NoOpTranslator(),
                 originals: [],
-                target: SettingsStore.shared.targetLanguage
+                target: target
             )
             return
         }
 
         // 6. 异步翻译；progress 状态变化驱动浮窗 UI
         let translator = OpenAICompatibleTranslator(config: config)
-        let target = TargetLanguage.resolved(
-            for: originals,
-            configured: SettingsStore.shared.targetLanguage
-        )
         progress.start(translator: translator, originals: originals, target: target)
     }
 }

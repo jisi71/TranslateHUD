@@ -3,31 +3,33 @@ import Foundation
 struct OpenAICompatibleTranslator: Translator {
     let config: ProviderConfig
 
-    /// 标志位：第二次（严格）尝试时的探测错误。仅在 translator 内部流转。
-    private struct EchoDetected: Error {}
+    private struct QualityRejected: Error {
+        let failures: [TranslationValidator.Failure]
+    }
 
     // MARK: - 批量
 
     func translate(_ texts: [String], to target: TargetLanguage) async throws -> [String] {
         guard !texts.isEmpty else { throw TranslationError.empty }
 
-        // 第一次尝试（标准 prompt + 低温）
-        let attempt1 = try await performBatch(texts: texts, to: target, strict: false)
+        for (attemptIndex, strict) in TranslationAttemptPolicy.attempts.enumerated() {
+            let result = try await performBatch(texts: texts, to: target, strict: strict)
+            let failures = batchValidate(originals: texts, translations: result, target: target)
+            let batchUnder = TranslationValidator.isBatchUnderTranslated(
+                originals: texts,
+                translations: result,
+                target: target
+            )
+            let hasFailures = !failures.isEmpty || batchUnder
+            if !hasFailures { return result }
 
-        // 验证：① 单条失败模式 ② 整批合并后的 under-translation（截图 OCR 多行场景必须）
-        let failures = batchValidate(originals: texts, translations: attempt1, target: target)
-        let batchUnder = TranslationValidator.isBatchUnderTranslated(originals: texts, translations: attempt1, target: target)
-
-        if failures.isEmpty && !batchUnder {
-            return attempt1
+            if TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) {
+                AppLog.info("批量第 \(attemptIndex + 1) 轮质量校验失败 → 最后一次严格重试")
+                continue
+            }
+            throw TranslationError.quality("模型连续两轮未产生可靠译文")
         }
-        if batchUnder {
-            AppLog.info("批量整批 under-translation（identifier 大量原样保留）→ 重试（严格 prompt）")
-        } else {
-            AppLog.info("批量首次有 \(failures.count) 条疑似失败 → 重试（严格 prompt）")
-        }
-        let attempt2 = try await performBatch(texts: texts, to: target, strict: true)
-        return attempt2
+        throw TranslationError.quality("翻译尝试次数异常")
     }
 
     private func performBatch(texts: [String], to target: TargetLanguage, strict: Bool) async throws -> [String] {
@@ -42,6 +44,7 @@ struct OpenAICompatibleTranslator: Translator {
         - Every bare function name and variable name
         - Every snake_case / camelCase identifier
         even if they look like code field names. Only structural punctuation, numbers, and content already in \(target.promptName) stay unchanged.
+        For proper nouns, use an established localized name when one exists. If none exists, keep the original name and append a short \(target.promptName) category description in parentheses. Never return only the source name and never invent a transliteration.
 
         """ : ""
 
@@ -59,6 +62,7 @@ struct OpenAICompatibleTranslator: Translator {
         - Any portion already in \(target.promptName).
 
         DO NOT echo non-\(target.promptName) text back unchanged because it looks like code — translate it.
+        For proper nouns: use an established localized name. If no established name exists, keep the original and append a short \(target.promptName) category description in parentheses. Do not invent names or facts, and never return only the source proper noun.
         \(example)
         Output a strict JSON array, each item like {"i": <index>, "t": <translated>}, indices matching the input one-to-one. No explanations, no markdown code fences, just the JSON.
         """
@@ -152,25 +156,30 @@ struct OpenAICompatibleTranslator: Translator {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    // 第一次：标准 prompt
-                    do {
-                        try await streamOnce(text: text, to: target, strict: false, continuation: continuation)
-                        continuation.finish()
-                        return
-                    } catch is EchoDetected {
-                        // 落入下面的重试
+                    for (attemptIndex, strict) in TranslationAttemptPolicy.attempts.enumerated() {
+                        if strict {
+                            AppLog.info("流式最后一次严格重试")
+                            continuation.yield(.reset(reason: "首轮译文未通过校验，重试中"))
+                        }
+                        do {
+                            _ = try await streamOnce(
+                                text: text,
+                                to: target,
+                                strict: strict,
+                                continuation: continuation
+                            )
+                            continuation.finish()
+                            return
+                        } catch let rejection as QualityRejected {
+                            let shouldRetry = TranslationAttemptPolicy.shouldRetry(
+                                afterAttempt: attemptIndex,
+                                hasFailures: !rejection.failures.isEmpty
+                            )
+                            if shouldRetry { continue }
+                            throw TranslationError.quality("模型连续两轮返回原文或缺少目标语言内容")
+                        }
                     }
-
-                    // 第二次：发 reset 信号 + 严格 prompt
-                    AppLog.info("流式重试（升温 + 严格 prompt）")
-                    continuation.yield(.reset(reason: "原文回吐，重试中"))
-                    do {
-                        try await streamOnce(text: text, to: target, strict: true, continuation: continuation)
-                    } catch is EchoDetected {
-                        // 重试还是 echo —— 把累积输出（可能是原文）当成 success 交出去，让用户看到原文
-                        AppLog.info("重试仍 echo，停手")
-                    }
-                    continuation.finish()
+                    throw TranslationError.quality("翻译尝试次数异常")
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -179,13 +188,13 @@ struct OpenAICompatibleTranslator: Translator {
         }
     }
 
-    /// 单轮流式请求。如果检测到原文回吐，抛 `EchoDetected` 让上层决定重试。
+    /// 单轮流式请求。终末质量不合格时抛 `QualityRejected`，由外层决定是否严格重试。
     private func streamOnce(
         text: String,
         to target: TargetLanguage,
         strict: Bool,
         continuation: AsyncThrowingStream<TranslationStreamEvent, Error>.Continuation
-    ) async throws {
+    ) async throws -> String {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
             throw TranslationError.missingConfig("baseURL 或 model 为空")
         }
@@ -219,6 +228,7 @@ struct OpenAICompatibleTranslator: Translator {
 
         Preserve the exact number of input lines. Do NOT add missing code lines, closing parentheses, braces, summaries, or context that is not present in the input.
         DO NOT echo non-\(target.promptName) text back unchanged because it looks like "code" — translate it. Output length should generally NOT equal input length.
+        For proper nouns: use an established localized name. If no established name exists, keep the original and append a short \(target.promptName) category description in parentheses. Do not invent names, transliterations, or facts, and never return only the source proper noun.
         \(example)
         Output ONLY the translated text. No quotes wrapping the whole output, no explanations, no markdown fences, no preamble.
         """
@@ -290,7 +300,7 @@ struct OpenAICompatibleTranslator: Translator {
             if !strict,
                TranslationValidator.looksLikeEarlyEcho(accumulated: accumulated, fullInput: text, target: target) {
                 AppLog.info("流式早期检测到原文回吐（累积 \(accumulated.count) 字符匹配原文前缀），中断重试")
-                throw EchoDetected()
+                throw QualityRejected(failures: [.echoedInput])
             }
 
             continuation.yield(.delta(accumulated))
@@ -346,14 +356,12 @@ struct OpenAICompatibleTranslator: Translator {
             throw TranslationError.parse("流式响应未产出任何 content chunk")
         }
 
-        // 终末检查：流跑完了但翻译质量不达标（echo / under-translated / 拒绝 / 代码块包裹）
-        if !strict, !accumulated.isEmpty {
-            let failures = TranslationValidator.validate(input: text, output: accumulated, target: target)
-            if !failures.isEmpty {
-                AppLog.info("流式终末检测到失败 \(failures)，重试")
-                throw EchoDetected()
-            }
+        let failures = TranslationValidator.validate(input: text, output: accumulated, target: target)
+        if !failures.isEmpty {
+            AppLog.info("流式第 \(strict ? 2 : 1) 轮终末校验失败 \(failures)")
+            throw QualityRejected(failures: failures)
         }
+        return accumulated
     }
 
     // MARK: - response_format（json_object）

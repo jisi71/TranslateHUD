@@ -6,6 +6,8 @@ struct SettingsView: View {
     @State private var preset: ProviderPreset = ProviderPreset.all[0]
     @State private var showApiKey = false
     @State private var testStatus: TestStatus = .idle
+    @StateObject private var speechPreview = SpeechController()
+    @State private var voiceRefreshToken = 0
 
     enum TestStatus {
         case idle
@@ -60,6 +62,56 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            Section("朗读") {
+                Picker("中文声音", selection: $store.chineseVoiceIdentifier) {
+                    Text("自动选择最高质量").tag("")
+                    ForEach(SpeechController.voiceOptions(languagePrefix: "zh")) { voice in
+                        Text("\(voice.displayName) · \(voice.language)").tag(voice.identifier)
+                    }
+                }
+                .id("zh-\(voiceRefreshToken)")
+
+                Picker("英文声音", selection: $store.englishVoiceIdentifier) {
+                    Text("自动选择最高质量").tag("")
+                    ForEach(SpeechController.voiceOptions(languagePrefix: "en")) { voice in
+                        Text("\(voice.displayName) · \(voice.language)").tag(voice.identifier)
+                    }
+                }
+                .id("en-\(voiceRefreshToken)")
+
+                LabeledContent("语速") {
+                    HStack(spacing: 8) {
+                        Text("慢").font(.caption).foregroundStyle(.secondary)
+                        Slider(value: $store.speechRate, in: 0.35...0.55, step: 0.01)
+                            .frame(width: 180)
+                        Text("快").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack {
+                    Button("试听中文") {
+                        speechPreview.toggle(text: "这是一段中文朗读示例，包含 Kubernetes API。", id: "settings.zh")
+                    }
+                    Button("试听英文") {
+                        speechPreview.toggle(text: "This is an English speech preview for TranslateHUD.", id: "settings.en")
+                    }
+                    Spacer()
+                    Button {
+                        voiceRefreshToken += 1
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .help("刷新已安装声音")
+                    Button("打开系统声音管理") {
+                        SpeechController.openSystemVoiceSettings()
+                    }
+                }
+                Text("“增强”或“高级”声音需要先在 macOS 系统设置中下载；下载完成后点击刷新。自动模式始终优先选择质量最高的已安装声音。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section("测试连接") {
                 HStack {
                     Button("发送测试翻译 \"Hello, world\"") {
@@ -80,15 +132,16 @@ struct SettingsView: View {
                 LabeledContent("翻译选中") {
                     KeyboardShortcuts.Recorder(for: .triggerSelection)
                 }
-                Text("两个快捷键可以设为同一个 — 触发时若 AX 检测到选中文字则走「翻译选中」，否则走「截图翻译」。\n点输入框 → 按下你想要的组合键即可录入。")
+                Text("两个快捷键可以设为同一个 — 检测到选中文字时翻译选区；在等待选区读取后仍未发现文字时进入截图。\n点输入框 → 按下你想要的组合键即可录入。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 460)
+        .frame(width: 560, height: 620)
         .navigationTitle("TranslateHUD 设置")
+        .onDisappear { speechPreview.stop() }
     }
 
     @ViewBuilder

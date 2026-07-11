@@ -4,6 +4,7 @@ enum TranslationError: Error, LocalizedError, Sendable {
     case missingConfig(String)
     case http(code: Int, body: String)
     case parse(String)
+    case quality(String)
     case empty
 
     var errorDescription: String? {
@@ -11,6 +12,7 @@ enum TranslationError: Error, LocalizedError, Sendable {
         case .missingConfig(let m): return "翻译配置缺失：\(m)"
         case .http(let c, let b):   return "HTTP \(c)：\(b.prefix(200))"
         case .parse(let m):         return "解析失败：\(m)"
+        case .quality(let m):       return "翻译质量校验失败：\(m)"
         case .empty:                return "无可翻译内容"
         }
     }

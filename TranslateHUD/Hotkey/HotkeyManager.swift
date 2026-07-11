@@ -12,6 +12,7 @@ extension KeyboardShortcuts.Name {
     )
 }
 
+@MainActor
 final class HotkeyManager {
     static let shared = HotkeyManager()
     private init() {}
@@ -23,13 +24,14 @@ final class HotkeyManager {
 
     private var lastFiredAt: Date = .distantPast
     private let coalesceWindow: TimeInterval = 0.1
+    private var routeTask: Task<Void, Never>?
 
     func registerAll() {
         KeyboardShortcuts.onKeyDown(for: .triggerScreenshot) { [weak self] in
-            self?.fire(reason: .screenshot)
+            Task { @MainActor in self?.fire(reason: .screenshot) }
         }
         KeyboardShortcuts.onKeyDown(for: .triggerSelection) { [weak self] in
-            self?.fire(reason: .selection)
+            Task { @MainActor in self?.fire(reason: .selection) }
         }
         AppLog.info("快捷键已注册")
     }
@@ -38,6 +40,10 @@ final class HotkeyManager {
         let now = Date()
         guard now.timeIntervalSince(lastFiredAt) > coalesceWindow else { return }
         lastFiredAt = now
-        ModeRouter.route(triggeredBy: reason)
+        let context = SelectionTriggerContext.capture()
+        routeTask?.cancel()
+        routeTask = Task { @MainActor in
+            await ModeRouter.route(triggeredBy: reason, context: context)
+        }
     }
 }

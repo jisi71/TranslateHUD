@@ -8,6 +8,8 @@ macOS 菜单栏小工具：按全局快捷键 → 截图翻译 / 选中文字翻
 
 - **截图翻译**：触发后拉起系统区域框选 → Vision OCR → LLM 翻译 → 截图与原/译对照浮窗
 - **翻译选中**：取当前选中文字（AX 优先，Cmd+C 兜底） → LLM **流式翻译**（边出字边显示，体感等同 DeepSeek 网页） → 浮窗贴在选区下方
+- **原生朗读**：原文与译文可分别朗读/停止，优先使用 macOS 已安装的高级或增强 voice，支持中英文混读与语速调节
+- **名词解释**：用户展开后才独立请求，最多用中文解释 5 个专有名词、缩写或领域术语
 - **目标语言可配**：默认简体中文；当输入主体也是中文时自动反向翻译为英语
 - **完整请求 UI**：触发即出 loading 浮窗，支持取消、15 秒超时、一键重试
 
@@ -50,9 +52,8 @@ brew install xcodegen
 cd /path/to/TranslateHUD
 xcodegen generate
 
-# 4. 构建 + 启动
-xcodebuild -project TranslateHUD.xcodeproj -scheme TranslateHUD -configuration Debug build
-open ~/Library/Developer/Xcode/DerivedData/TranslateHUD-*/Build/Products/Debug/TranslateHUD.app
+# 4. 构建、固定安装并启动稳定签名版本
+./scripts/install-local.sh
 ```
 
 也可以 `open TranslateHUD.xcodeproj` 在 Xcode 里 ⌘R 跑。
@@ -69,7 +70,8 @@ bash scripts/build-release.sh
 1. **授权权限**
    - 启动后：菜单栏 📖 → 「检查权限…」
    - 系统设置 → 隐私与安全性：把 TranslateHUD 在「辅助功能」和「屏幕录制」里都打开
-   - 由于走稳定签名，**只需授权一次**，之后重编不会丢
+   - GitHub Release 使用 ad-hoc 签名，升级版本后 macOS 可能要求重新确认权限
+   - 自己编译并通过 `scripts/install-local.sh` 固定安装时使用稳定本地签名，后续重编不会反复丢权限
 2. **配置 LLM**
    - 菜单栏 📖 → 「打开设置…」
    - 选预设服务商（自动填好 baseURL + 推荐 model）
@@ -77,6 +79,9 @@ bash scripts/build-release.sh
    - 点「发送测试翻译」验证
 3. **可选：自定义快捷键**
    - 设置 → 快捷键 section，点录入框直接按下你想要的组合即可
+4. **可选：下载高质量朗读声音**
+   - 设置 → 朗读 → 「打开系统声音管理」，点击“系统声音”右侧的 `ⓘ`，下载“高音质”或“优化音质”voice
+   - 返回 TranslateHUD 后刷新声音列表并试听
 
 ## 使用场景
 
@@ -87,13 +92,13 @@ bash scripts/build-release.sh
 | 翻译选中文字（Chrome / 飞书 / Claude / VSCode 等 Electron 类） | 选中 → `option+w` → 译文浮窗贴鼠标下方（AX 漏 → Cmd+C 兜底自动接力） |
 | 关闭浮窗 | 截图浮窗：右上 X 或 ESC；选区浮窗：ESC 或点窗口外任意位置 |
 
-同键模式下的路由顺序：**AX (~10ms) → Cmd+C (~150ms) → 截图**。无选区时按 Cmd+C 是 no-op（pasteboard.changeCount 不变 → 不读、不污染剪贴板管理器）；有选区时 Cmd+C 拿到原文后立即把原剪贴板还原回去。
+同键模式下的路由顺序：**AX 重试 → Cmd+C（最多约 600ms）→ 截图**。无选区时按 Cmd+C 是 no-op（pasteboard.changeCount 不变 → 不读、不污染剪贴板管理器）；有选区时 Cmd+C 拿到原文后立即把原剪贴板还原回去。
 
 ## 已知限制
 
-- 同键模式在 Electron 类应用里有 ~150ms 的延迟（Cmd+C 兜底等待 changeCount 变化）。如果觉得卡，给「翻译选中」绑单独的快捷键就能跳过 AX 检查。
+- 同键模式在 Electron 类应用里最多会等待约 600ms，以避免选区复制较慢时误开截图。如果需要完全独立的行为，可给截图和翻译选中设置不同快捷键。
 - **Cmd+C 兜底路径会让你的剪贴板管理器（Maccy / Paste / Raycast 历史等）多记录一条变化**：流程是「复制选中文本 → 还原原剪贴板」，一次操作产生两次 pasteboard 变化。AX 命中时不会发生，只有走 Cmd+C 兜底（Chrome / 飞书 / Electron 等）时才有这个副作用——这是模拟 Cmd+C 路径无法消除的固有代价。无选区时不会触发（不复制就不还原）。
-- 没有 cancel 按钮——LLM 请求一旦发出会等到 60 秒超时或返回。多个截图浮窗可同时存在；选区浮窗一次只有一个。
+- 高级/增强朗读 voice 由 macOS 单独下载，会占用额外磁盘空间；未下载时自动回退到基础 voice。
 
 ## 项目结构
 
@@ -105,11 +110,14 @@ TranslateHUD/
 │   ├── Screenshot/     # ScreenCaptureService / OCRService / FloatingScreenshotWindow / ScreenshotFlow
 │   └── Selection/      # SelectionFetcher (AX + Cmd+C) / FloatingTranslationPopover / SelectionFlow
 ├── Translation/        # ProviderConfig / OpenAICompatibleTranslator / SettingsStore / KeychainHelper
+├── Speech/             # AVSpeechSynthesizer / voice 选择 / 中英混读
 ├── Settings/           # SettingsView / SettingsWindowController
 ├── Permissions/        # PermissionManager (AX trust + 跳系统设置)
 ├── Shared/             # AppLog / ToastCenter / WindowRegistry / DiagnosticsRunner
 └── Resources/          # Info.plist / Assets.xcassets
 ```
+
+单元测试位于 `TranslateHUDTests/`，覆盖路由、选区抓取、翻译质量、名词解释、朗读分段和浮窗尺寸。
 
 ## 关键设计决策
 

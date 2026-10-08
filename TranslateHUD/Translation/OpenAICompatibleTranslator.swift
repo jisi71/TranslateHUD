@@ -2,9 +2,19 @@ import Foundation
 
 struct OpenAICompatibleTranslator: Translator {
     let config: ProviderConfig
+    let session: URLSession
+
+    init(config: ProviderConfig, session: URLSession = .shared) {
+        self.config = config
+        self.session = session
+    }
 
     private struct QualityRejected: Error {
         let failures: [TranslationValidator.Failure]
+    }
+
+    private struct ConnectionInterrupted: Error {
+        let underlying: Error
     }
 
     // MARK: - 批量
@@ -12,8 +22,25 @@ struct OpenAICompatibleTranslator: Translator {
     func translate(_ texts: [String], to target: TargetLanguage) async throws -> [String] {
         guard !texts.isEmpty else { throw TranslationError.empty }
 
-        for (attemptIndex, strict) in TranslationAttemptPolicy.attempts.enumerated() {
-            let result = try await performBatch(texts: texts, to: target, strict: strict)
+        var strict = false
+        var retrySession: URLSession?
+        defer { retrySession?.invalidateAndCancel() }
+        for attemptIndex in 0..<TranslationAttemptPolicy.maximumAttempts {
+            try Task.checkCancellation()
+            let result: [String]
+            do {
+                result = try await performBatch(texts: texts, to: target, strict: strict, using: retrySession ?? session)
+            } catch TranslationError.parse where !strict && TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) {
+                AppLog.info("批量响应结构不完整，执行一次严格重试")
+                strict = true
+                continue
+            } catch where TranslationAttemptPolicy.isTransientTLSFailure(error)
+                && TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) {
+                AppLog.info("批量安全连接暂时中断，使用剩余请求次数重试")
+                retrySession = URLSession(configuration: session.configuration)
+                try await Task.sleep(for: .milliseconds(300))
+                continue
+            }
             let failures = batchValidate(originals: texts, translations: result, target: target)
             let batchUnder = TranslationValidator.isBatchUnderTranslated(
                 originals: texts,
@@ -25,14 +52,15 @@ struct OpenAICompatibleTranslator: Translator {
 
             if TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) {
                 AppLog.info("批量第 \(attemptIndex + 1) 轮质量校验失败 → 最后一次严格重试")
+                strict = true
                 continue
             }
-            throw TranslationError.quality("模型连续两轮未产生可靠译文")
+            throw TranslationError.quality("已尝试两次，仍有未翻译内容；请缩短原文或更换模型后重试")
         }
         throw TranslationError.quality("翻译尝试次数异常")
     }
 
-    private func performBatch(texts: [String], to target: TargetLanguage, strict: Bool) async throws -> [String] {
+    private func performBatch(texts: [String], to target: TargetLanguage, strict: Bool, using session: URLSession) async throws -> [String] {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
             throw TranslationError.missingConfig("baseURL 或 model 为空")
         }
@@ -64,7 +92,7 @@ struct OpenAICompatibleTranslator: Translator {
         DO NOT echo non-\(target.promptName) text back unchanged because it looks like code — translate it.
         For proper nouns: use an established localized name. If no established name exists, keep the original and append a short \(target.promptName) category description in parentheses. Do not invent names or facts, and never return only the source proper noun.
         \(example)
-        Output a strict JSON array, each item like {"i": <index>, "t": <translated>}, indices matching the input one-to-one. No explanations, no markdown code fences, just the JSON.
+        Output a strict JSON object: {"results":[{"i": <index>, "t": <translated>}]}. Include each input index exactly once. No explanations, no markdown code fences, just the JSON object.
         """
 
         let inputArr: [[String: Any]] = texts.enumerated().map { ["i": $0.offset, "text": $0.element] }
@@ -72,7 +100,7 @@ struct OpenAICompatibleTranslator: Translator {
         let inputStr  = String(data: inputData, encoding: .utf8) ?? "[]"
 
         var body: [String: Any] = [
-            "model": config.model,
+            "model": config.model.trimmingCharacters(in: .whitespacesAndNewlines),
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 ["role": "user",   "content": inputStr]
@@ -91,7 +119,8 @@ struct OpenAICompatibleTranslator: Translator {
         }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await session.data(for: req)
+        try Task.checkCancellation()
         let http = response as? HTTPURLResponse
         guard let code = http?.statusCode, (200..<300).contains(code) else {
             let bodyStr = String(data: data, encoding: .utf8) ?? "<binary>"
@@ -99,14 +128,16 @@ struct OpenAICompatibleTranslator: Translator {
         }
 
         guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let choices = json["choices"] as? [[String: Any]],
             let first = choices.first,
             let message = first["message"] as? [String: Any],
             let content = message["content"] as? String
         else {
-            let bodyStr = String(data: data, encoding: .utf8) ?? ""
-            throw TranslationError.parse("非预期的 chat 完成体: \(bodyStr.prefix(300))")
+            throw TranslationError.parse("响应中缺少 choices[0].message.content")
+        }
+        if let reason = first["finish_reason"] as? String, reason != "stop" {
+            throw TranslationError.parse(reason == "length" ? "模型输出被截断，请缩短原文或调整模型输出上限" : "模型未正常完成翻译")
         }
 
         let cleaned = stripCodeFence(content)
@@ -114,7 +145,9 @@ struct OpenAICompatibleTranslator: Translator {
             throw TranslationError.parse("content 非 utf8")
         }
 
-        let parsed = try JSONSerialization.jsonObject(with: cData)
+        let parsed: Any
+        do { parsed = try JSONSerialization.jsonObject(with: cData) }
+        catch { throw TranslationError.parse("模型未返回有效的译文 JSON") }
         let arr: [[String: Any]]
         if let direct = parsed as? [[String: Any]] {
             arr = direct
@@ -122,18 +155,24 @@ struct OpenAICompatibleTranslator: Translator {
             if let inner = dict["results"] as? [[String: Any]] { arr = inner }
             else if let inner = dict["data"] as? [[String: Any]] { arr = inner }
             else if let firstArr = dict.values.first(where: { $0 is [[String: Any]] }) as? [[String: Any]] { arr = firstArr }
-            else { throw TranslationError.parse("找不到数组：\(cleaned.prefix(200))") }
+            else { throw TranslationError.parse("响应中缺少译文数组") }
         } else {
-            throw TranslationError.parse("非预期 JSON：\(cleaned.prefix(200))")
+            throw TranslationError.parse("响应不是译文数组或对象")
         }
 
         var out = Array(repeating: "", count: texts.count)
+        var seen = Set<Int>()
         for item in arr {
-            guard let i = item["i"] as? Int, i >= 0, i < texts.count else { continue }
-            if let t = item["t"] as? String { out[i] = t }
+            guard let i = item["i"] as? Int, i >= 0, i < texts.count,
+                  seen.insert(i).inserted, let t = item["t"] as? String,
+                  texts[i].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                    !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw TranslationError.parse("译文索引重复、越界或内容缺失")
+            }
+            out[i] = t
         }
-        for i in 0..<out.count where out[i].isEmpty {
-            out[i] = texts[i]
+        guard seen.count == texts.count else {
+            throw TranslationError.parse("译文条数与原文不一致")
         }
         return out
     }
@@ -143,7 +182,7 @@ struct OpenAICompatibleTranslator: Translator {
         for (i, (o, t)) in zip(originals, translations).enumerated() {
             let r = TranslationValidator.validate(input: o, output: t, target: target)
             if !r.isEmpty {
-                AppLog.info("批量第 \(i) 条疑似失败：\(r) | input=\(o.prefix(40))")
+                AppLog.info("批量第 \(i) 条校验失败：\(r)")
                 failed.append(i)
             }
         }
@@ -155,17 +194,18 @@ struct OpenAICompatibleTranslator: Translator {
     func translateStreaming(_ text: String, to target: TargetLanguage) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
+                var strict = false
+                var retrySession: URLSession?
+                defer { retrySession?.invalidateAndCancel() }
                 do {
-                    for (attemptIndex, strict) in TranslationAttemptPolicy.attempts.enumerated() {
-                        if strict {
-                            AppLog.info("流式最后一次严格重试")
-                            continuation.yield(.reset(reason: "首轮译文未通过校验，重试中"))
-                        }
+                    for attemptIndex in 0..<TranslationAttemptPolicy.maximumAttempts {
+                        try Task.checkCancellation()
                         do {
                             _ = try await streamOnce(
                                 text: text,
                                 to: target,
                                 strict: strict,
+                                using: retrySession ?? session,
                                 continuation: continuation
                             )
                             continuation.finish()
@@ -175,8 +215,22 @@ struct OpenAICompatibleTranslator: Translator {
                                 afterAttempt: attemptIndex,
                                 hasFailures: !rejection.failures.isEmpty
                             )
-                            if shouldRetry { continue }
-                            throw TranslationError.quality("模型连续两轮返回原文或缺少目标语言内容")
+                            if shouldRetry {
+                                strict = true
+                                AppLog.info("流式最后一次严格重试")
+                                continuation.yield(.reset(reason: "首轮译文未通过校验，重试中"))
+                                continue
+                            }
+                            let reasons = rejection.failures.map(\.explanation).joined(separator: "、")
+                            throw TranslationError.quality("已尝试两次：\(reasons)。可缩短原文或更换模型后重试")
+                        } catch let failure as ConnectionInterrupted {
+                            guard TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) else {
+                                throw failure.underlying
+                            }
+                            AppLog.info("流式安全连接暂时中断，使用剩余请求次数重试")
+                            continuation.yield(.reset(reason: "安全连接暂时中断，重试中"))
+                            retrySession = URLSession(configuration: session.configuration)
+                            try await Task.sleep(for: .milliseconds(300))
                         }
                     }
                     throw TranslationError.quality("翻译尝试次数异常")
@@ -193,12 +247,13 @@ struct OpenAICompatibleTranslator: Translator {
         text: String,
         to target: TargetLanguage,
         strict: Bool,
+        using session: URLSession,
         continuation: AsyncThrowingStream<TranslationStreamEvent, Error>.Continuation
     ) async throws -> String {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
             throw TranslationError.missingConfig("baseURL 或 model 为空")
         }
-        AppLog.info("流式请求(strict=\(strict)): endpoint=\(endpoint.absoluteString) model=\(config.model) target=\(target.rawValue) inLen=\(text.count)")
+        AppLog.info("流式请求(strict=\(strict)) target=\(target.rawValue) inLen=\(text.count)")
 
         let example = exampleBlock(for: target)
         let strictPrefix = strict ? """
@@ -230,11 +285,11 @@ struct OpenAICompatibleTranslator: Translator {
         DO NOT echo non-\(target.promptName) text back unchanged because it looks like "code" — translate it. Output length should generally NOT equal input length.
         For proper nouns: use an established localized name. If no established name exists, keep the original and append a short \(target.promptName) category description in parentheses. Do not invent names, transliterations, or facts, and never return only the source proper noun.
         \(example)
-        Output ONLY the translated text. No quotes wrapping the whole output, no explanations, no markdown fences, no preamble.
+        Output ONLY the translated text. No quotes wrapping the whole output, no explanations, no preamble. Preserve markdown fences only when they already exist in the input; never add them.
         """
 
         var body: [String: Any] = [
-            "model": config.model,
+            "model": config.model.trimmingCharacters(in: .whitespacesAndNewlines),
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 ["role": "user",   "content": text]
@@ -254,114 +309,128 @@ struct OpenAICompatibleTranslator: Translator {
         }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (bytes, response) = try await URLSession.shared.bytes(for: req)
-        let http = response as? HTTPURLResponse
-        guard let code = http?.statusCode, (200..<300).contains(code) else {
-            var err = ""
-            for try await line in bytes.lines {
-                err += line + "\n"
-                if err.count > 800 { break }
-            }
-            throw TranslationError.http(code: http?.statusCode ?? -1, body: err)
-        }
-
         var accumulated = ""
-        var rawSample = ""
-        var dataLines: [String] = []
-        var eventCount = 0
-        var contentChunkCount = 0
+        do {
+            let (bytes, response) = try await session.bytes(for: req)
+            let http = response as? HTTPURLResponse
+            guard let code = http?.statusCode, (200..<300).contains(code) else {
+                var err = ""
+                for try await line in bytes.lines {
+                    err += line + "\n"
+                    if err.count > 800 { break }
+                }
+                throw TranslationError.http(code: http?.statusCode ?? -1, body: err)
+            }
 
-        // 处理一个完整的 SSE event（多个 data: 行用 "\n" 拼接成 payload）。
-        // 返回 true → 收到 [DONE]，调用方 break。
-        func emitEvent() throws -> Bool {
-            let payload = dataLines.joined(separator: "\n")
-            dataLines.removeAll(keepingCapacity: true)
-            eventCount += 1
+            var completed = false
+            var dataLines: [String] = []
+            var eventCount = 0
+            var contentChunkCount = 0
 
-            if payload == "[DONE]" { return true }
-            if payload.isEmpty { return false }
+            // 处理一个完整的 SSE event（多个 data: 行用 "\n" 拼接成 payload）。
+            // 返回 true → 收到 [DONE]，调用方 break。
+            func emitEvent() throws -> Bool {
+                let payload = dataLines.joined(separator: "\n")
+                dataLines.removeAll(keepingCapacity: true)
+                eventCount += 1
 
-            guard
-                let data = payload.data(using: .utf8),
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let choices = json["choices"] as? [[String: Any]],
-                let first = choices.first
-            else {
-                AppLog.debug("SSE event JSON parse miss: \(payload.prefix(200))")
+                if payload == "[DONE]" { completed = true; return true }
+                if payload.isEmpty { return false }
+
+                guard
+                    let data = payload.data(using: .utf8),
+                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else {
+                    throw TranslationError.parse("流式事件不是有效 JSON")
+                }
+                if json["error"] != nil { throw TranslationError.parse("服务返回流式错误，请检查模型和服务配置") }
+                guard let choices = json["choices"] as? [[String: Any]] else {
+                    throw TranslationError.parse("流式响应缺少 choices")
+                }
+                guard let first = choices.first else { return false }
+                if let reason = first["finish_reason"] as? String {
+                    guard reason == "stop" else {
+                        throw TranslationError.parse(reason == "length" ? "模型输出被截断，请缩短原文或调整模型输出上限" : "模型未正常完成翻译")
+                    }
+                    completed = true
+                }
+                let dlt = first["delta"] as? [String: Any] ?? first["message"] as? [String: Any]
+                guard let chunk = dlt?["content"] as? String, !chunk.isEmpty else { return false }
+
+                contentChunkCount += 1
+                accumulated += chunk
+
+                // 早期 echo 检测：仅 strict=false 时启用
+                if !strict,
+                   TranslationValidator.looksLikeEarlyEcho(accumulated: accumulated, fullInput: text, target: target) {
+                    AppLog.info("流式早期检测到原文回吐（累积 \(accumulated.count) 字符匹配原文前缀），中断重试")
+                    throw QualityRejected(failures: [.echoedInput])
+                }
+
+                continuation.yield(.delta(accumulated))
                 return false
             }
-            let dlt = first["delta"] as? [String: Any] ?? first["message"] as? [String: Any]
-            guard let chunk = dlt?["content"] as? String, !chunk.isEmpty else { return false }
 
-            contentChunkCount += 1
-            accumulated += chunk
-
-            // 早期 echo 检测：仅 strict=false 时启用
-            if !strict,
-               TranslationValidator.looksLikeEarlyEcho(accumulated: accumulated, fullInput: text, target: target) {
-                AppLog.info("流式早期检测到原文回吐（累积 \(accumulated.count) 字符匹配原文前缀），中断重试")
-                throw QualityRejected(failures: [.echoedInput])
+            func bufferedPayloadIsComplete() -> Bool {
+                let payload = dataLines.joined(separator: "\n")
+                if payload == "[DONE]" { return true }
+                guard let data = payload.data(using: .utf8) else { return false }
+                return (try? JSONSerialization.jsonObject(with: data)) != nil
             }
 
-            continuation.yield(.delta(accumulated))
-            return false
-        }
+            for try await line in bytes.lines {
+                try Task.checkCancellation()
 
-        func bufferedPayloadIsComplete() -> Bool {
-            let payload = dataLines.joined(separator: "\n")
-            if payload == "[DONE]" { return true }
-            guard let data = payload.data(using: .utf8) else { return false }
-            return (try? JSONSerialization.jsonObject(with: data)) != nil
-        }
-
-        for try await line in bytes.lines {
-            try Task.checkCancellation()
-            if rawSample.count < 1024 { rawSample += line + "\n" }
-
-            // SSE 事件以空行结束：把已缓存的 data: 行拼成完整 payload
-            if line.isEmpty {
-                if !dataLines.isEmpty {
-                    if try emitEvent() { break }
+                // SSE 事件以空行结束：把已缓存的 data: 行拼成完整 payload
+                if line.isEmpty {
+                    if !dataLines.isEmpty {
+                        if try emitEvent() { break }
+                    }
+                    continue
                 }
-                continue
-            }
-            // 注释行
-            if line.hasPrefix(":") { continue }
-            // data: 行（支持多行；每行 SSE 规范允许一个 leading space）
-            if line.hasPrefix("data:") {
-                var value = String(line.dropFirst("data:".count))
-                if value.hasPrefix(" ") { value.removeFirst() }
+                // 注释行
+                if line.hasPrefix(":") { continue }
+                // data: 行（支持多行；每行 SSE 规范允许一个 leading space）
+                if line.hasPrefix("data:") {
+                    var value = String(line.dropFirst("data:".count))
+                    if value.hasPrefix(" ") { value.removeFirst() }
 
-                // Some OpenAI-compatible providers stream one JSON object per `data:` line
-                // without the blank-line event separator required by SSE. If the current
-                // buffer is already a complete payload, flush it before starting the next one.
-                if !dataLines.isEmpty, bufferedPayloadIsComplete() {
-                    if try emitEvent() { break }
+                    // Some OpenAI-compatible providers stream one JSON object per `data:` line
+                    // without the blank-line event separator required by SSE. If the current
+                    // buffer is already a complete payload, flush it before starting the next one.
+                    if !dataLines.isEmpty, bufferedPayloadIsComplete() {
+                        if try emitEvent() { break }
+                    }
+                    dataLines.append(value)
                 }
-                dataLines.append(value)
+                // 其他字段（event:/id:/retry:）忽略
             }
-            // 其他字段（event:/id:/retry:）忽略
-        }
-        // 流结束但末尾没有空行收尾 → 把残留的 data 行兜底 emit 一次
-        if !dataLines.isEmpty {
-            _ = try emitEvent()
-        }
+            // 流结束但末尾没有空行收尾 → 把残留的 data 行兜底 emit 一次
+            if !dataLines.isEmpty {
+                _ = try emitEvent()
+            }
 
-        AppLog.info("流式完结(strict=\(strict)): events=\(eventCount) contentChunks=\(contentChunkCount) outLen=\(accumulated.count)")
+            AppLog.info("流式完结(strict=\(strict)): events=\(eventCount) contentChunks=\(contentChunkCount) outLen=\(accumulated.count)")
 
-        // contentChunkCount=0 → 协议异常（非 2xx 已早返；这里多半是鉴权 / 模型不存在 / 服务返回了非 OpenAI 格式）。
-        // 之前是静默成空译文，现在抛错让上层走 .failed 状态展示给用户。
-        if contentChunkCount == 0 {
-            AppLog.error("流式响应未产出任何 content chunk；前 1KB 原始 SSE：\n\(rawSample)")
-            throw TranslationError.parse("流式响应未产出任何 content chunk")
-        }
+            // A successful HTTP status alone does not guarantee a usable translation stream.
+            if contentChunkCount == 0 {
+                AppLog.error("流式响应未产出任何 content chunk")
+                throw TranslationError.parse("流式响应未产出任何 content chunk")
+            }
+            guard completed else { throw TranslationError.parse("流式连接提前结束，译文可能不完整，请重试") }
 
-        let failures = TranslationValidator.validate(input: text, output: accumulated, target: target)
-        if !failures.isEmpty {
-            AppLog.info("流式第 \(strict ? 2 : 1) 轮终末校验失败 \(failures)")
-            throw QualityRejected(failures: failures)
+            let failures = TranslationValidator.validate(input: text, output: accumulated, target: target)
+            if !failures.isEmpty {
+                AppLog.info("流式第 \(strict ? 2 : 1) 轮终末校验失败 \(failures)")
+                throw QualityRejected(failures: failures)
+            }
+            return accumulated
+        } catch {
+            if TranslationAttemptPolicy.isTransientTLSFailure(error, hasOutput: !accumulated.isEmpty) {
+                throw ConnectionInterrupted(underlying: error)
+            }
+            throw error
         }
-        return accumulated
     }
 
     // MARK: - response_format（json_object）
@@ -369,7 +438,7 @@ struct OpenAICompatibleTranslator: Translator {
     /// 已知支持 OpenAI 风格 `response_format: {"type": "json_object"}` 的服务商。
     /// 仅对批量请求添加；流式 + json_object 在某些厂商上有问题。
     private func applyJSONResponseFormat(into body: inout [String: Any]) {
-        let host = URL(string: config.baseURL)?.host?.lowercased() ?? ""
+        let host = config.chatCompletionsURL?.host?.lowercased() ?? ""
         let supporters = [
             "api.openai.com",
             "api.deepseek.com",
@@ -378,7 +447,7 @@ struct OpenAICompatibleTranslator: Translator {
             "dashscope.aliyuncs.com",
             "openrouter.ai"
         ]
-        if supporters.contains(where: { host.contains($0) }) {
+        if supporters.contains(host) {
             body["response_format"] = ["type": "json_object"]
         }
     }
@@ -399,11 +468,11 @@ struct OpenAICompatibleTranslator: Translator {
              {"i":4,"text":"# user already promised to pay"}]
 
             Output:
-            [{"i":0,"t":"def 步骤():"},
+            {"results":[{"i":0,"t":"def 步骤():"},
              {"i":1,"t":"    信号 = {"},
              {"i":2,"t":"        \\"身份确认\\": 检测身份确认(文本),"},
              {"i":3,"t":"        \\"愤怒\\": 愤怒计数,"},
-             {"i":4,"t":"# 用户已承诺还款"}]
+             {"i":4,"t":"# 用户已承诺还款"}]}
 
             Notice: `signals`, `detect_identity_confirm`, `txt`, `anger_count` are bare identifiers (not in quotes) — they MUST also be translated. Only `def` (Python keyword) and structural punctuation stay.
 
@@ -417,8 +486,8 @@ struct OpenAICompatibleTranslator: Translator {
              {"i":1,"text":"    信号 = 检测身份确认(文本)"}]
 
             Output:
-            [{"i":0,"t":"def step():"},
-             {"i":1,"t":"    signals = detect_identity_confirm(txt)"}]
+            {"results":[{"i":0,"t":"def step():"},
+             {"i":1,"t":"    signals = detect_identity_confirm(txt)"}]}
 
             """
         default:
@@ -470,8 +539,8 @@ struct OpenAICompatibleTranslator: Translator {
     // MARK: - 厂商专属参数
 
     private func applyVendorParams(into body: inout [String: Any]) {
-        let host = URL(string: config.baseURL)?.host?.lowercased() ?? ""
-        if host.contains("deepseek.com") {
+        let host = config.chatCompletionsURL?.host?.lowercased() ?? ""
+        if host == "api.deepseek.com" {
             body["thinking"] = ["type": "disabled"]
         }
     }

@@ -4,7 +4,7 @@ import AppKit
 enum SelectionFlow {
     @MainActor
     static func start(selection: SelectionFetcher.Selection, context: SelectionTriggerContext) {
-        AppLog.debug("待译选区：\(selection.text.prefix(80))…")
+        AppLog.debug("待译选区：\(selection.text.count) 字符")
 
         // 2. 翻译配置（kick off 之前必须确保至少能发请求）
         let config = SettingsStore.shared.providerConfig
@@ -31,6 +31,7 @@ enum SelectionFlow {
         let progress = TranslationProgress()
         let popover = FloatingTranslationPopover(
             original: selection.text,
+            context: selection.context,
             progress: progress,
             termProgress: termProgress,
             rectTopLeft: selection.screenRectTopLeft,

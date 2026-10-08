@@ -1,6 +1,6 @@
 import AppKit
 
-/// 一键诊断：把 AX 信任状态、当前选中文字、AX 选区坐标 一起 dump 到 toast + 日志。
+/// 显示权限、选区长度和坐标，便于排查输入获取问题。
 enum DiagnosticsRunner {
     static func run() {
         Task { @MainActor in
@@ -22,8 +22,7 @@ enum DiagnosticsRunner {
         if trusted {
             let context = SelectionTriggerContext.capture()
             if case .found(let sel) = await SelectionFetcher.fetch(expectedApplicationPID: context.applicationPID) {
-                let preview = String(sel.text.prefix(60))
-                lines.append("选中文字: \(preview.isEmpty ? "(空)" : preview)")
+                lines.append("选中文字: \(sel.text.count) 字符（不记录原文）")
                 if let r = sel.screenRectTopLeft {
                     lines.append("选区(top-left): x=\(Int(r.minX)) y=\(Int(r.minY)) w=\(Int(r.width)) h=\(Int(r.height))")
                 } else {

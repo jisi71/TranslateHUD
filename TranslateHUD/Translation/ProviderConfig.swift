@@ -8,15 +8,17 @@ struct ProviderConfig: Equatable, Sendable {
 
     var isUsable: Bool {
         // apiKey 可为空 —— 本地 Ollama / LM Studio 等不需要 key。
-        guard let url = URL(string: baseURL), url.scheme != nil else { return false }
-        return !model.isEmpty
+        chatCompletionsURL != nil && !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var chatCompletionsURL: URL? {
-        // 拼 /chat/completions
-        var s = baseURL
-        if s.hasSuffix("/") { s.removeLast() }
-        return URL(string: s + "/chat/completions")
+        guard var components = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil else { return nil }
+        while components.path.hasSuffix("/") { components.path.removeLast() }
+        if !components.path.hasSuffix("/chat/completions") { components.path += "/chat/completions" }
+        return components.url
     }
 }
 

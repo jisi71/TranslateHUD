@@ -9,6 +9,31 @@ enum SelectionFetcher {
         let text: String
         /// AX 坐标系：屏幕坐标，**top-left 原点**（与 NSEvent / NSScreen 的 bottom-left 不同）。nil 表示拿不到。
         let screenRectTopLeft: CGRect?
+        var context: TextContext? = nil
+    }
+
+    struct TextContext: Equatable, Sendable {
+        let before: String
+        let after: String
+    }
+
+    static func textContext(in text: String, selected: String, range: NSRange? = nil, limit: Int = 240) -> TextContext? {
+        guard !selected.isEmpty, limit > 0 else { return nil }
+        let selectionRange: Range<String.Index>
+        if let range, let exact = Range(range, in: text), String(text[exact]) == selected {
+            selectionRange = exact
+        } else {
+            guard let first = text.range(of: selected),
+                  first == text.range(of: selected, options: .backwards) else { return nil }
+            selectionRange = first
+        }
+        let start = text.index(selectionRange.lowerBound, offsetBy: -limit, limitedBy: text.startIndex) ?? text.startIndex
+        let end = text.index(selectionRange.upperBound, offsetBy: limit, limitedBy: text.endIndex) ?? text.endIndex
+        let before = String(text[start..<selectionRange.lowerBound])
+        let after = String(text[selectionRange.upperBound..<end])
+        guard !before.isEmpty || !after.isEmpty else { return nil }
+        return TextContext(before: (start > text.startIndex ? "…" : "") + before,
+                           after: after + (end < text.endIndex ? "…" : ""))
     }
 
     // MARK: - 真实抓取
@@ -70,6 +95,21 @@ enum SelectionFetcher {
         let err = AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused)
         guard err == .success, let element = focused else { return nil }
         return (element as! AXUIElement)
+    }
+
+    fileprivate static func currentTextContext(_ focused: AXUIElement, selected: String) -> TextContext? {
+        var value: AnyObject?
+        guard AXUIElementCopyAttributeValue(focused, kAXValueAttribute as CFString, &value) == .success,
+              let text = value as? String else { return nil }
+        var rangeValue: AnyObject?
+        var range = CFRange()
+        let hasRange = AXUIElementCopyAttributeValue(focused, kAXSelectedTextRangeAttribute as CFString, &rangeValue) == .success
+        if hasRange, let rangeValue, CFGetTypeID(rangeValue) == AXValueGetTypeID(),
+           AXValueGetType(rangeValue as! AXValue) == .cfRange,
+           AXValueGetValue(rangeValue as! AXValue, .cfRange, &range) {
+            return textContext(in: text, selected: selected, range: NSRange(location: range.location, length: range.length))
+        }
+        return textContext(in: text, selected: selected)
     }
 
     // MARK: - Cmd+C 兜底（用于 Chrome / VSCode / Electron 等不暴露 AX 文本属性的应用）
@@ -142,7 +182,8 @@ private final class SystemSelectionProbeProvider: SelectionProbeProviding {
         AppLog.info("AX 选区命中: app=\(app) role=\(role) len=\(text.count)")
         return .found(SelectionFetcher.Selection(
             text: text,
-            screenRectTopLeft: SelectionFetcher.currentSelectionRectViaAX(focused)
+            screenRectTopLeft: SelectionFetcher.currentSelectionRectViaAX(focused),
+            context: SelectionFetcher.currentTextContext(focused, selected: text)
         ))
     }
 
@@ -173,11 +214,12 @@ private final class SystemSelectionProbeProvider: SelectionProbeProviding {
                 if let copied = pasteboard.string(forType: .string)?
                     .trimmingCharacters(in: .whitespacesAndNewlines),
                    !copied.isEmpty {
-                    let rect = SelectionFetcher.focusedElement()
-                        .flatMap(SelectionFetcher.currentSelectionRectViaAX)
+                    let focused = SelectionFetcher.focusedElement()
+                    let rect = focused.flatMap(SelectionFetcher.currentSelectionRectViaAX)
+                    let context = focused.flatMap { SelectionFetcher.currentTextContext($0, selected: copied) }
                     restore(savedItems, to: pasteboard)
                     AppLog.info("Cmd+C 兜底命中: len=\(copied.count)")
-                    return .found(SelectionFetcher.Selection(text: copied, screenRectTopLeft: rect))
+                    return .found(SelectionFetcher.Selection(text: copied, screenRectTopLeft: rect, context: context))
                 }
             }
 

@@ -10,7 +10,15 @@ enum TranslationError: Error, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .missingConfig(let m): return "翻译配置缺失：\(m)"
-        case .http(let c, let b):   return "HTTP \(c)：\(b.prefix(200))"
+        case .http(let c, _):
+            switch c {
+            case 401: return "HTTP 401：认证失败，请检查 API Key"
+            case 403: return "HTTP 403：服务拒绝访问，请检查账号和模型权限"
+            case 404: return "HTTP 404：接口或模型不存在，请检查 baseURL 与 model"
+            case 429: return "HTTP 429：请求受限或额度不足，请稍后重试或检查账号"
+            case 500...599: return "HTTP \(c)：翻译服务暂时不可用，请稍后重试"
+            default: return "HTTP \(c)：请求失败，请检查服务配置"
+            }
         case .parse(let m):         return "解析失败：\(m)"
         case .quality(let m):       return "翻译质量校验失败：\(m)"
         case .empty:                return "无可翻译内容"
@@ -32,7 +40,7 @@ protocol Translator: Sendable {
 extension Translator {
     func translateStreaming(_ text: String, to target: TargetLanguage) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     let result = try await translate([text], to: target)
                     continuation.yield(.delta(result.first ?? text))
@@ -41,6 +49,7 @@ extension Translator {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 }

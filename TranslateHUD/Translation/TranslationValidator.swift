@@ -5,11 +5,23 @@ import NaturalLanguage
 enum TranslationValidator {
 
     enum Failure: Equatable, Sendable {
+        case emptyOutput
         case echoedInput        // 输出与输入完全相同，且原文不是目标语言 → 模型没翻译
         case refusalDetected    // 输出含「I cannot translate / 抱歉无法...」之类拒绝词
         case codeFenceWrapped   // 整段被 ``` 包裹（应当只有内层译文）
         case underTranslated    // 部分翻译：bare identifier 没翻译（snake_case 或长 ASCII 单词大量保留）
         case missingTargetLanguageContent // 短专有名词只返回原文，没有任何目标语言信息
+
+        var explanation: String {
+            switch self {
+            case .emptyOutput: return "译文为空"
+            case .echoedInput: return "模型返回了未翻译的原文"
+            case .refusalDetected: return "模型拒绝翻译"
+            case .codeFenceWrapped: return "模型额外包裹了代码围栏"
+            case .underTranslated: return "多数需要翻译的词仍被保留"
+            case .missingTargetLanguageContent: return "译文缺少目标语言内容"
+            }
+        }
     }
 
     /// 单条文本验证。
@@ -19,13 +31,16 @@ enum TranslationValidator {
         let trimmedIn  = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedOut = output.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        if !trimmedIn.isEmpty, trimmedOut.isEmpty { return [.emptyOutput] }
+
         if isEcho(input: trimmedIn, output: trimmedOut, target: target) {
             failures.append(.echoedInput)
         }
-        if isRefusal(output: trimmedOut) {
+        if isRefusal(output: trimmedOut), !isRefusal(output: trimmedIn) {
             failures.append(.refusalDetected)
         }
-        if trimmedOut.hasPrefix("```") && trimmedOut.hasSuffix("```") && trimmedOut.count > 6 {
+        if trimmedOut.hasPrefix("```") && trimmedOut.hasSuffix("```") && trimmedOut.count > 6,
+           !trimmedIn.hasPrefix("```") {
             failures.append(.codeFenceWrapped)
         }
         if isUnderTranslated(input: trimmedIn, output: trimmedOut, target: target) {
@@ -39,10 +54,7 @@ enum TranslationValidator {
     }
 
     /// 「翻了一半」检测：原文里的英文 identifier 在输出里大量原样保留，说明 bare identifier 没翻译。
-    /// 触发条件：
-    /// - 目标语言是非拉丁字母（中文 / 日 / 韩 / 阿等）
-    /// - 输入有 ≥3 个长度 ≥4 的 ASCII 英文 token
-    /// - 这些 token 里 ≥70% 在输出里仍然原样存在
+    /// 排除网址等保护内容和带目标语言释义的专名后，至少三个词中有 70% 原样保留。
     static func isUnderTranslated(input: String, output: String, target: TargetLanguage) -> Bool {
         let nonLatinTargets: Set<TargetLanguage> = [.chinese, .japanese, .korean, .russian, .arabic]
         guard nonLatinTargets.contains(target) else { return false }
@@ -52,7 +64,7 @@ enum TranslationValidator {
         guard inputTokens.count >= 3 else { return false }
 
         var preservedCount = 0
-        for tok in inputTokens where output.range(of: tok) != nil {
+        for tok in inputTokens where output.range(of: tok) != nil && !hasLocalizedGloss(tok, in: output, target: target) {
             preservedCount += 1
         }
         let preservedRatio = Double(preservedCount) / Double(inputTokens.count)
@@ -77,7 +89,9 @@ enum TranslationValidator {
     private static func extractIdentifierTokens(from text: String) -> Set<String> {
         var tokens = Set<String>()
         var current = ""
-        for ch in text {
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let lexicalText = protectedSpans.stringByReplacingMatches(in: text, range: range, withTemplate: " ")
+        for ch in lexicalText {
             if ch.isLetter && ch.isASCII || ch == "_" {
                 current.append(ch)
             } else {
@@ -89,6 +103,23 @@ enum TranslationValidator {
         return tokens
     }
 
+    // URLs, addresses and paths must survive translation and do not measure its quality.
+    private static let protectedSpans = try! NSRegularExpression(
+        pattern: #"https?://[^\s<>\"']+|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?:^|\s)(?:~/|/)[^\s]+"#,
+        options: [.caseInsensitive]
+    )
+
+    private static func hasLocalizedGloss(_ token: String, in output: String, target: TargetLanguage) -> Bool {
+        let pattern = NSRegularExpression.escapedPattern(for: token) + #"\s*[（(]([^）)]+)[）)]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+        let range = NSRange(output.startIndex..<output.endIndex, in: output)
+        return regex.matches(in: output, range: range).contains { match in
+            guard let glossRange = Range(match.range(at: 1), in: output) else { return false }
+            let gloss = String(output[glossRange])
+            return target == .chinese ? containsHan(gloss) : isAlreadyInTarget(text: gloss, target: target)
+        }
+    }
+
     /// 早期 echo 探测（用于流式：边 stream 边判断，发现即可中断）。
     /// `accumulated` 是当前累积的输出，`fullInput` 是原文。
     /// 返回 true 表示已经累积了足够长的字符且都是原文前缀 → 大概率是 echo，应中断重试。
@@ -98,6 +129,7 @@ enum TranslationValidator {
         guard n >= 30, n <= 120 else { return false }
         guard fullInput.count >= n else { return false }
         guard !isProtectedLiteral(fullInput) else { return false }
+        guard !isProtectedLiteral(accumulated) else { return false }
 
         // accumulated 必须是 fullInput 的前缀
         guard fullInput.hasPrefix(accumulated) else { return false }
@@ -137,7 +169,8 @@ enum TranslationValidator {
     private static func isProtectedLiteral(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = trimmed.lowercased()
-        if lower.hasPrefix("http://") || lower.hasPrefix("https://") { return true }
+        if (lower.hasPrefix("http://") || lower.hasPrefix("https://")),
+           !trimmed.contains(where: { $0.isWhitespace }) { return true }
         if trimmed.hasPrefix("/") || trimmed.hasPrefix("~/") { return true }
         if !trimmed.contains(" "), trimmed.contains("@"), trimmed.contains(".") { return true }
         if matches(#"^v?\d+(\.\d+)+$"#, text: trimmed) { return true }

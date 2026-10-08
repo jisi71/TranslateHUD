@@ -19,9 +19,11 @@ final class FloatingTranslationPopover {
     private var hostingController: NSHostingController<PopoverContent>?
     private var stateCancellables = Set<AnyCancellable>()
     private var isAdjustScheduled = false
+    private var isPinned = false
 
     init(
         original: String,
+        context: SelectionFetcher.TextContext? = nil,
         progress: TranslationProgress,
         termProgress: TermExplanationProgress,
         rectTopLeft: CGRect?,
@@ -54,13 +56,18 @@ final class FloatingTranslationPopover {
 
         var closeRef: (@MainActor () -> Void)?
         var retryRef: (@MainActor () -> Void)?
+        var pinRef: (@MainActor (Bool) -> Void)?
+        var layoutRef: (@MainActor () -> Void)?
         let view = PopoverContent(
             original: original,
+            context: context,
             progress: progress,
             termProgress: termProgress,
             speech: speech,
             onCancel: { closeRef?() },
-            onRetry:  { retryRef?() }
+            onRetry:  { retryRef?() },
+            onPin: { pinRef?($0) },
+            onLayoutChange: { layoutRef?() }
         )
         let host = NSHostingController(rootView: view)
         host.view.frame = NSRect(origin: .zero, size: initialSize)
@@ -71,6 +78,11 @@ final class FloatingTranslationPopover {
 
         closeRef = { [weak self] in self?.close() }
         retryRef = { [weak self] in self?.progress.retry() }
+        pinRef = { [weak self] pinned in
+            self?.isPinned = pinned
+            self?.window.level = pinned ? .floating : .normal
+        }
+        layoutRef = { [weak self] in self?.scheduleContentSizeAdjustment() }
     }
 
     func show() {
@@ -111,7 +123,7 @@ final class FloatingTranslationPopover {
     private func scheduleContentSizeAdjustment() {
         guard !isAdjustScheduled else { return }
         isAdjustScheduled = true
-        DispatchQueue.main.async { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(50)) { [weak self] in
             guard let self else { return }
             self.isAdjustScheduled = false
             self.adjustToContentSize()
@@ -152,11 +164,15 @@ final class FloatingTranslationPopover {
 
     private func installDismissMonitors() {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            Task { @MainActor in self?.close() }
+            Task { @MainActor in
+                guard let self, !self.isPinned else { return }
+                self.close()
+            }
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            if event.window !== self?.window {
-                Task { @MainActor in self?.close() }
+            if let self, !self.isPinned, let clickedWindow = event.window,
+               clickedWindow !== self.window, clickedWindow.level.rawValue < NSWindow.Level.popUpMenu.rawValue {
+                Task { @MainActor in self.close() }
             }
             return event
         }
@@ -189,124 +205,33 @@ private final class PopoverWindow: NSWindow {
 }
 
 struct PopoverContent: View {
-    static let fixedWidth: CGFloat = 420
-    static let maxHeight: CGFloat = 560     // 超过这个就 ScrollView 截断，避免占满整屏
-    static let maxScrollableHeight: CGFloat = 536
+    static let fixedWidth: CGFloat = 500
+    static let maxHeight: CGFloat = 640
+    static let maxScrollableHeight: CGFloat = 544
 
     let original: String
+    var context: SelectionFetcher.TextContext? = nil
     @ObservedObject var progress: TranslationProgress
     @ObservedObject var termProgress: TermExplanationProgress
     @ObservedObject var speech: SpeechController
     var onCancel: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
+    var onPin: @MainActor (Bool) -> Void = { _ in }
+    var onLayoutChange: @MainActor () -> Void = {}
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 8) {
-                    Text(original)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .lineLimit(nil)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    SpeechButton(text: original, id: "selection.original", speech: speech)
-                }
-
-                Divider().opacity(0.3)
-
-                statusArea
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Divider().opacity(0.3)
-                TermExplanationView(progress: termProgress)
-            }
-            .padding(12)
-        }
-        .frame(maxHeight: Self.maxScrollableHeight)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(width: Self.fixedWidth, alignment: .leading)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.18), lineWidth: 1)
+        TranslationPanel(
+            original: original,
+            context: context,
+            progress: progress,
+            termProgress: termProgress,
+            speech: speech,
+            maxBodyHeight: Self.maxScrollableHeight,
+            onClose: onCancel,
+            onRetry: onRetry,
+            onPin: onPin,
+            onLayoutChange: onLayoutChange
         )
-    }
-
-    @ViewBuilder
-    private var statusArea: some View {
-        switch progress.state {
-        case .loading:
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("翻译中… \(progress.elapsedSeconds)s")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("取消", action: onCancel)
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
-            }
-        case .streaming(let partial):
-            VStack(alignment: .leading, spacing: 6) {
-                Text(partial)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("\(progress.elapsedSeconds)s")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("取消", action: onCancel)
-                        .buttonStyle(.borderless)
-                        .controlSize(.small)
-                }
-            }
-        case .success(let pairs):
-            let translated = pairs.first?.translated ?? ""
-            HStack(alignment: .top, spacing: 8) {
-                Text(translated)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                SpeechButton(text: translated, id: "selection.translated", speech: speech)
-            }
-        case .timedOut:
-            HStack(spacing: 8) {
-                Image(systemName: "clock.badge.exclamationmark.fill")
-                    .foregroundStyle(.orange)
-                Text("翻译超时（>\(Int(progress.timeoutSeconds))s）")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                Spacer()
-                Button("重试", action: onRetry)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            }
-        case .failed(let msg):
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Image(systemName: "xmark.octagon.fill")
-                        .foregroundStyle(.red)
-                    Text(msg)
-                        .font(.callout)
-                        .foregroundStyle(.red)
-                        .lineLimit(3)
-                }
-                HStack {
-                    Spacer()
-                    Button("重试", action: onRetry)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-            }
-        }
+        .frame(width: Self.fixedWidth, alignment: .leading)
     }
 }

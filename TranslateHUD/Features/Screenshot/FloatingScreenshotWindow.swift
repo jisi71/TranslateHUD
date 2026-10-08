@@ -21,7 +21,7 @@ final class FloatingScreenshotWindow {
         self.progress = progress
         self.termProgress = termProgress
 
-        let initialSize = NSSize(width: 540, height: 560)
+        let initialSize = NSSize(width: 500, height: 480)
         window = DraggableWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.borderless, .resizable],
@@ -31,14 +31,15 @@ final class FloatingScreenshotWindow {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = true
-        window.level = .floating
+        window.level = .normal
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 380, height: 360)
+        window.minSize = NSSize(width: 440, height: 260)
 
         var closeRef: (@MainActor () -> Void)?
         var retryRef: (@MainActor () -> Void)?
+        var pinRef: (@MainActor (Bool) -> Void)?
         let view = ResultView(
             image: image,
             originals: originals,
@@ -46,7 +47,8 @@ final class FloatingScreenshotWindow {
             termProgress: termProgress,
             speech: speech,
             onClose:  { closeRef?() },
-            onRetry:  { retryRef?() }
+            onRetry:  { retryRef?() },
+            onPin: { pinRef?($0) }
         )
         let host = NSHostingController(rootView: view)
         host.view.frame = NSRect(origin: .zero, size: initialSize)
@@ -64,6 +66,9 @@ final class FloatingScreenshotWindow {
         window.escapeHandler = { [weak self] in self?.close() }
         closeRef = { [weak self] in self?.close() }
         retryRef = { [weak self] in self?.progress.retry() }
+        pinRef = { [weak self] pinned in
+            self?.window.level = pinned ? .floating : .normal
+        }
     }
 
     func show() {
@@ -118,205 +123,20 @@ private struct ResultView: View {
     @ObservedObject var speech: SpeechController
     var onClose: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
+    var onPin: @MainActor (Bool) -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().opacity(0.2)
-            ScrollView {
-                VStack(spacing: 14) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .frame(maxHeight: 240)
-                        .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
-                        .padding(.horizontal, 14)
-                        .padding(.top, 12)
-
-                    statusBlock
-                        .padding(.horizontal, 14)
-                    if !originals.isEmpty {
-                        Divider().opacity(0.2)
-                            .padding(.horizontal, 14)
-                        TermExplanationView(progress: termProgress)
-                            .padding(.horizontal, 14)
-                    }
-                    Spacer(minLength: 14)
-                }
-            }
-        }
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+        TranslationPanel(
+            original: originals.joined(separator: "\n"),
+            image: image,
+            progress: progress,
+            termProgress: termProgress,
+            speech: speech,
+            fillsHeight: true,
+            maxBodyHeight: .infinity,
+            onClose: onClose,
+            onRetry: onRetry,
+            onPin: onPin
         )
-    }
-
-    private var header: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "character.book.closed")
-                .foregroundStyle(.secondary)
-            Text("截图翻译")
-                .font(.headline)
-            Spacer()
-            Button(action: onClose) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("关闭（ESC）")
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
-    @ViewBuilder
-    private var statusBlock: some View {
-        switch progress.state {
-        case .loading, .streaming:   // 截图走批量，不会出现 .streaming；归到 loading 处理
-            VStack(spacing: 12) {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("翻译中… \(progress.elapsedSeconds)s")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("取消", action: onClose)
-                        .buttonStyle(.borderless)
-                        .controlSize(.small)
-                }
-                .padding(12)
-                .background(Color.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
-
-                if !originals.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(originals.indices, id: \.self) { i in
-                            Text(originals[i])
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(8)
-                                .background(Color.black.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
-                        }
-                    }
-                }
-            }
-        case .success(let pairs):
-            if pairs.isEmpty {
-                HStack {
-                    Image(systemName: "text.viewfinder")
-                    Text("未识别到任何文字。")
-                }
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(pairs) { p in PairRow(pair: p, speech: speech) }
-                }
-            }
-        case .timedOut:
-            VStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "clock.badge.exclamationmark.fill")
-                        .foregroundStyle(.orange)
-                        .font(.title3)
-                    Text("翻译超时（>\(Int(progress.timeoutSeconds))s 未返回）")
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                    Spacer()
-                    Button("重试", action: onRetry)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-                .padding(12)
-                .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-
-                if !originals.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(originals.indices, id: \.self) { i in
-                            Text(originals[i])
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(8)
-                                .background(Color.black.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
-                        }
-                    }
-                }
-            }
-        case .failed(let msg):
-            VStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "xmark.octagon.fill")
-                        .foregroundStyle(.red)
-                        .font(.title3)
-                    Text(msg)
-                        .font(.callout)
-                        .foregroundStyle(.red)
-                        .lineLimit(3)
-                    Spacer()
-                    Button("重试", action: onRetry)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-                .padding(12)
-                .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-
-                if !originals.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(originals.indices, id: \.self) { i in
-                            Text(originals[i])
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(8)
-                                .background(Color.black.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct PairRow: View {
-    let pair: TranslationProgress.Pair
-    @ObservedObject var speech: SpeechController
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .top, spacing: 8) {
-                Text(pair.original)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                SpeechButton(
-                    text: pair.original,
-                    id: "screenshot.\(pair.id.uuidString).original",
-                    speech: speech
-                )
-            }
-            HStack(alignment: .top, spacing: 8) {
-                Text(pair.translated)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                SpeechButton(
-                    text: pair.translated,
-                    id: "screenshot.\(pair.id.uuidString).translated",
-                    speech: speech
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Color.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
     }
 }

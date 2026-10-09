@@ -23,6 +23,7 @@ final class TranslationProgress: ObservableObject {
     @Published private(set) var elapsedSeconds: Int = 0
     @Published private(set) var targetLanguage: TargetLanguage?
     @Published private(set) var retryReason: String?
+    @Published private(set) var timeoutMessage = ""
 
     let timeoutSeconds: TimeInterval
 
@@ -56,23 +57,25 @@ final class TranslationProgress: ObservableObject {
                 }
                 guard !Task.isCancelled, self.requestID == currentID else { return }
                 guard translations.count == originals.count else {
-                    throw TranslationError.parse("译文条数与原文不一致")
+                    throw TranslationError.parse("译文数量与原文不一致，结果不完整。请重试或缩短原文。")
                 }
                 let pairs = zip(originals, translations).map {
                     Pair(original: $0, translated: $1)
                 }
                 self.state = .success(pairs: pairs)
                 AppLog.debug("翻译完成（\(self.elapsedSeconds)s 内）：\(originals.count) 条")
-            } catch is TranslationTimeoutError {
+            } catch let error as TranslationTimeoutError {
                 guard self.requestID == currentID, !Task.isCancelled else { return }
-                AppLog.info("翻译超时（>\(Int(self.timeoutSeconds))s）")
+                self.timeoutMessage = ServiceErrorMessage.timeout(error, operation: "翻译")
+                AppLog.info(self.timeoutMessage)
                 self.state = .timedOut
             } catch is CancellationError {
                 AppLog.debug("翻译被取消")
             } catch {
                 guard self.requestID == currentID, !Task.isCancelled else { return }
-                AppLog.error("翻译失败：\(error.localizedDescription)")
-                self.state = .failed(error.localizedDescription)
+                let message = ServiceErrorMessage.describe(error)
+                AppLog.error("翻译失败：\(message)")
+                self.state = .failed(message)
             }
             guard self.requestID == currentID else { return }
             self.stopElapsedTimer()
@@ -123,7 +126,7 @@ final class TranslationProgress: ObservableObject {
                         return try await translateLineByLine(translator: translator, original: original, target: target)
                     }
                     guard !lastPartial.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                        throw TranslationError.parse("翻译返回了空内容")
+                        throw TranslationError.parse("服务返回了空译文，请重试或更换模型。")
                     }
                     return lastPartial
                 }
@@ -135,10 +138,11 @@ final class TranslationProgress: ObservableObject {
                     self.stopElapsedTimer()
                     self.task = nil
                 }
-            } catch is TranslationTimeoutError {
+            } catch let error as TranslationTimeoutError {
                 await MainActor.run { [weak self] in
                     guard let self, self.requestID == currentID else { return }
-                    AppLog.info("流式翻译超时（>\(Int(self.timeoutSeconds))s）")
+                    self.timeoutMessage = ServiceErrorMessage.timeout(error, operation: "翻译")
+                    AppLog.info(self.timeoutMessage)
                     self.state = .timedOut
                     self.stopElapsedTimer()
                     self.task = nil
@@ -148,8 +152,9 @@ final class TranslationProgress: ObservableObject {
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self, self.requestID == currentID else { return }
-                    AppLog.error("流式翻译失败：\(error.localizedDescription)")
-                    self.state = .failed(error.localizedDescription)
+                    let message = ServiceErrorMessage.describe(error)
+                    AppLog.error("流式翻译失败：\(message)")
+                    self.state = .failed(message)
                     self.stopElapsedTimer()
                     self.task = nil
                 }
@@ -224,7 +229,7 @@ private func translateLineByLine(
     let lines = original.components(separatedBy: "\n")
     let translated = try await translator.translate(lines, to: target)
     guard translated.count == lines.count else {
-        throw TranslationError.parse("逐行译文条数与原文不一致")
+        throw TranslationError.parse("逐行译文数量与原文不一致，结果不完整。请重试或缩短原文。")
     }
     return translated.joined(separator: "\n")
 }
@@ -235,9 +240,14 @@ actor TranslationActivity {
 
     func touch() { last = ProcessInfo.processInfo.systemUptime }
 
-    func remaining(idle: TimeInterval, total: TimeInterval) -> TimeInterval {
+    func deadline(idle: TimeInterval, total: TimeInterval) -> (remaining: TimeInterval, error: TranslationTimeoutError) {
         let now = ProcessInfo.processInfo.systemUptime
-        return min(idle - (now - last), total - (now - started))
+        let idleRemaining = idle - (now - last)
+        let totalRemaining = total - (now - started)
+        if totalRemaining <= idleRemaining {
+            return (totalRemaining, TranslationTimeoutError(reason: .total, seconds: total))
+        }
+        return (idleRemaining, TranslationTimeoutError(reason: .idle, seconds: idle))
     }
 }
 
@@ -252,20 +262,29 @@ func withStreamingTimeout<T: Sendable>(
         group.addTask { try await operation(activity) }
         group.addTask {
             while true {
-                let remaining = await activity.remaining(idle: idleSeconds, total: totalSeconds)
-                if remaining <= 0 { throw TranslationTimeoutError() }
-                try await Task.sleep(for: .seconds(remaining))
+                let deadline = await activity.deadline(idle: idleSeconds, total: totalSeconds)
+                if deadline.remaining <= 0 { throw deadline.error }
+                try await Task.sleep(for: .seconds(deadline.remaining))
             }
         }
         defer { group.cancelAll() }
-        guard let first = try await group.next() else { throw TranslationTimeoutError() }
+        guard let first = try await group.next() else { throw TranslationTimeoutError(reason: .total, seconds: totalSeconds) }
         return first
     }
 }
 
 // MARK: - withTimeout 工具
 
-struct TranslationTimeoutError: Error, Sendable {}
+struct TranslationTimeoutError: Error, Sendable {
+    enum Reason: Equatable, Sendable { case request, idle, total }
+    let reason: Reason
+    let seconds: TimeInterval
+
+    init(reason: Reason = .request, seconds: TimeInterval = 45) {
+        self.reason = reason
+        self.seconds = seconds
+    }
+}
 
 /// 限定时间内执行 op；超时抛 TranslationTimeoutError。
 func withTimeout<T: Sendable>(
@@ -278,11 +297,11 @@ func withTimeout<T: Sendable>(
         }
         group.addTask {
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-            throw TranslationTimeoutError()
+            throw TranslationTimeoutError(seconds: seconds)
         }
         defer { group.cancelAll() }
         guard let first = try await group.next() else {
-            throw TranslationTimeoutError()
+            throw TranslationTimeoutError(seconds: seconds)
         }
         return first
     }

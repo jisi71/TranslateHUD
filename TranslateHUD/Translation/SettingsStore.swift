@@ -27,10 +27,19 @@ final class SettingsStore: ObservableObject {
             UserDefaults.standard.set(model, forKey: K.model)
         }
     }
-    @Published var apiKey: String {
-        didSet {
+    private var cachedAPIKey: String?
+    var apiKey: String {
+        get {
+            if let cachedAPIKey { return cachedAPIKey }
+            let value = KeychainHelper.get(K.apiKey) ?? ""
+            cachedAPIKey = value
+            return value
+        }
+        set {
+            objectWillChange.send()
+            cachedAPIKey = newValue
             guard !suppressPersist else { return }
-            try? KeychainHelper.set(apiKey, forKey: K.apiKey)
+            try? KeychainHelper.set(newValue, forKey: K.apiKey)
         }
     }
     @Published var targetLanguage: TargetLanguage {
@@ -64,7 +73,6 @@ final class SettingsStore: ObservableObject {
         suppressPersist = true
         baseURL = UserDefaults.standard.string(forKey: K.baseURL) ?? "https://api.openai.com/v1"
         model   = UserDefaults.standard.string(forKey: K.model)   ?? "gpt-4o-mini"
-        apiKey  = KeychainHelper.get(K.apiKey) ?? ""
         chineseVoiceIdentifier = UserDefaults.standard.string(forKey: K.chineseVoiceIdentifier) ?? ""
         englishVoiceIdentifier = UserDefaults.standard.string(forKey: K.englishVoiceIdentifier) ?? ""
         let savedSpeechRate = UserDefaults.standard.object(forKey: K.speechRate) as? Double
@@ -80,6 +88,10 @@ final class SettingsStore: ObservableObject {
 
     var providerConfig: ProviderConfig {
         ProviderConfig(baseURL: baseURL, model: model, apiKey: apiKey)
+    }
+
+    var validationMessage: String? {
+        ProviderConfig(baseURL: baseURL, model: model, apiKey: "").validationMessage
     }
 
     func applyPreset(_ preset: ProviderPreset) {

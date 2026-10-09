@@ -54,6 +54,45 @@ final class TranslationReliabilityTests: XCTestCase {
         XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
     }
 
+    func testHTTP200QuotaEnvelopeIsNotRetriedAsAFormatFailure() async {
+        let body = "{\"error\":{\"type\":\"insufficient_quota\",\"message\":\"private-source secret-key\"}}"
+        let translator = mockTranslator(responses: [.init(body: body)])
+        do { _ = try await translator.translate(["Hello"], to: .chinese); XCTFail("Expected quota error") }
+        catch {
+            XCTAssertTrue(error.localizedDescription.contains("额度不足"))
+            XCTAssertFalse(error.localizedDescription.contains("private-source"))
+            XCTAssertFalse(error.localizedDescription.contains("secret-key"))
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+    }
+
+    func testNullErrorFieldDoesNotRejectValidBatchOrStream() async throws {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "error": NSNull(),
+            "choices": [["message": ["content": "[{\"i\":0,\"t\":\"你好\"}]"]]]
+        ])
+        let batch = mockTranslator(responses: [.init(body: String(data: data, encoding: .utf8)!)])
+        let result = try await batch.translate(["Hello"], to: .chinese)
+        XCTAssertEqual(result, ["你好"])
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+
+        let stream = mockTranslator(responses: [.init(body: "data: {\"error\":null,\"choices\":[{\"delta\":{\"content\":\"你好\"},\"finish_reason\":\"stop\"}]}\n\n")])
+        let translated = try await collect(stream)
+        XCTAssertEqual(translated, "你好")
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+    }
+
+    func testStreamQuotaErrorUsesTheSameMessageAndDoesNotRetry() async {
+        let translator = mockTranslator(responses: [.init(body: "data: {\"error\":{\"code\":\"insufficient_quota\",\"message\":\"private-source secret-key\"}}\n\n")])
+        do { _ = try await collect(translator); XCTFail("Expected quota error") }
+        catch {
+            XCTAssertTrue(error.localizedDescription.contains("额度不足"))
+            XCTAssertFalse(error.localizedDescription.contains("private-source"))
+            XCTAssertFalse(error.localizedDescription.contains("secret-key"))
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+    }
+
     func testStreamRetriesInterruptedTLSWithTheSamePrompt() async throws {
         let translator = mockTranslator(responses: [
             .init(body: "", error: interruptedTLS),

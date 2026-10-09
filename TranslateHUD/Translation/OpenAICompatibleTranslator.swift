@@ -57,12 +57,12 @@ struct OpenAICompatibleTranslator: Translator {
             }
             throw TranslationError.quality("已尝试两次，仍有未翻译内容；请缩短原文或更换模型后重试")
         }
-        throw TranslationError.quality("翻译尝试次数异常")
+        throw TranslationError.quality("翻译未能在请求次数上限内完成，请重新发起；若持续失败，请更换模型。")
     }
 
     private func performBatch(texts: [String], to target: TargetLanguage, strict: Bool, using session: URLSession) async throws -> [String] {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
-            throw TranslationError.missingConfig("baseURL 或 model 为空")
+            throw TranslationError.missingConfig(config.validationMessage ?? "请打开设置检查 Base URL 和 Model。")
         }
 
         let example = batchExampleBlock(for: target)
@@ -127,27 +127,30 @@ struct OpenAICompatibleTranslator: Translator {
             throw TranslationError.http(code: http?.statusCode ?? -1, body: bodyStr)
         }
 
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw TranslationError.parse("服务响应格式无法读取，请确认接口兼容性或更换服务后重试。")
+        }
+        if let error = json["error"], !(error is NSNull) { throw TranslationError.service(ServiceErrorMessage.stream(error)) }
         guard
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let choices = json["choices"] as? [[String: Any]],
             let first = choices.first,
             let message = first["message"] as? [String: Any],
             let content = message["content"] as? String
         else {
-            throw TranslationError.parse("响应中缺少 choices[0].message.content")
+            throw TranslationError.parse("服务响应中没有译文，请重试或更换模型。")
         }
         if let reason = first["finish_reason"] as? String, reason != "stop" {
-            throw TranslationError.parse(reason == "length" ? "模型输出被截断，请缩短原文或调整模型输出上限" : "模型未正常完成翻译")
+            throw TranslationError.parse(ServiceErrorMessage.incompleteOutput(reason: reason))
         }
 
         let cleaned = stripCodeFence(content)
         guard let cData = cleaned.data(using: .utf8) else {
-            throw TranslationError.parse("content 非 utf8")
+            throw TranslationError.parse("服务返回的译文无法读取，请重试或更换模型。")
         }
 
         let parsed: Any
         do { parsed = try JSONSerialization.jsonObject(with: cData) }
-        catch { throw TranslationError.parse("模型未返回有效的译文 JSON") }
+        catch { throw TranslationError.parse("模型返回的译文格式不符合要求，请重试或更换模型。") }
         let arr: [[String: Any]]
         if let direct = parsed as? [[String: Any]] {
             arr = direct
@@ -155,9 +158,9 @@ struct OpenAICompatibleTranslator: Translator {
             if let inner = dict["results"] as? [[String: Any]] { arr = inner }
             else if let inner = dict["data"] as? [[String: Any]] { arr = inner }
             else if let firstArr = dict.values.first(where: { $0 is [[String: Any]] }) as? [[String: Any]] { arr = firstArr }
-            else { throw TranslationError.parse("响应中缺少译文数组") }
+            else { throw TranslationError.parse("模型没有按要求返回译文列表，请重试或更换模型。") }
         } else {
-            throw TranslationError.parse("响应不是译文数组或对象")
+            throw TranslationError.parse("模型返回的译文列表格式不正确，请重试或更换模型。")
         }
 
         var out = Array(repeating: "", count: texts.count)
@@ -167,12 +170,12 @@ struct OpenAICompatibleTranslator: Translator {
                   seen.insert(i).inserted, let t = item["t"] as? String,
                   texts[i].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                     !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw TranslationError.parse("译文索引重复、越界或内容缺失")
+                throw TranslationError.parse("译文与原文未能正确对应，部分内容缺失或重复。请重试或缩短原文。")
             }
             out[i] = t
         }
         guard seen.count == texts.count else {
-            throw TranslationError.parse("译文条数与原文不一致")
+            throw TranslationError.parse("译文数量与原文不一致，结果不完整。请重试或缩短原文。")
         }
         return out
     }
@@ -233,7 +236,7 @@ struct OpenAICompatibleTranslator: Translator {
                             try await Task.sleep(for: .milliseconds(300))
                         }
                     }
-                    throw TranslationError.quality("翻译尝试次数异常")
+                    throw TranslationError.quality("翻译未能在请求次数上限内完成，请重新发起；若持续失败，请更换模型。")
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -251,7 +254,7 @@ struct OpenAICompatibleTranslator: Translator {
         continuation: AsyncThrowingStream<TranslationStreamEvent, Error>.Continuation
     ) async throws -> String {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
-            throw TranslationError.missingConfig("baseURL 或 model 为空")
+            throw TranslationError.missingConfig(config.validationMessage ?? "请打开设置检查 Base URL 和 Model。")
         }
         AppLog.info("流式请求(strict=\(strict)) target=\(target.rawValue) inLen=\(text.count)")
 
@@ -341,16 +344,16 @@ struct OpenAICompatibleTranslator: Translator {
                     let data = payload.data(using: .utf8),
                     let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
                 else {
-                    throw TranslationError.parse("流式事件不是有效 JSON")
+                    throw TranslationError.parse("服务发送的流式数据无法读取，请重试或更换服务。")
                 }
-                if json["error"] != nil { throw TranslationError.parse("服务返回流式错误，请检查模型和服务配置") }
+                if let error = json["error"], !(error is NSNull) { throw TranslationError.service(ServiceErrorMessage.stream(error)) }
                 guard let choices = json["choices"] as? [[String: Any]] else {
-                    throw TranslationError.parse("流式响应缺少 choices")
+                    throw TranslationError.parse("服务响应不符合流式翻译接口格式，请确认接口兼容性或更换服务。")
                 }
                 guard let first = choices.first else { return false }
                 if let reason = first["finish_reason"] as? String {
                     guard reason == "stop" else {
-                        throw TranslationError.parse(reason == "length" ? "模型输出被截断，请缩短原文或调整模型输出上限" : "模型未正常完成翻译")
+                        throw TranslationError.parse(ServiceErrorMessage.incompleteOutput(reason: reason))
                     }
                     completed = true
                 }
@@ -414,10 +417,10 @@ struct OpenAICompatibleTranslator: Translator {
 
             // A successful HTTP status alone does not guarantee a usable translation stream.
             if contentChunkCount == 0 {
-                AppLog.error("流式响应未产出任何 content chunk")
-                throw TranslationError.parse("流式响应未产出任何 content chunk")
+                AppLog.error("服务未输出任何译文，请重试或更换模型。")
+                throw TranslationError.parse("服务未输出任何译文，请重试或更换模型。")
             }
-            guard completed else { throw TranslationError.parse("流式连接提前结束，译文可能不完整，请重试") }
+            guard completed else { throw TranslationError.parse("连接在译文完成前结束，结果不完整。请检查网络或代理后重试。") }
 
             let failures = TranslationValidator.validate(input: text, output: accumulated, target: target)
             if !failures.isEmpty {

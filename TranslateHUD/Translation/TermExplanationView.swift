@@ -69,7 +69,7 @@ struct TermExplanationView: View {
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 Button("重试") { progress.retry() }
                     .buttonStyle(.bordered)

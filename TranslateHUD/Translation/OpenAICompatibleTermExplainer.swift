@@ -29,7 +29,7 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
                 AppLog.info("名词解释首轮包含非中文内容，执行一次严格中文重试")
             }
         }
-        throw TermExplanationError.invalidResponse("模型连续两次未使用中文解释")
+        throw TermExplanationError.invalidResponse("模型连续两次未按要求返回中文解释，请更换模型后重试。")
     }
 
     private func performRequest(texts: [String], endpoint: URL, strict: Bool) async throws -> [TermExplanation] {
@@ -78,13 +78,16 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
             )
         }
 
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw TermExplanationError.invalidResponse("服务响应格式无法读取，请确认接口兼容性或更换服务后重试。")
+        }
+        if let error = root["error"], !(error is NSNull) { throw TermExplanationError.service(ServiceErrorMessage.stream(error)) }
         guard
-            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let choices = root["choices"] as? [[String: Any]],
             let message = choices.first?["message"] as? [String: Any],
             let content = message["content"] as? String
         else {
-            throw TermExplanationError.invalidResponse("响应中缺少 choices[0].message.content")
+            throw TermExplanationError.invalidResponse("服务响应中没有术语解释，请重试或更换模型。")
         }
         return try Self.parseContent(content)
     }
@@ -102,14 +105,14 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
     static func parseContent(_ content: String) throws -> [TermExplanation] {
         let cleaned = stripCodeFence(content)
         guard let data = cleaned.data(using: .utf8) else {
-            throw TermExplanationError.invalidResponse("内容不是 UTF-8")
+            throw TermExplanationError.invalidResponse("服务返回的术语解释无法读取，请重试或更换模型。")
         }
 
         let json: Any
         do {
             json = try JSONSerialization.jsonObject(with: data)
         } catch {
-            throw TermExplanationError.invalidResponse(error.localizedDescription)
+            throw TermExplanationError.invalidResponse("模型返回的术语数据格式不正确，请重试或更换模型。")
         }
 
         let rawItems: [[String: Any]]
@@ -119,7 +122,7 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
         } else if let array = json as? [[String: Any]] {
             rawItems = array
         } else {
-            throw TermExplanationError.invalidResponse("未找到 terms 数组")
+            throw TermExplanationError.invalidResponse("模型没有按要求返回术语列表，请重试或更换模型。")
         }
 
         var seen = Set<String>()

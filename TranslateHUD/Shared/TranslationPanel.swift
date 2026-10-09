@@ -127,7 +127,7 @@ struct TranslationPanel: View {
 
     private var sourceText: some View {
         HStack(alignment: .top, spacing: 8) {
-            Text(original.isEmpty ? "未识别到任何文字。" : original)
+            Text(original.isEmpty ? "未识别到文字，请重新框选包含清晰文字的区域。" : original)
                 .font(.system(size: 14))
                 .lineSpacing(4)
                 .foregroundStyle(muted)
@@ -155,11 +155,11 @@ struct TranslationPanel: View {
                 Button("取消", action: onClose).buttonStyle(.plain)
             case .success(let pairs):
                 Image(systemName: "checkmark.circle")
-                Text(pairs.isEmpty ? "未识别到文字" : "翻译完成")
+                Text(pairs.isEmpty ? "未识别到文字，请重新框选文字区域" : "翻译完成")
                 Spacer()
             case .timedOut:
                 Image(systemName: "clock")
-                Text("翻译等待超时，请重试")
+                Text(progress.timeoutMessage).fixedSize(horizontal: false, vertical: true)
                 Spacer()
             case .failed(let message):
                 Image(systemName: "exclamationmark.circle")

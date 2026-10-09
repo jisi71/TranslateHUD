@@ -269,6 +269,7 @@ private final class TermExplanationURLProtocolStub: URLProtocol, @unchecked Send
         Self.lock.unlock()
 
         let responseObject: [String: Any] = [
+            "error": NSNull(),
             "choices": [["message": ["content": content]]]
         ]
         let data = try! JSONSerialization.data(withJSONObject: responseObject)

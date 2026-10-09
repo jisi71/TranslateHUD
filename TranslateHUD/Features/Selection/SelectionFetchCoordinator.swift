@@ -114,10 +114,10 @@ struct SelectionFetchCoordinator {
             // distinguish “no selection” from a slow/unsupported Cmd+C path.
             if confirmedEmptyProbeCount == 3, !sawUnavailableProbe { return .confirmedEmpty }
             return .timedOut
-        case .dataUnavailable: return .failed("剪贴板已变化，但未能读取文本")
-        case .eventPostFailed: return .failed("无法发送复制快捷键")
+        case .dataUnavailable: return .failed("剪贴板未提供可读取的文字，请重新选中可复制文本，或使用截图翻译。")
+        case .eventPostFailed: return .failed("未能触发复制操作，请检查辅助功能权限，重新选中文字后再试。")
         case .found, .applicationChanged:
-            return .failed("选区抓取状态异常")
+            return .failed("读取选区未完成，请重新选中文字后再试；若持续失败，可使用截图翻译。")
         }
     }
 

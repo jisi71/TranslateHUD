@@ -4,12 +4,12 @@ import Vision
 enum OCRService {
     enum OCRError: Error, LocalizedError {
         case noCGImage
-        case visionFailed(String)
+        case visionFailed
 
         var errorDescription: String? {
             switch self {
-            case .noCGImage:           return "无法从 NSImage 获取 CGImage"
-            case .visionFailed(let m): return "Vision 识别失败: \(m)"
+            case .noCGImage: return "截图图像无法读取，请重新截图后再试。"
+            case .visionFailed: return "图片文字识别失败，请重新框选清晰文字区域；若持续失败，请重启软件后再试。"
             }
         }
     }
@@ -43,7 +43,9 @@ enum OCRService {
                 do {
                     try handler.perform([request])
                 } catch {
-                    cont.resume(throwing: OCRError.visionFailed(error.localizedDescription))
+                    let failure = error as NSError
+                    AppLog.error("文字识别错误：domain=\(failure.domain) code=\(failure.code)")
+                    cont.resume(throwing: OCRError.visionFailed)
                     return
                 }
                 let observations = (request.results ?? [])

@@ -5,17 +5,17 @@ import CoreGraphics
 enum ScreenCaptureService {
     enum CaptureError: Error, LocalizedError {
         case noScreenRecordingPermission
-        case spawnFailed(String)
+        case spawnFailed
         case userCancelled
         case decodeFailed
 
         var errorDescription: String? {
             switch self {
             case .noScreenRecordingPermission:
-                return "缺少屏幕录制权限。已弹出系统授权请求；请到「系统设置 → 隐私与安全性 → 屏幕录制」开启 TranslateHUD，然后重试。"
-            case .spawnFailed(let m): return "无法启动 screencapture: \(m)"
+                return "缺少屏幕录制权限，请到「系统设置 → 隐私与安全性 → 屏幕录制」允许 TranslateHUD。授权后如仍无法截图，请退出并重新打开软件。"
+            case .spawnFailed: return "系统截图工具未能完成操作，请重新框选；若持续失败，请检查屏幕录制权限并重启软件。"
             case .userCancelled:      return "用户取消了截图"
-            case .decodeFailed:       return "无法解码截图为图像"
+            case .decodeFailed:       return "截图文件无法读取，请重新截图后再试。"
             }
         }
     }
@@ -42,7 +42,9 @@ enum ScreenCaptureService {
                 do {
                     try p.run()
                 } catch {
-                    cont.resume(throwing: CaptureError.spawnFailed(error.localizedDescription))
+                    let failure = error as NSError
+                    AppLog.error("截图工具启动错误：domain=\(failure.domain) code=\(failure.code)")
+                    cont.resume(throwing: CaptureError.spawnFailed)
                     return
                 }
                 p.waitUntilExit()
@@ -54,7 +56,8 @@ enum ScreenCaptureService {
             if !FileManager.default.fileExists(atPath: outURL.path) {
                 throw CaptureError.userCancelled
             }
-            throw CaptureError.spawnFailed("退出码 \(status)")
+            AppLog.error("截图工具未完成：exitCode=\(status)")
+            throw CaptureError.spawnFailed
         }
 
         guard FileManager.default.fileExists(atPath: outURL.path) else {

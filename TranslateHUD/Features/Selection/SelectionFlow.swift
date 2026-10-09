@@ -10,8 +10,8 @@ enum SelectionFlow {
         let config = SettingsStore.shared.providerConfig
         guard config.isUsable else {
             ToastCenter.shared.show(
-                title: "缺少 LLM 配置",
-                message: "请打开「设置」填写 baseURL 与 model（API Key 对本地 Ollama / LM Studio 等可留空）。",
+                title: "翻译服务配置需要检查",
+                message: config.validationMessage ?? "请打开设置检查 Base URL 和 Model。",
                 duration: 4
             )
             return

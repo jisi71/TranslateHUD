@@ -119,9 +119,15 @@ struct SettingsView: View {
                     }
                     .disabled({
                         if case .running = testStatus { return true }
-                        return !store.providerConfig.isUsable
+                        return store.validationMessage != nil
                     }())
                     statusView
+                }
+                if let message = store.validationMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -159,7 +165,7 @@ struct SettingsView: View {
             Label(msg, systemImage: "xmark.octagon.fill")
                 .foregroundStyle(.red)
                 .font(.callout)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .help(msg)
         }
     }
@@ -172,7 +178,7 @@ struct SettingsView: View {
             let res = try await translator.translate(["Hello, world"], to: store.targetLanguage)
             testStatus = .ok("译：\(res.first ?? "?")")
         } catch {
-            testStatus = .fail(error.localizedDescription)
+            testStatus = .fail(ServiceErrorMessage.describe(error))
         }
     }
 }

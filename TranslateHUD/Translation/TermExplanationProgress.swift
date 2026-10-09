@@ -80,13 +80,13 @@ final class TermExplanationProgress: ObservableObject {
                 self.task = nil
             } catch is CancellationError {
                 return
-            } catch is TranslationTimeoutError {
+            } catch let error as TranslationTimeoutError {
                 guard let self, self.requestID == currentID else { return }
-                self.state = .failed("名词解释请求超时")
+                self.state = .failed(ServiceErrorMessage.timeout(error, operation: "名词解释"))
                 self.task = nil
             } catch {
                 guard let self, self.requestID == currentID else { return }
-                self.state = .failed(error.localizedDescription)
+                self.state = .failed(ServiceErrorMessage.describe(error))
                 self.task = nil
             }
         }

@@ -5,23 +5,17 @@ enum TranslationError: Error, LocalizedError, Sendable {
     case http(code: Int, body: String)
     case parse(String)
     case quality(String)
+    case service(String)
     case empty
 
     var errorDescription: String? {
         switch self {
-        case .missingConfig(let m): return "翻译配置缺失：\(m)"
-        case .http(let c, _):
-            switch c {
-            case 401: return "HTTP 401：认证失败，请检查 API Key"
-            case 403: return "HTTP 403：服务拒绝访问，请检查账号和模型权限"
-            case 404: return "HTTP 404：接口或模型不存在，请检查 baseURL 与 model"
-            case 429: return "HTTP 429：请求受限或额度不足，请稍后重试或检查账号"
-            case 500...599: return "HTTP \(c)：翻译服务暂时不可用，请稍后重试"
-            default: return "HTTP \(c)：请求失败，请检查服务配置"
-            }
-        case .parse(let m):         return "解析失败：\(m)"
-        case .quality(let m):       return "翻译质量校验失败：\(m)"
-        case .empty:                return "无可翻译内容"
+        case .missingConfig(let m): return "翻译服务配置需要检查：\(m)"
+        case .http(let code, let body): return ServiceErrorMessage.http(code: code, body: body)
+        case .parse(let m):         return "译文读取失败：\(m)"
+        case .quality(let m):       return "译文未通过检查：\(m)"
+        case .service(let message): return message
+        case .empty:                return "没有可翻译的文字，请重新选中文字或框选包含文字的区域。"
         }
     }
 }

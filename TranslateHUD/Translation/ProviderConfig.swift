@@ -8,7 +8,17 @@ struct ProviderConfig: Equatable, Sendable {
 
     var isUsable: Bool {
         // apiKey 可为空 —— 本地 Ollama / LM Studio 等不需要 key。
-        chatCompletionsURL != nil && !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        validationMessage == nil
+    }
+
+    var validationMessage: String? {
+        guard chatCompletionsURL != nil else {
+            return "接口地址无效，请填写以 http:// 或 https:// 开头的 Base URL，且不要在地址中包含账号或密码。"
+        }
+        guard !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "未填写模型名称，请在 Model 中填写服务商提供的模型名称。"
+        }
+        return nil
     }
 
     var chatCompletionsURL: URL? {

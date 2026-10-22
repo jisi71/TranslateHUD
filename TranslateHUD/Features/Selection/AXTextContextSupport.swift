@@ -196,10 +196,12 @@ final class AXTextContextNode: TextContextNode {
     /// `AXTextMarkerRangeCreate` builds the range locally. Apps that ignore those ranges
     /// get a second try through `AXTextMarkerRangeForUnorderedTextMarkers`, which is the
     /// parameterized attribute WebKit and Chromium both implement.
+    ///
+    /// The macOS 26 SDK imports `AXTextMarkerRangeCreate` as non-optional.
     private func value(from start: TextMarker, to end: TextMarker, attribute: String) -> AnyObject? {
         guard let startMarker = makeAXMarker(start), let endMarker = makeAXMarker(end) else { return nil }
-        if let local = AXTextMarkerRangeCreate(kCFAllocatorDefault, startMarker, endMarker),
-           let raw = copyParameterized(attribute, local) {
+        let local = AXTextMarkerRangeCreate(kCFAllocatorDefault, startMarker, endMarker)
+        if let raw = copyParameterized(attribute, local) {
             return raw
         }
         guard !rejected.contains(attribute) else { return nil }
@@ -211,27 +213,37 @@ final class AXTextContextNode: TextContextNode {
 
     private func bounds(from raw: AnyObject) -> MarkerBounds? {
         guard CFGetTypeID(raw) == AXTextMarkerRangeGetTypeID() else { return nil }
-        let range = raw as! AXTextMarkerRange
-        guard let start = AXTextMarkerRangeCopyStartMarker(range),
-              let end = AXTextMarkerRangeCopyEndMarker(range),
-              let startMarker = textMarker(from: start),
+        return bounds(from: raw as! AXTextMarkerRange)
+    }
+
+    /// `AXTextMarkerRangeCopyStartMarker` and `CopyEndMarker` are non-optional in the macOS 26 SDK.
+    private func bounds(from range: AXTextMarkerRange) -> MarkerBounds? {
+        let start = AXTextMarkerRangeCopyStartMarker(range)
+        let end = AXTextMarkerRangeCopyEndMarker(range)
+        guard let startMarker = textMarker(from: start),
               let endMarker = textMarker(from: end) else { return nil }
         return MarkerBounds(start: startMarker, end: endMarker)
     }
 
     private func textMarker(from raw: AnyObject) -> TextMarker? {
         guard CFGetTypeID(raw) == AXTextMarkerGetTypeID() else { return nil }
-        let marker = raw as! AXTextMarker
+        return textMarker(from: raw as! AXTextMarker)
+    }
+
+    /// `AXTextMarkerGetBytePtr` is a non-optional `UnsafePointer<UInt8>` in the macOS 26 SDK.
+    /// The pointer is valid for `AXTextMarkerGetLength` bytes; a zero length means there is nothing to copy.
+    private func textMarker(from marker: AXTextMarker) -> TextMarker? {
         let length = AXTextMarkerGetLength(marker)
         guard length > 0 else { return nil }
-        guard let pointer = AXTextMarkerGetBytePtr(marker) else { return nil }
-        return TextMarker(bytes: Data(bytes: pointer, count: length))
+        let pointer = AXTextMarkerGetBytePtr(marker)
+        return TextMarker(bytes: Data(UnsafeBufferPointer(start: pointer, count: length)))
     }
 
     private func makeAXMarker(_ marker: TextMarker) -> AXTextMarker? {
         guard !marker.bytes.isEmpty else { return nil }
-        return marker.bytes.withUnsafeBytes { raw in
+        return marker.bytes.withUnsafeBytes { raw -> AXTextMarker? in
             guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return nil }
+            // `AXTextMarkerCreate` is non-optional in the macOS 26 SDK and copies `base` before returning.
             return AXTextMarkerCreate(kCFAllocatorDefault, base, raw.count)
         }
     }
@@ -291,12 +303,12 @@ final class TextContextSession {
     func context(focused: AXUIElement, selected: String) -> SelectionFetcher.TextContext? {
         let started = DispatchTime.now().uptimeNanoseconds
         var engine = TextContextEngine(
-            memory: memory,
             budget: TextContextBudget(now: {
                 let now = DispatchTime.now().uptimeNanoseconds
                 guard now >= started else { return 0 }
                 return Int((now - started) / 1_000_000)
             }),
+            memory: memory,
             hostProvider: { Self.host(for: focused) },
             enable: { enablement, host in Self.set(enablement, pid: host.pid) },
             reload: { SelectionFetcher.focusedElement().map { AXTextContextNode(element: $0) } }

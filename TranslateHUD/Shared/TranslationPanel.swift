@@ -104,7 +104,8 @@ struct TranslationPanel: View {
         ].joined(separator: "\u{1e}")
     }
 
-    /// Collapsed source shows every line it needs, and stops at this many.
+    /// Collapsed source grows with its text and stops at this many lines.
+    /// Anything taller keeps this height and scrolls inside the area.
     private static let collapsedSourceLines = 6
     private static let sourceSpeechSide: CGFloat = 24
     private static let sourceExpandSide: CGFloat = 26
@@ -145,37 +146,48 @@ struct TranslationPanel: View {
 
     private var sourceSection: some View {
         let layout = sourceLayout
-        let accessory = layout.showsExpand
-            ? Self.sourceExpandSide + Self.sourceControlGap + Self.sourceSpeechSide
-            : Self.sourceSpeechSide
-        return HeightFitting {
-            HStack(alignment: .top, spacing: Self.sourceControlGap) {
-                HeightFitting {
-                    Text(sourceBody)
-                        .font(.system(size: 14))
-                        .lineSpacing(4)
-                        .foregroundStyle(muted)
-                        .textSelection(.enabled)
-                        .lineLimit(layout.showsExpand && !isOriginalExpanded ? Self.collapsedSourceLines : nil as Int?)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-                VStack(spacing: Self.sourceControlGap) {
-                    if layout.showsExpand {
-                        iconButton(
-                            isOriginalExpanded ? "chevron.up" : "chevron.down",
-                            help: isOriginalExpanded ? "收起原文" : "展开原文"
-                        ) {
-                            isOriginalExpanded.toggle()
-                        }
+        return HStack(alignment: .top, spacing: Self.sourceControlGap) {
+            sourceText(layout)
+            VStack(spacing: Self.sourceControlGap) {
+                if layout.showsExpand {
+                    iconButton(
+                        isOriginalExpanded ? "chevron.up" : "chevron.down",
+                        help: isOriginalExpanded ? "收起原文" : "展开原文"
+                    ) {
+                        isOriginalExpanded.toggle()
                     }
-                    SpeechButton(text: original, id: "translation.original", speech: speech)
-                        .frame(width: Self.sourceSpeechSide, height: Self.sourceSpeechSide)
                 }
+                SpeechButton(text: original, id: "translation.original", speech: speech)
+                    .frame(width: Self.sourceSpeechSide, height: Self.sourceSpeechSide)
             }
         }
-        .frame(maxHeight: max(layout.textHeight, accessory), alignment: .topLeading)
         .panelSectionRole(.source)
+    }
+
+    /// The collapsed overflow keeps a fixed viewport so the panel stays six lines tall,
+    /// while the full text scrolls inside it. Buttons stay outside that scroller.
+    @ViewBuilder
+    private func sourceText(_ layout: (textHeight: CGFloat, showsExpand: Bool)) -> some View {
+        let label = Text(sourceBody)
+            .font(.system(size: 14))
+            .lineSpacing(4)
+            .foregroundStyle(muted)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+        if layout.showsExpand && !isOriginalExpanded {
+            // Propose the six-line cap so HeightFitting scrolls, instead of
+            // letting the full text become the section height.
+            MaxHeightLayout(maxHeight: layout.textHeight) {
+                HeightFitting { label }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .clipped()
+        } else {
+            HeightFitting { label }
+                .frame(maxHeight: layout.textHeight, alignment: .topLeading)
+        }
     }
 
     private var statusSection: some View {
@@ -462,6 +474,31 @@ private struct PanelSectionRoleKey: LayoutValueKey {
 extension View {
     func panelSectionRole(_ role: PanelSectionRole) -> some View {
         layoutValue(key: PanelSectionRoleKey.self, value: role)
+    }
+}
+
+/// Reports at most `maxHeight`, and less when the parent offers less.
+/// A scroll view's own ideal height is the full text, which would grow the panel.
+private struct MaxHeightLayout: Layout {
+    var maxHeight: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let resolvedHeight = min(proposal.height ?? maxHeight, maxHeight)
+        let offeredWidth = proposal.width ?? 0
+        return CGSize(
+            width: offeredWidth.isFinite ? offeredWidth : 0,
+            height: subviews.isEmpty ? 0 : max(resolvedHeight, 0)
+        )
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let subview = subviews.first else { return }
+        let width = bounds.width > 1 ? bounds.width : (proposal.width ?? bounds.width)
+        subview.place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY),
+            anchor: .topLeading,
+            proposal: ProposedViewSize(width: width, height: bounds.height)
+        )
     }
 }
 

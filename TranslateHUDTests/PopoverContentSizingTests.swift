@@ -75,6 +75,7 @@ final class PopoverContentSizingTests: XCTestCase {
 
         XCTAssertLessThan(one.height + 8, four.height)
         XCTAssertLessThan(four.height + 8, six.height)
+        // Past six lines the viewport stays put; the remaining lines scroll inside it.
         XCTAssertLessThanOrEqual(twelve.height, six.height + 20)
         XCTAssertGreaterThan(twelve.height, four.height + 8)
     }

@@ -9,8 +9,7 @@ struct TranslationPanel: View {
     @ObservedObject var termProgress: TermExplanationProgress
     @ObservedObject var speech: SpeechController
     @ObservedObject private var settings = SettingsStore.shared
-    var fillsHeight = false
-    var maxBodyHeight: CGFloat = 460
+    var heightBudget: PanelHeightBudget = PopoverContent.heightBudget(visibleHeight: 2_000)
     var onClose: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
     var onPin: @MainActor (Bool) -> Void
@@ -37,46 +36,152 @@ struct TranslationPanel: View {
         VStack(spacing: 0) {
             header
             separator
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    sourceText
-                    separator
-                    status
-                    if !translated.isEmpty {
-                        Text(translated)
-                            .font(.system(size: 15))
-                            .lineSpacing(5)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    actions
-                    if termProgress.isExpanded {
-                        TermExplanationView(progress: termProgress)
-                            .padding(12)
-                            .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 8))
-                    }
-                    if showsContext { contextView }
-                }
-                .padding(18)
+            // Sections take their own content height. A ScrollView around the whole
+            // body would expand to the offered height and leave short text in an empty well.
+            PanelSectionsLayout(
+                maxHeight: heightBudget.contentMax,
+                sourceCap: heightBudget.sourceMax,
+                spacing: 14
+            ) {
+                sourceSection
+                separator.panelSectionRole(.divider)
+                statusSection
+                if !translated.isEmpty { translationSection }
+                actionsSection
+                if termProgress.isExpanded { termsSection }
+                if showsContext { contextSection }
             }
-            .frame(maxHeight: maxBodyHeight)
-            .fixedSize(horizontal: false, vertical: !fillsHeight)
+            .padding(18)
+            .frame(maxHeight: heightBudget.bodyMax, alignment: .top)
+            .clipped()
             separator
             footer
         }
+        .fixedSize(horizontal: false, vertical: true)
         .foregroundStyle(Color(white: 0.94))
         .background(background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(border, lineWidth: 1))
         .environment(\.colorScheme, .dark)
-        .onChange(of: isOriginalExpanded) { _, _ in onLayoutChange() }
-        .onChange(of: showsContext) { _, _ in onLayoutChange() }
+        .onChange(of: layoutSignature) { _, _ in onLayoutChange() }
         .task(id: hasCopied) {
             guard hasCopied else { return }
             try? await Task.sleep(for: .seconds(1.5))
             if !Task.isCancelled { hasCopied = false }
         }
+    }
+
+    private var layoutSignature: String {
+        let translation: String
+        switch progress.state {
+        case .loading:
+            translation = "loading"
+        case .streaming(let partial):
+            translation = "stream:\(partial)"
+        case .success(let pairs):
+            translation = "ok:\(pairs.map(\.translated).joined(separator: "\n"))"
+        case .timedOut:
+            translation = "timeout:\(progress.timeoutMessage)"
+        case .failed(let message):
+            translation = "fail:\(message)"
+        }
+        let terms: String
+        switch termProgress.state {
+        case .idle: terms = "idle"
+        case .loading: terms = "loading"
+        case .empty: terms = "empty"
+        case .success(let items):
+            terms = "ok:\(items.map { $0.term + "\n" + $0.explanation }.joined(separator: "\n"))"
+        case .failed(let message):
+            terms = "fail:\(message)"
+        }
+        return [
+            translation,
+            terms,
+            isOriginalExpanded ? "source-open" : "source-closed",
+            showsContext ? "context-open" : "context-closed",
+            termProgress.isExpanded ? "terms-open" : "terms-closed"
+        ].joined(separator: "\u{1e}")
+    }
+
+    private var sourceSection: some View {
+        let text = original.isEmpty ? "未识别到文字，请重新框选包含清晰文字的区域。" : original
+        // Cap at the text's own height (and at least the side buttons) so a greedy
+        // scroller cannot report the screen height for a short selection.
+        let textHeight = TextBlockMetrics.height(
+            text: text,
+            font: .systemFont(ofSize: 14),
+            lineSpacing: 4,
+            width: max(PopoverContent.sourceTextWidth, 1),
+            maxLines: isOriginalExpanded ? nil : 3
+        )
+        return HeightFitting {
+            HStack(alignment: .top, spacing: 8) {
+                HeightFitting {
+                    Text(text)
+                        .font(.system(size: 14))
+                        .lineSpacing(4)
+                        .foregroundStyle(muted)
+                        .textSelection(.enabled)
+                        .lineLimit(isOriginalExpanded ? nil : 3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                VStack(spacing: 8) {
+                    iconButton(isOriginalExpanded ? "chevron.up" : "chevron.down", help: isOriginalExpanded ? "收起原文" : "展开原文") {
+                        isOriginalExpanded.toggle()
+                    }
+                    SpeechButton(text: original, id: "translation.original", speech: speech)
+                        .frame(width: 24, height: 24)
+                }
+            }
+        }
+        .frame(maxHeight: max(textHeight, 60), alignment: .topLeading)
+        .panelSectionRole(.source)
+    }
+
+    private var statusSection: some View {
+        HeightFitting { status }
+            .panelSectionRole(.status)
+    }
+
+    private var translationSection: some View {
+        let textHeight = TextBlockMetrics.height(
+            text: translated,
+            font: .systemFont(ofSize: 15),
+            lineSpacing: 5,
+            width: max(PopoverContent.translationTextWidth, 1),
+            maxLines: nil
+        )
+        return HeightFitting(tracksTail: true, tailToken: translated.count) {
+            Text(translated)
+                .font(.system(size: 15))
+                .lineSpacing(5)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: textHeight, alignment: .topLeading)
+        .panelSectionRole(.translation)
+    }
+
+    private var actionsSection: some View {
+        HeightFitting { actions }
+            .panelSectionRole(.actions)
+    }
+
+    private var termsSection: some View {
+        HeightFitting {
+            TermExplanationView(progress: termProgress)
+                .padding(12)
+                .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .panelSectionRole(.extra)
+    }
+
+    private var contextSection: some View {
+        HeightFitting { contextView }
+            .panelSectionRole(.extra)
     }
 
     private var header: some View {
@@ -123,26 +228,6 @@ struct TranslationPanel: View {
         }
         .padding(.horizontal, 18)
         .frame(height: 46)
-    }
-
-    private var sourceText: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(original.isEmpty ? "未识别到文字，请重新框选包含清晰文字的区域。" : original)
-                .font(.system(size: 14))
-                .lineSpacing(4)
-                .foregroundStyle(muted)
-                .textSelection(.enabled)
-                .lineLimit(isOriginalExpanded ? nil : 3)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            VStack(spacing: 8) {
-                iconButton(isOriginalExpanded ? "chevron.up" : "chevron.down", help: isOriginalExpanded ? "收起原文" : "展开原文") {
-                    isOriginalExpanded.toggle()
-                }
-                SpeechButton(text: original, id: "translation.original", speech: speech)
-                    .frame(width: 24, height: 24)
-            }
-        }
     }
 
     private var status: some View {
@@ -296,5 +381,160 @@ struct TranslationPanel: View {
         .foregroundStyle(active ? Color.white : muted)
         .help(help)
         .accessibilityLabel(help)
+    }
+}
+
+private enum TextBlockMetrics {
+    static func height(
+        text: String,
+        font: NSFont,
+        lineSpacing: CGFloat,
+        width: CGFloat,
+        maxLines: Int?
+    ) -> CGFloat {
+        let content = text.isEmpty ? " " : text
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byWordWrapping
+        style.lineSpacing = lineSpacing
+        let storage = NSTextStorage(attributedString: NSAttributedString(
+            string: content,
+            attributes: [.font: font, .paragraphStyle: style]
+        ))
+        let container = NSTextContainer(size: NSSize(width: max(width, 1), height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        if let maxLines, maxLines > 0 {
+            container.maximumNumberOfLines = maxLines
+        }
+        let manager = NSLayoutManager()
+        manager.usesFontLeading = true
+        manager.addTextContainer(container)
+        storage.addLayoutManager(manager)
+        _ = manager.glyphRange(for: container)
+        let used = manager.usedRect(for: container).height
+        let line = font.ascender - font.descender + font.leading
+        // SwiftUI's line spacing can sit a couple of points above TextKit.
+        return max(ceil(used), ceil(line)) + 4
+    }
+}
+
+private struct PanelSectionRoleKey: LayoutValueKey {
+    static let defaultValue: PanelSectionRole = .extra
+}
+
+extension View {
+    func panelSectionRole(_ role: PanelSectionRole) -> some View {
+        layoutValue(key: PanelSectionRoleKey.self, value: role)
+    }
+}
+
+/// Reports the content's height, and scrolls only when the parent offers less than that.
+private struct HeightFitting<Content: View>: View {
+    var tracksTail = false
+    var tailToken = 0
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            content()
+            scrolling
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private var scrolling: some View {
+        if tracksTail {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    ProposedWidth {
+                        content()
+                            .id("section-tail")
+                    }
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .onAppear { proxy.scrollTo("section-tail", anchor: .bottom) }
+                .onChange(of: tailToken) { _, _ in
+                    proxy.scrollTo("section-tail", anchor: .bottom)
+                }
+            }
+        } else {
+            ScrollView {
+                ProposedWidth { content() }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+    }
+}
+
+/// Gives scroll content the viewport width so wrapped text does not collapse into one long line.
+private struct ProposedWidth<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ProposedWidthLayout { content() }
+    }
+}
+
+private struct ProposedWidthLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 0
+        let measured = subviews[0].sizeThatFits(ProposedViewSize(width: width, height: proposal.height))
+        let height = measured.height.isFinite ? measured.height : 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let width = bounds.width > 1 ? bounds.width : (proposal.width ?? bounds.width)
+        subviews[0].place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY),
+            anchor: .topLeading,
+            proposal: ProposedViewSize(width: width, height: nil)
+        )
+    }
+}
+
+private struct PanelSectionsLayout: Layout {
+    var maxHeight: CGFloat
+    var sourceCap: CGFloat
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? (PopoverContent.fixedWidth - PopoverContent.bodyPadding)
+        let limit = min(proposal.height ?? maxHeight, maxHeight)
+        let heights = resolvedHeights(subviews: subviews, width: width, limit: limit)
+        return CGSize(width: width, height: min(PanelSectionSizer.stackedHeight(heights, spacing: spacing), limit))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let width = bounds.width > 1 ? bounds.width : (proposal.width ?? bounds.width)
+        let heights = resolvedHeights(subviews: subviews, width: width, limit: bounds.height)
+        var y = bounds.minY
+        for index in subviews.indices {
+            let height = index < heights.count ? heights[index] : 0
+            subviews[index].place(
+                at: CGPoint(x: bounds.minX, y: y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: width, height: height)
+            )
+            y += height
+            if index < subviews.count - 1 {
+                y += spacing
+            }
+        }
+    }
+
+    private func resolvedHeights(subviews: Subviews, width: CGFloat, limit: CGFloat) -> [CGFloat] {
+        let sections = subviews.indices.map { index -> PanelSectionMeasurement in
+            let subview = subviews[index]
+            let measured = subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+            let ideal = measured.isFinite && measured > 0 ? measured.rounded(.up) : 0
+            return PanelSectionMeasurement(role: subview[PanelSectionRoleKey.self], idealHeight: ideal)
+        }
+        return PanelSectionSizer.resolve(
+            sections: sections,
+            limit: limit,
+            sourceCap: sourceCap,
+            spacing: spacing
+        )
     }
 }

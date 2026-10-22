@@ -295,6 +295,9 @@ final class AXTextContextNode: TextContextNode {
 }
 
 /// Process-lifetime memory for accessibility enablement. Selections are fetched on the main actor.
+/// The bundle scan that recognizes an embedded Chromium engine runs on a background queue
+/// and is cached per bundle path. It does not run again on later selections, and it does
+/// not consume the 150ms context budget: until it finishes, only `AXManualAccessibility` is tried.
 final class TextContextSession {
     static let shared = TextContextSession()
 
@@ -319,29 +322,43 @@ final class TextContextSession {
         return outcome.context
     }
 
+    /// The application element we toggle belongs to the process that owns `element`.
+    /// A 公众号 article can be focused inside WeChat's window, or in its own window, while
+    /// the chat app is still the frontmost process. Those pids differ; the article
+    /// process is the one whose accessibility tree can expose the page text.
     private static func host(for element: AXUIElement) -> ContextHostIdentity {
-        var pid: pid_t = 0
-        if AXUIElementGetPid(element, &pid) != .success || pid <= 0 {
-            pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+        var reported: pid_t = 0
+        if AXUIElementGetPid(element, &reported) != .success {
+            reported = 0
+        }
+        let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+        let pid = FocusedProcessTarget.pid(elementPID: reported, frontmostPID: frontmost)
+        guard pid > 0 else {
+            return ContextHostIdentity(bundleID: nil, pid: 0, kind: .other)
         }
         let running = NSRunningApplication(processIdentifier: pid)
-        let names = frameworkNames(in: running?.bundleURL)
-        return ContextHostIdentity(
-            bundleID: running?.bundleIdentifier,
+        let bundleID = running?.bundleIdentifier
+        if ContextHostGate.isExcluded(
             pid: pid,
-            kind: ContextHostClassifier.kind(bundleID: running?.bundleIdentifier, frameworkNames: names)
+            ownPID: ProcessInfo.processInfo.processIdentifier,
+            bundleID: bundleID,
+            ownBundleID: Bundle.main.bundleIdentifier
+        ) {
+            return ContextHostIdentity(bundleID: bundleID, pid: pid, kind: .excluded)
+        }
+        let kind = ContextHostResolver.kind(
+            bundleID: bundleID,
+            bundleURL: running?.bundleURL,
+            cache: .shared
         )
+        return ContextHostIdentity(bundleID: bundleID, pid: pid, kind: kind)
     }
 
-    private static func frameworkNames(in bundleURL: URL?) -> Set<String> {
-        guard let bundleURL else { return [] }
-        let directory = bundleURL.appendingPathComponent("Contents/Frameworks", isDirectory: true)
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return [] }
-        return Set(names)
-    }
-
-    /// Sets the switch on the application element only. Never touches the focused
-    /// element, the selection, or the document, and never turns the switch back off.
+    /// Sets the switch on the application element for `pid` only. `pid` is the process
+    /// that owns the focused element. This does not touch the focused element, the
+    /// selection, or the document, and it does not turn the switch back off.
+    /// A failure (the app ignores the attribute) is reported as `false` and treated
+    /// as a no-op by the caller.
     private static func set(_ enablement: AccessibilityEnablement, pid: pid_t) -> Bool {
         guard pid > 0 else { return false }
         let application = AXUIElementCreateApplication(pid)

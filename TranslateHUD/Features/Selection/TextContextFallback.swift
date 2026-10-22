@@ -12,10 +12,17 @@ import Foundation
 /// 1. Web text markers on the focused element or a nearby web area (Safari, Chrome, and
 ///    Chromium shells that already expose an accessibility tree).
 /// 2. A bounded walk up parents, assembling `AXStaticText` and other text-role children.
-/// 3. For Electron and Chromium only, when those layers miss: set `AXManualAccessibility`
-///    on the target *application* element and retry layers 1–2. A later miss in an Electron
-///    shell may also set `AXEnhancedUserInterface`. Nothing here changes the selection,
-///    sends keystrokes, or writes document text.
+/// 3. When those layers miss: set `AXManualAccessibility` on the application element of
+///    the process that owns the focused element, then retry layers 1–2. Every other app
+///    is tried once per process. This process is skipped. Apps that do not implement the
+///    attribute ignore the write.
+/// 4. On a later miss, an embedded Chromium, CEF, or Electron engine may also receive
+///    `AXEnhancedUserInterface`. Standalone Chromium browsers do not. That attribute can
+///    disturb window animations and positioning until the process exits. Unknown bundles
+///    are classified by a cached scan that does not run on this path; until the scan
+///    result is ready, only the manual switch is used.
+///
+/// Nothing here changes the selection, sends keystrokes, or writes document text.
 ///
 /// Ambiguous selection inside assembled sibling text: a marker or AX range wins. Without one,
 /// the occurrence in the focused element's own piece wins; otherwise the first occurrence
@@ -32,12 +39,16 @@ enum TextContextSource: Equatable {
 }
 
 enum ContextHostKind: Equatable {
-    /// Native apps. Missing context stays missing; accessibility attributes are not set.
+    /// TranslateHUD itself. Accessibility attributes are not set.
+    case excluded
+    /// Native or not-yet-classified apps. Manual accessibility once; enhanced UI is not used.
     case other
-    /// Chrome, Edge, Brave, and other browser shells. Manual accessibility only.
+    /// Chrome, Edge, Brave, and other standalone browser shells. Manual accessibility only.
     case chromiumBrowser
-    /// Electron or CEF. Manual accessibility first; enhanced UI only on a later miss.
-    case electron
+    /// Embedded Chromium, CEF, or Electron. Manual accessibility first; enhanced UI only
+    /// on a later miss. Known framework names are a fast path. A cached bundle scan can
+    /// classify an embedder that is not on those lists (WeChat's article viewer, for example).
+    case embeddedEngine
 }
 
 struct ContextHostIdentity: Equatable {
@@ -47,11 +58,13 @@ struct ContextHostIdentity: Equatable {
 }
 
 enum AccessibilityEnablement: Equatable {
-    /// Electron's supported switch. Does not retarget window animations.
+    /// Asked of every other process once. Electron honors it. Many native apps and some
+    /// Chromium builds ignore it. It does not retarget window animations.
     case manual
     /// Chromium's legacy switch. Can disturb window animations and positioning for the
-    /// rest of that process's lifetime, so it is never used on browsers and only after
-    /// `AXManualAccessibility` has already had a later selection to take effect.
+    /// rest of that process's lifetime. Standalone browsers do not receive it. Embedded
+    /// engines receive it only after `AXManualAccessibility` was already tried on an
+    /// earlier selection and the tree is still unreadable.
     case enhanced
 }
 
@@ -81,7 +94,9 @@ struct AccessibilityEnablementMemory: Equatable {
 }
 
 enum ContextHostClassifier {
-    /// Compared case-insensitively. Framework names cover shells whose bundle id is not listed.
+    /// Fast path, compared case-insensitively. Framework names cover shells whose bundle id
+    /// is not listed. Embedders missing from both lists are classified by
+    /// `EmbeddedChromiumDetector`, whose result is passed in as `embeddedEngineCached`.
     static let chromiumBrowserBundleIDs: Set<String> = [
         "com.google.chrome",
         "com.google.chrome.beta",
@@ -116,14 +131,43 @@ enum ContextHostClassifier {
         "chromium embedded framework.framework",
     ]
 
-    static func kind(bundleID: String?, frameworkNames: Set<String>) -> ContextHostKind {
-        if let bundleID, chromiumBrowserBundleIDs.contains(bundleID.lowercased()) {
-            return .chromiumBrowser
-        }
+    static func isStandaloneBrowser(bundleID: String?) -> Bool {
+        guard let bundleID else { return false }
+        return chromiumBrowserBundleIDs.contains(bundleID.lowercased())
+    }
+
+    /// `embeddedEngineCached` is the bundle scan result. `nil` means the scan has not
+    /// finished; the caller keeps the manual-only path for this selection.
+    static func kind(
+        bundleID: String?,
+        frameworkNames: Set<String>,
+        embeddedEngineCached: Bool? = nil
+    ) -> ContextHostKind {
+        if isStandaloneBrowser(bundleID: bundleID) { return .chromiumBrowser }
         let names = Set(frameworkNames.map { $0.lowercased() })
         if !names.isDisjoint(with: browserFrameworkNames) { return .chromiumBrowser }
-        if !names.isDisjoint(with: electronFrameworkNames) { return .electron }
+        if !names.isDisjoint(with: electronFrameworkNames) { return .embeddedEngine }
+        if embeddedEngineCached == true { return .embeddedEngine }
         return .other
+    }
+}
+
+/// Skips TranslateHUD so a selection inside this app cannot toggle its own accessibility tree.
+enum ContextHostGate {
+    static func isExcluded(pid: pid_t, ownPID: pid_t, bundleID: String?, ownBundleID: String?) -> Bool {
+        if pid > 0, pid == ownPID { return true }
+        if let bundleID, let ownBundleID, bundleID == ownBundleID { return true }
+        return false
+    }
+}
+
+/// The process that owns the focused element wins over the frontmost app.
+/// An article window can belong to an embedded renderer while the host app stays frontmost.
+enum FocusedProcessTarget {
+    static func pid(elementPID: pid_t, frontmostPID: pid_t) -> pid_t {
+        if elementPID > 0 { return elementPID }
+        if frontmostPID > 0 { return frontmostPID }
+        return 0
     }
 }
 
@@ -199,16 +243,17 @@ struct TextContextEngine {
 
     private mutating func enableAndRetry(selected: String) -> TextContextOutcome {
         let host = hostProvider()
-        guard host.pid > 0, host.kind != .other else { return TextContextOutcome() }
+        guard host.pid > 0, host.kind != .excluded else { return TextContextOutcome() }
 
         let action: AccessibilityEnablement
         switch (host.kind, memory.phase(for: host)) {
         case (_, nil):
             action = .manual
-        case (.electron, .manual):
-            // Manual was set on an earlier selection and the tree is still unreadable.
-            // Enhanced UI is the legacy Chromium switch and is known to interfere with
-            // window animations and positioning, so browsers never reach this arm.
+        case (.embeddedEngine, .manual):
+            // The manual switch was already tried on an earlier selection and the tree
+            // is still unreadable. Enhanced UI can disturb window animations and
+            // positioning for the rest of the process lifetime, so ordinary apps and
+            // standalone browsers never reach this arm.
             action = .enhanced
         default:
             return TextContextOutcome(bundleID: host.bundleID, pid: host.pid)

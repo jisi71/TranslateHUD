@@ -1,3 +1,4 @@
+import Darwin
 import XCTest
 @testable import TranslateHUD
 
@@ -132,7 +133,7 @@ final class TextContextFallbackTests: XCTestCase {
         var engine = TextContextEngine(
             hostProvider: {
                 lookups += 1
-                return ContextHostIdentity(bundleID: "com.tinyspeck.slackmacgap", pid: 7, kind: .electron)
+                return ContextHostIdentity(bundleID: "com.tinyspeck.slackmacgap", pid: 7, kind: .embeddedEngine)
             },
             enable: { action, _ in
                 actions.append(action)
@@ -148,7 +149,7 @@ final class TextContextFallbackTests: XCTestCase {
         XCTAssertFalse(node.trace.contains("parent"))
         XCTAssertEqual(lookups, 0)
         XCTAssertTrue(actions.isEmpty)
-        XCTAssertNil(engine.memory.phase(for: ContextHostIdentity(bundleID: "com.tinyspeck.slackmacgap", pid: 7, kind: .electron)))
+        XCTAssertNil(engine.memory.phase(for: ContextHostIdentity(bundleID: "com.tinyspeck.slackmacgap", pid: 7, kind: .embeddedEngine)))
     }
 
     func testAmbiguousValueWithoutNewSurroundingTextStaysNil() {
@@ -346,7 +347,7 @@ final class TextContextFallbackTests: XCTestCase {
             budget: TextContextBudget(limitMilliseconds: 150, now: { clock.milliseconds }),
             hostProvider: {
                 lookups += 1
-                return ContextHostIdentity(bundleID: "com.tinyspeck.slackmacgap", pid: 9, kind: .electron)
+                return ContextHostIdentity(bundleID: "com.tinyspeck.slackmacgap", pid: 9, kind: .embeddedEngine)
             },
             enable: { action, _ in
                 actions.append(action)
@@ -371,7 +372,7 @@ final class TextContextFallbackTests: XCTestCase {
     }
 
     func testElectronEnablesManualThenEnhancedOncePerProcess() {
-        let host = ContextHostIdentity(bundleID: "com.tinyspeck.slackmacgap", pid: 42, kind: .electron)
+        let host = ContextHostIdentity(bundleID: "com.tinyspeck.slackmacgap", pid: 42, kind: .embeddedEngine)
         var memory = AccessibilityEnablementMemory()
         var actions: [AccessibilityEnablement] = []
         var reloads = 0
@@ -470,21 +471,45 @@ final class TextContextFallbackTests: XCTestCase {
     }
 
     func testOtherAppsAndFailedSetsAreNotToggledRepeatedly() {
+        let textEdit = ContextHostIdentity(bundleID: "com.apple.TextEdit", pid: 3, kind: .other)
         var actions: [AccessibilityEnablement] = []
+        var memory = AccessibilityEnablementMemory()
         var engine = TextContextEngine(
-            hostProvider: { ContextHostIdentity(bundleID: "com.apple.TextEdit", pid: 3, kind: .other) },
+            memory: memory,
+            hostProvider: { textEdit },
+            enable: { action, host in
+                XCTAssertEqual(host.pid, textEdit.pid)
+                actions.append(action)
+                return true
+            },
+            reload: { nil }
+        )
+        let missing = engine.context(focused: FakeTextNode(id: "label", role: "AXStaticText"), selected: "SELECTED")
+        memory = engine.memory
+        XCTAssertNil(missing.context)
+        XCTAssertFalse(missing.timedOut)
+        XCTAssertEqual(missing.enablement, .manual)
+        XCTAssertEqual(actions, [.manual])
+        XCTAssertEqual(memory.phase(for: textEdit), .manual)
+
+        var again = TextContextEngine(
+            memory: memory,
+            hostProvider: { textEdit },
             enable: { action, _ in
                 actions.append(action)
                 return true
-            }
+            },
+            reload: { nil }
         )
-        let missing = engine.context(focused: FakeTextNode(id: "label", role: "AXStaticText"), selected: "SELECTED")
-        XCTAssertNil(missing.context)
-        XCTAssertFalse(missing.timedOut)
-        XCTAssertTrue(actions.isEmpty)
+        let repeated = again.context(focused: FakeTextNode(id: "label2", role: "AXStaticText"), selected: "SELECTED")
+        XCTAssertNil(repeated.context)
+        XCTAssertNil(repeated.enablement)
+        XCTAssertEqual(actions, [.manual])
+        XCTAssertEqual(again.memory.phase(for: textEdit), .manual)
 
-        let electron = ContextHostIdentity(bundleID: "com.github.GitHubClient", pid: 8, kind: .electron)
-        var memory = AccessibilityEnablementMemory()
+        let electron = ContextHostIdentity(bundleID: "com.github.GitHubClient", pid: 8, kind: .embeddedEngine)
+        memory = AccessibilityEnablementMemory()
+        actions = []
         var reloads = 0
         var first = TextContextEngine(
             memory: memory,
@@ -529,14 +554,14 @@ final class TextContextFallbackTests: XCTestCase {
                 bundleID: "com.tinyspeck.slackmacgap",
                 frameworkNames: ["Electron Framework.framework"]
             ),
-            .electron
+            .embeddedEngine
         )
         XCTAssertEqual(
             ContextHostClassifier.kind(
                 bundleID: nil,
                 frameworkNames: ["Chromium Embedded Framework.framework"]
             ),
-            .electron
+            .embeddedEngine
         )
         XCTAssertEqual(
             ContextHostClassifier.kind(
@@ -549,6 +574,405 @@ final class TextContextFallbackTests: XCTestCase {
             ContextHostClassifier.kind(bundleID: "com.apple.TextEdit", frameworkNames: []),
             .other
         )
+        XCTAssertEqual(
+            ContextHostClassifier.kind(
+                bundleID: "com.tencent.flue.WeChatAppEx",
+                frameworkNames: ["WeChatAppEx Framework.framework"]
+            ),
+            .other
+        )
+        XCTAssertEqual(
+            ContextHostClassifier.kind(bundleID: "com.tencent.xinWeChat", frameworkNames: []),
+            .other
+        )
+        XCTAssertEqual(
+            ContextHostClassifier.kind(
+                bundleID: "com.tencent.flue.WeChatAppEx",
+                frameworkNames: ["WeChatAppEx Framework.framework"],
+                embeddedEngineCached: true
+            ),
+            .embeddedEngine
+        )
+        XCTAssertEqual(
+            ContextHostClassifier.kind(
+                bundleID: "com.google.Chrome",
+                frameworkNames: [],
+                embeddedEngineCached: true
+            ),
+            .chromiumBrowser
+        )
+        XCTAssertEqual(
+            ContextHostClassifier.kind(
+                bundleID: "com.example.Wrapped",
+                frameworkNames: ["Google Chrome Framework.framework"],
+                embeddedEngineCached: true
+            ),
+            .chromiumBrowser
+        )
+        XCTAssertEqual(
+            ContextHostClassifier.kind(
+                bundleID: "com.tencent.xinWeChat",
+                frameworkNames: [],
+                embeddedEngineCached: false
+            ),
+            .other
+        )
+    }
+
+    func testExcludedProcessIsNotEnabled() {
+        var actions: [AccessibilityEnablement] = []
+        var engine = TextContextEngine(
+            hostProvider: {
+                ContextHostIdentity(bundleID: "com.qi.TranslateHUD", pid: 1, kind: .excluded)
+            },
+            enable: { action, _ in
+                actions.append(action)
+                return true
+            }
+        )
+        let outcome = engine.context(focused: FakeTextNode(id: "self", role: "AXStaticText"), selected: "SELECTED")
+        XCTAssertNil(outcome.context)
+        XCTAssertNil(outcome.enablement)
+        XCTAssertTrue(actions.isEmpty)
+        XCTAssertNil(engine.memory.phase(for: ContextHostIdentity(bundleID: "com.qi.TranslateHUD", pid: 1, kind: .excluded)))
+        XCTAssertTrue(ContextHostGate.isExcluded(
+            pid: 4,
+            ownPID: 4,
+            bundleID: "com.example.Other",
+            ownBundleID: "com.qi.TranslateHUD"
+        ))
+        XCTAssertTrue(ContextHostGate.isExcluded(
+            pid: 9,
+            ownPID: 4,
+            bundleID: "com.qi.TranslateHUD",
+            ownBundleID: "com.qi.TranslateHUD"
+        ))
+        XCTAssertFalse(ContextHostGate.isExcluded(
+            pid: 9,
+            ownPID: 4,
+            bundleID: "com.tencent.flue.WeChatAppEx",
+            ownBundleID: "com.qi.TranslateHUD"
+        ))
+        XCTAssertFalse(ContextHostGate.isExcluded(pid: 9, ownPID: 4, bundleID: nil, ownBundleID: nil))
+    }
+
+    func testEnablementTargetsTheFocusedElementsProcess() {
+        let frontmostWeChat = pid_t(10)
+        let articleProcess = pid_t(4321)
+        XCTAssertEqual(FocusedProcessTarget.pid(elementPID: articleProcess, frontmostPID: frontmostWeChat), articleProcess)
+        XCTAssertEqual(FocusedProcessTarget.pid(elementPID: 0, frontmostPID: frontmostWeChat), frontmostWeChat)
+        XCTAssertEqual(FocusedProcessTarget.pid(elementPID: -1, frontmostPID: 0), 0)
+
+        let owner = FocusedProcessTarget.pid(elementPID: articleProcess, frontmostPID: frontmostWeChat)
+        var enabledPID: pid_t = 0
+        var enabled: [AccessibilityEnablement] = []
+        var engine = TextContextEngine(
+            hostProvider: {
+                ContextHostIdentity(bundleID: "com.tencent.flue.WeChatAppEx", pid: owner, kind: .embeddedEngine)
+            },
+            enable: { action, host in
+                enabledPID = host.pid
+                enabled.append(action)
+                return true
+            },
+            reload: { nil }
+        )
+        let article = FakeTextNode(id: "article", role: "AXWebArea")
+        let outcome = engine.context(focused: article, selected: "文章")
+        XCTAssertEqual(outcome.enablement, .manual)
+        XCTAssertEqual(enabled, [.manual])
+        XCTAssertEqual(enabledPID, articleProcess)
+        XCTAssertNotEqual(enabledPID, frontmostWeChat)
+    }
+
+    func testManualMemoryEscalatesWhenTheHostIsLaterRecognizedAsEmbedded() {
+        let pid: pid_t = 77
+        var memory = AccessibilityEnablementMemory()
+        var actions: [AccessibilityEnablement] = []
+
+        func run(kind: ContextHostKind) {
+            let host = ContextHostIdentity(bundleID: "com.tencent.flue.WeChatAppEx", pid: pid, kind: kind)
+            var engine = TextContextEngine(
+                memory: memory,
+                hostProvider: { host },
+                enable: { action, enabledHost in
+                    XCTAssertEqual(enabledHost.pid, pid)
+                    actions.append(action)
+                    return false
+                },
+                reload: { nil }
+            )
+            _ = engine.context(focused: FakeTextNode(id: "article", role: "AXGroup"), selected: "文章")
+            memory = engine.memory
+        }
+
+        run(kind: .other)
+        run(kind: .other)
+        run(kind: .embeddedEngine)
+        run(kind: .embeddedEngine)
+        XCTAssertEqual(actions, [.manual, .enhanced])
+        XCTAssertEqual(
+            memory.phase(for: ContextHostIdentity(bundleID: "com.tencent.flue.WeChatAppEx", pid: pid, kind: .embeddedEngine)),
+            .enhanced
+        )
+    }
+
+    func testWeChatArticleBundleIsAnEmbeddedEngineAndWeChatMainIsNot() throws {
+        let root = try makeFixtureRoot()
+        let wechat = root.appendingPathComponent("WeChat.app", isDirectory: true)
+        let article = wechat
+            .appendingPathComponent("Contents/MacOS/WeChatAppEx.app", isDirectory: true)
+        let resources = article.appendingPathComponent(
+            "Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Resources",
+            isDirectory: true
+        )
+        try writeEmptyFile(resources.appendingPathComponent("icudtl.dat"))
+        try writeEmptyFile(resources.appendingPathComponent("v8_context_snapshot.arm64.bin"))
+        try writeEmptyFile(resources.appendingPathComponent("wmpf_100_percent.pak"))
+        try writeEmptyFile(
+            article.appendingPathComponent(
+                "Contents/Frameworks/WeChatAppEx Helper (GPU).app/Contents/PkgInfo"
+            )
+        )
+        try writeEmptyFile(wechat.appendingPathComponent("Contents/Frameworks/README"))
+
+        XCTAssertTrue(EmbeddedChromiumDetector.containsEngine(in: article))
+        XCTAssertFalse(EmbeddedChromiumDetector.containsEngine(in: wechat))
+        XCTAssertEqual(
+            ContextHostClassifier.kind(bundleID: "com.tencent.xinWeChat", frameworkNames: ["README"]),
+            .other
+        )
+    }
+
+    func testEachChromiumRuntimeSignalIsEnough() throws {
+        let icu = try makeFixtureRoot().appendingPathComponent("ICUOnly.app", isDirectory: true)
+        try writeEmptyFile(
+            icu.appendingPathComponent("Contents/Frameworks/Oddly Named.framework/Versions/C/Resources/icudtl.dat")
+        )
+        XCTAssertTrue(EmbeddedChromiumDetector.containsEngine(in: icu))
+
+        let snapshot = try makeFixtureRoot().appendingPathComponent("SnapshotOnly.app", isDirectory: true)
+        try writeEmptyFile(
+            snapshot.appendingPathComponent(
+                "Contents/Frameworks/Oddly Named.framework/Resources/v8_context_snapshot.bin"
+            )
+        )
+        XCTAssertTrue(EmbeddedChromiumDetector.containsEngine(in: snapshot))
+
+        let armSnapshot = try makeFixtureRoot().appendingPathComponent("ArmSnapshot.app", isDirectory: true)
+        try writeEmptyFile(
+            armSnapshot.appendingPathComponent(
+                "Contents/Frameworks/Oddly Named.framework/Resources/v8_context_snapshot.arm64.bin"
+            )
+        )
+        XCTAssertTrue(EmbeddedChromiumDetector.containsEngine(in: armSnapshot))
+
+        let helper = try makeFixtureRoot().appendingPathComponent("HelperOnly.app", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: helper.appendingPathComponent("Contents/Frameworks/My Helper (Renderer).app", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        XCTAssertTrue(EmbeddedChromiumDetector.containsEngine(in: helper))
+
+        let nested = try makeFixtureRoot().appendingPathComponent("Nested.app", isDirectory: true)
+        try writeEmptyFile(
+            nested.appendingPathComponent(
+                "Contents/Frameworks/EmbeddedBrowser.app/Contents/Frameworks/Whatever.framework/Resources/icudtl.dat"
+            )
+        )
+        XCTAssertTrue(EmbeddedChromiumDetector.containsEngine(in: nested))
+    }
+
+    func testUnrelatedBundleFilesAreNotAnEmbeddedEngine() throws {
+        let native = try makeFixtureRoot().appendingPathComponent("Native.app", isDirectory: true)
+        try writeEmptyFile(native.appendingPathComponent("Contents/Frameworks/Sparkle.framework/Sparkle"))
+        try writeEmptyFile(
+            native.appendingPathComponent(
+                "Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Resources/wmpf_100_percent.pak"
+            )
+        )
+        try writeEmptyFile(native.appendingPathComponent("Contents/Frameworks/Notes.txt"))
+        try FileManager.default.createDirectory(
+            at: native.appendingPathComponent("Contents/Frameworks/My Helper (GPU).app", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        XCTAssertFalse(EmbeddedChromiumDetector.containsEngine(in: native))
+        XCTAssertFalse(EmbeddedChromiumDetector.containsEngine(in: native.appendingPathComponent("Missing.app")))
+    }
+
+    func testEngineScanStopsAtTheDirectoryBudgetAndPrefersFrameworks() throws {
+        let deep = try makeFixtureRoot().appendingPathComponent("Deep.app", isDirectory: true)
+        try writeEmptyFile(deep.appendingPathComponent("Contents/Frameworks/a/b/c/icudtl.dat"))
+        let tight = EmbeddedChromiumDetector.Budget(maxDirectories: 3, maxDepth: 8)
+        let enough = EmbeddedChromiumDetector.Budget(maxDirectories: 4, maxDepth: 8)
+        XCTAssertFalse(EmbeddedChromiumDetector.containsEngine(in: deep, budget: tight))
+        XCTAssertTrue(EmbeddedChromiumDetector.containsEngine(in: deep, budget: enough))
+
+        let shallow = EmbeddedChromiumDetector.Budget(maxDirectories: 48, maxDepth: 2)
+        XCTAssertFalse(EmbeddedChromiumDetector.containsEngine(in: deep, budget: shallow))
+
+        let wide = try makeFixtureRoot().appendingPathComponent("Wide.app", isDirectory: true)
+        for index in 0..<30 {
+            try writeEmptyFile(
+                wide.appendingPathComponent(String(format: "Contents/Frameworks/junk-%02d/file.txt", index))
+            )
+        }
+        try writeEmptyFile(
+            wide.appendingPathComponent("Contents/Frameworks/Foo.framework/Versions/C/Resources/icudtl.dat")
+        )
+        let preferFramework = EmbeddedChromiumDetector.Budget(maxDirectories: 5, maxDepth: 8)
+        XCTAssertTrue(EmbeddedChromiumDetector.containsEngine(in: wide, budget: preferFramework))
+    }
+
+    func testEngineScanDoesNotFollowSymlinks() throws {
+        let bundle = try makeFixtureRoot().appendingPathComponent("Linked.app", isDirectory: true)
+        let outside = try makeFixtureRoot().appendingPathComponent("outside-resources", isDirectory: true)
+        try writeEmptyFile(outside.appendingPathComponent("icudtl.dat"))
+        let frameworks = bundle.appendingPathComponent("Contents/Frameworks", isDirectory: true)
+        try FileManager.default.createDirectory(at: frameworks, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: frameworks.appendingPathComponent("linked-resources"),
+            withDestinationURL: outside
+        )
+        XCTAssertFalse(EmbeddedChromiumDetector.containsEngine(in: bundle))
+    }
+
+    func testDeepScanStaysOffTheSelectionPathUntilTheCacheIsFilled() {
+        let queue = DispatchQueue(label: "bundle-probe-test", attributes: .initiallyInactive)
+        var scans = 0
+        let cache = BundleEngineCache(
+            queue: queue,
+            scan: { _ in
+                scans += 1
+                return true
+            },
+            readFrameworkNames: { _ in [] }
+        )
+        let bundle = URL(fileURLWithPath: "/Applications/WeChatAppEx.app")
+        XCTAssertEqual(
+            ContextHostResolver.kind(
+                bundleID: "com.tencent.flue.WeChatAppEx",
+                bundleURL: bundle,
+                cache: cache
+            ),
+            .other
+        )
+        XCTAssertEqual(scans, 0)
+        XCTAssertNil(cache.embeddedIfKnown(bundle))
+
+        queue.activate()
+        queue.sync {}
+        XCTAssertEqual(scans, 1)
+        XCTAssertEqual(cache.embeddedIfKnown(bundle), true)
+        XCTAssertEqual(
+            ContextHostResolver.kind(
+                bundleID: "com.tencent.flue.WeChatAppEx",
+                bundleURL: bundle,
+                cache: cache
+            ),
+            .embeddedEngine
+        )
+        _ = ContextHostResolver.kind(
+            bundleID: "com.tencent.flue.WeChatAppEx",
+            bundleURL: bundle,
+            cache: cache
+        )
+        queue.sync {}
+        XCTAssertEqual(scans, 1)
+    }
+
+    func testKnownBrowserAndElectronFrameworksSkipTheDeepScan() {
+        let queue = DispatchQueue(label: "bundle-probe-skip", attributes: .initiallyInactive)
+        var scans = 0
+        var reads = 0
+        let cache = BundleEngineCache(
+            queue: queue,
+            scan: { _ in
+                scans += 1
+                return true
+            },
+            readFrameworkNames: { _ in
+                reads += 1
+                return ["Electron Framework.framework"]
+            }
+        )
+        let chrome = URL(fileURLWithPath: "/Applications/Google Chrome.app")
+        XCTAssertEqual(
+            ContextHostResolver.kind(bundleID: "com.google.Chrome", bundleURL: chrome, cache: cache),
+            .chromiumBrowser
+        )
+        XCTAssertEqual(scans, 0)
+        XCTAssertEqual(reads, 0)
+
+        let slack = URL(fileURLWithPath: "/Applications/Slack.app")
+        XCTAssertEqual(
+            ContextHostResolver.kind(bundleID: "com.tinyspeck.slackmacgap", bundleURL: slack, cache: cache),
+            .embeddedEngine
+        )
+        XCTAssertEqual(
+            ContextHostResolver.kind(bundleID: "com.tinyspeck.slackmacgap", bundleURL: slack, cache: cache),
+            .embeddedEngine
+        )
+        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(scans, 0)
+        queue.activate()
+        queue.sync {}
+        XCTAssertEqual(scans, 0)
+
+        var negativeScans = 0
+        let negativeQueue = DispatchQueue(label: "bundle-probe-negative", attributes: .initiallyInactive)
+        let negative = BundleEngineCache(
+            queue: negativeQueue,
+            scan: { _ in
+                negativeScans += 1
+                return false
+            },
+            readFrameworkNames: { _ in [] }
+        )
+        let wechat = URL(fileURLWithPath: "/Applications/WeChat.app")
+        XCTAssertEqual(
+            ContextHostResolver.kind(bundleID: "com.tencent.xinWeChat", bundleURL: wechat, cache: negative),
+            .other
+        )
+        XCTAssertEqual(negativeScans, 0)
+        negativeQueue.activate()
+        negativeQueue.sync {}
+        XCTAssertEqual(negativeScans, 1)
+        XCTAssertEqual(
+            ContextHostResolver.kind(bundleID: "com.tencent.xinWeChat", bundleURL: wechat, cache: negative),
+            .other
+        )
+        _ = ContextHostResolver.kind(bundleID: "com.tencent.xinWeChat", bundleURL: wechat, cache: negative)
+        negativeQueue.sync {}
+        XCTAssertEqual(negativeScans, 1)
+    }
+
+    private var fixtureRoots: [URL] = []
+
+    override func tearDown() {
+        for root in fixtureRoots {
+            try? FileManager.default.removeItem(at: root)
+        }
+        fixtureRoots = []
+        super.tearDown()
+    }
+
+    private func makeFixtureRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TranslateHUD-context-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        fixtureRoots.append(root)
+        return root
+    }
+
+    private func writeEmptyFile(_ url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if !FileManager.default.createFile(atPath: url.path, contents: Data()) {
+            throw CocoaError(.fileWriteUnknown)
+        }
     }
 }
 

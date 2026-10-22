@@ -160,7 +160,8 @@ enum SelectionFetcher {
 
     /// Layer 0 is the focused element's `AXValue` plus `AXSelectedTextRange`.
     /// Later layers (web text markers, ancestor/sibling text, and a one-time
-    /// accessibility enablement for Electron/Chromium) run only when that returns nil.
+    /// `AXManualAccessibility` attempt on the process that owns the focused element)
+    /// run only when that returns nil.
     fileprivate static func currentTextContext(_ focused: AXUIElement, selected: String) -> TextContext? {
         TextContextSession.shared.context(focused: focused, selected: selected)
     }

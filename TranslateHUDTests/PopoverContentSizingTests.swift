@@ -67,6 +67,31 @@ final class PopoverContentSizingTests: XCTestCase {
         try attachPreview(host: host, size: size, name: "Translation panel")
     }
 
+    func testCollapsedSourceTracksOneToSixLines() {
+        let one = fittingSize(original: "Hi")
+        let four = fittingSize(original: ["One", "Two", "Three", "Four"].joined(separator: "\n"))
+        let six = fittingSize(original: (1...6).map { "Line \($0)" }.joined(separator: "\n"))
+        let twelve = fittingSize(original: (1...12).map { "Line \($0)" }.joined(separator: "\n"))
+
+        XCTAssertLessThan(one.height + 8, four.height)
+        XCTAssertLessThan(four.height + 8, six.height)
+        XCTAssertLessThanOrEqual(twelve.height, six.height + 20)
+        XCTAssertGreaterThan(twelve.height, four.height + 8)
+    }
+
+    func testTextMeasurementDoesNotReserveUnusedLines() {
+        let font = NSFont.systemFont(ofSize: 14)
+        let width: CGFloat = 430
+        let one = TextBlockMetrics.height(text: "Hi", font: font, lineSpacing: 4, width: width, maxLines: nil)
+        let oneLimited = TextBlockMetrics.height(text: "Hi", font: font, lineSpacing: 4, width: width, maxLines: 6)
+        XCTAssertEqual(one, oneLimited, accuracy: 0.5)
+
+        let many = (1...12).map { "Line \($0)" }.joined(separator: "\n")
+        let full = TextBlockMetrics.height(text: many, font: font, lineSpacing: 4, width: width, maxLines: nil)
+        let capped = TextBlockMetrics.height(text: many, font: font, lineSpacing: 4, width: width, maxLines: 6)
+        XCTAssertGreaterThan(full, capped + 8)
+    }
+
     func testLoadingPanelIsShorterThanALongTranslation() async throws {
         let loading = fittingSize(original: "Hello")
         let translated = Array(repeating: "这是一行会把译文区域撑高的文字。", count: 30).joined(separator: "\n")

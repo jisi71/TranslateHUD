@@ -104,39 +104,77 @@ struct TranslationPanel: View {
         ].joined(separator: "\u{1e}")
     }
 
-    private var sourceSection: some View {
-        let text = original.isEmpty ? "未识别到文字，请重新框选包含清晰文字的区域。" : original
-        // Cap at the text's own height (and at least the side buttons) so a greedy
-        // scroller cannot report the screen height for a short selection.
-        let textHeight = TextBlockMetrics.height(
-            text: text,
-            font: .systemFont(ofSize: 14),
-            lineSpacing: 4,
-            width: max(PopoverContent.sourceTextWidth, 1),
-            maxLines: isOriginalExpanded ? nil : 3
+    /// Collapsed source shows every line it needs, and stops at this many.
+    private static let collapsedSourceLines = 6
+    private static let sourceSpeechSide: CGFloat = 24
+    private static let sourceExpandSide: CGFloat = 26
+    private static let sourceControlGap: CGFloat = 8
+
+    private var sourceBody: String {
+        original.isEmpty ? "未识别到文字，请重新框选包含清晰文字的区域。" : original
+    }
+
+    /// Expand is offered only when the text is taller than the collapsed line cap.
+    /// Measuring at the wider width first (no chevron) avoids showing the control for text that already fits.
+    private var sourceLayout: (textHeight: CGFloat, showsExpand: Bool) {
+        let font = NSFont.systemFont(ofSize: 14)
+        let openWidth = sourceTextWidth(showsExpand: false)
+        let full = TextBlockMetrics.height(
+            text: sourceBody, font: font, lineSpacing: 4, width: openWidth, maxLines: nil
         )
+        let capped = TextBlockMetrics.height(
+            text: sourceBody, font: font, lineSpacing: 4, width: openWidth, maxLines: Self.collapsedSourceLines
+        )
+        let showsExpand = full > capped + 1
+        guard showsExpand else { return (full, false) }
+        let narrow = sourceTextWidth(showsExpand: true)
+        let visible = TextBlockMetrics.height(
+            text: sourceBody,
+            font: font,
+            lineSpacing: 4,
+            width: narrow,
+            maxLines: isOriginalExpanded ? nil : Self.collapsedSourceLines
+        )
+        return (visible, true)
+    }
+
+    private func sourceTextWidth(showsExpand: Bool) -> CGFloat {
+        let column = showsExpand ? Self.sourceExpandSide : Self.sourceSpeechSide
+        return max(PopoverContent.translationTextWidth - Self.sourceControlGap - column, 1)
+    }
+
+    private var sourceSection: some View {
+        let layout = sourceLayout
+        let accessory = layout.showsExpand
+            ? Self.sourceExpandSide + Self.sourceControlGap + Self.sourceSpeechSide
+            : Self.sourceSpeechSide
         return HeightFitting {
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .top, spacing: Self.sourceControlGap) {
                 HeightFitting {
-                    Text(text)
+                    Text(sourceBody)
                         .font(.system(size: 14))
                         .lineSpacing(4)
                         .foregroundStyle(muted)
                         .textSelection(.enabled)
-                        .lineLimit(isOriginalExpanded ? nil : 3)
+                        .lineLimit(layout.showsExpand && !isOriginalExpanded ? Self.collapsedSourceLines : nil as Int?)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                VStack(spacing: 8) {
-                    iconButton(isOriginalExpanded ? "chevron.up" : "chevron.down", help: isOriginalExpanded ? "收起原文" : "展开原文") {
-                        isOriginalExpanded.toggle()
+                VStack(spacing: Self.sourceControlGap) {
+                    if layout.showsExpand {
+                        iconButton(
+                            isOriginalExpanded ? "chevron.up" : "chevron.down",
+                            help: isOriginalExpanded ? "收起原文" : "展开原文"
+                        ) {
+                            isOriginalExpanded.toggle()
+                        }
                     }
                     SpeechButton(text: original, id: "translation.original", speech: speech)
-                        .frame(width: 24, height: 24)
+                        .frame(width: Self.sourceSpeechSide, height: Self.sourceSpeechSide)
                 }
             }
         }
-        .frame(maxHeight: max(textHeight, 60), alignment: .topLeading)
+        .frame(maxHeight: max(layout.textHeight, accessory), alignment: .topLeading)
         .panelSectionRole(.source)
     }
 
@@ -384,7 +422,7 @@ struct TranslationPanel: View {
     }
 }
 
-private enum TextBlockMetrics {
+enum TextBlockMetrics {
     static func height(
         text: String,
         font: NSFont,

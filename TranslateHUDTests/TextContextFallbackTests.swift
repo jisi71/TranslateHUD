@@ -1063,7 +1063,7 @@ final class TextContextFallbackTests: XCTestCase {
         var actions: [AccessibilityEnablement] = []
         var engine = TextContextEngine(
             hostProvider: { host },
-            recordedMethod: { .none },
+            recordedMethod: { RecordedContextMethod.none },
             enable: { action, _ in
                 actions.append(action)
                 return true

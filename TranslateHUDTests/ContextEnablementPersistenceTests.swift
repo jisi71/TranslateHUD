@@ -39,7 +39,7 @@ final class ContextEnablementPersistenceTests: XCTestCase {
         )
         XCTAssertEqual(
             reloaded.effectiveMethod(bundleID: "com.apple.TextEdit", version: "1.18", now: now),
-            .none
+            Optional.some(.none)
         )
         XCTAssertEqual(
             reloaded.allRecords().map(\.method),
@@ -65,7 +65,10 @@ final class ContextEnablementPersistenceTests: XCTestCase {
 
         let kept = try makeStore()
         kept.save(bundleID: "com.apple.Safari", version: "17.0", method: .none, now: now)
-        XCTAssertEqual(kept.effectiveMethod(bundleID: "com.apple.Safari", version: "17.0", now: now.addingTimeInterval(30 * 86_400)), .none)
+        XCTAssertEqual(
+            kept.effectiveMethod(bundleID: "com.apple.Safari", version: "17.0", now: now.addingTimeInterval(30 * 86_400)),
+            Optional.some(.none)
+        )
     }
 
     func testNothingWorksIsReusedForSevenDaysThenForgotten() throws {

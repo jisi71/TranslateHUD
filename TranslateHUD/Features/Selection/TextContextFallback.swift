@@ -290,7 +290,10 @@ struct TextContextEngine {
             return apply(shortcut, host: host, selected: selected)
         }
 
-        let shortcutFailed = recorded == .none || recorded == .manual || recorded == .enhanced
+        // Bare `.none` on RecordedContextMethod? is nil, so name the enum case.
+        let shortcutFailed = recorded == RecordedContextMethod.none
+            || recorded == .manual
+            || recorded == .enhanced
         if !memory.contains(.manual, for: host) {
             var outcome = apply(.manual, host: host, selected: selected)
             outcome.invalidatedShortcut = shortcutFailed

@@ -72,8 +72,17 @@ targets:
           - "SelectionSpike.entitlements"
     info:
       path: SelectionSpike/Info.plist
+      properties:
+        CFBundleDisplayName: SelectionSpike
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        LSUIElement: true
+        NSHumanReadableCopyright: "© 2026"
     entitlements:
       path: SelectionSpike/SelectionSpike.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qi.TranslateHUD.spike

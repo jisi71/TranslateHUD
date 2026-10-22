@@ -67,6 +67,148 @@ final class PopoverContentSizingTests: XCTestCase {
         try attachPreview(host: host, size: size, name: "Translation panel")
     }
 
+    func testCollapsedSourceTracksOneToSixLines() {
+        let one = fittingSize(original: "Hi")
+        let four = fittingSize(original: ["One", "Two", "Three", "Four"].joined(separator: "\n"))
+        let six = fittingSize(original: (1...6).map { "Line \($0)" }.joined(separator: "\n"))
+        let twelve = fittingSize(original: (1...12).map { "Line \($0)" }.joined(separator: "\n"))
+
+        XCTAssertLessThan(one.height + 8, four.height)
+        XCTAssertLessThan(four.height + 8, six.height)
+        // Past six lines the viewport stays put; the remaining lines scroll inside it.
+        XCTAssertLessThanOrEqual(twelve.height, six.height + 20)
+        XCTAssertGreaterThan(twelve.height, four.height + 8)
+    }
+
+    func testTextMeasurementDoesNotReserveUnusedLines() {
+        let font = NSFont.systemFont(ofSize: 14)
+        let width: CGFloat = 430
+        let one = TextBlockMetrics.height(text: "Hi", font: font, lineSpacing: 4, width: width, maxLines: nil)
+        let oneLimited = TextBlockMetrics.height(text: "Hi", font: font, lineSpacing: 4, width: width, maxLines: 6)
+        XCTAssertEqual(one, oneLimited, accuracy: 0.5)
+
+        let many = (1...12).map { "Line \($0)" }.joined(separator: "\n")
+        let full = TextBlockMetrics.height(text: many, font: font, lineSpacing: 4, width: width, maxLines: nil)
+        let capped = TextBlockMetrics.height(text: many, font: font, lineSpacing: 4, width: width, maxLines: 6)
+        XCTAssertGreaterThan(full, capped + 8)
+    }
+
+    func testLoadingPanelIsShorterThanALongTranslation() async throws {
+        let loading = fittingSize(original: "Hello")
+        let translated = Array(repeating: "这是一行会把译文区域撑高的文字。", count: 30).joined(separator: "\n")
+        let long = try await fittedTranslationHeight(original: "Hello", translated: translated)
+
+        XCTAssertGreaterThan(loading.height, 80)
+        XCTAssertLessThan(loading.height, 460)
+        XCTAssertGreaterThan(long - loading.height, 100)
+        XCTAssertLessThanOrEqual(long, PopoverContent.maxHeight)
+    }
+
+    func testShortSectionsKeepTheirOwnHeight() {
+        let sections = [
+            PanelSectionMeasurement(role: .source, idealHeight: 32),
+            PanelSectionMeasurement(role: .divider, idealHeight: 1),
+            PanelSectionMeasurement(role: .status, idealHeight: 40),
+            PanelSectionMeasurement(role: .translation, idealHeight: 28),
+            PanelSectionMeasurement(role: .actions, idealHeight: 36)
+        ]
+        let heights = PanelSectionSizer.resolve(sections: sections, limit: 508, sourceCap: 182, spacing: 14)
+        XCTAssertEqual(heights, [32, 1, 40, 28, 36] as [CGFloat])
+    }
+
+    func testSourceCapScrollsLongSourceWhileTranslationStaysCompact() {
+        let sections = [
+            PanelSectionMeasurement(role: .source, idealHeight: 400),
+            PanelSectionMeasurement(role: .divider, idealHeight: 1),
+            PanelSectionMeasurement(role: .status, idealHeight: 40),
+            PanelSectionMeasurement(role: .translation, idealHeight: 28),
+            PanelSectionMeasurement(role: .actions, idealHeight: 36)
+        ]
+        let heights = PanelSectionSizer.resolve(sections: sections, limit: 508, sourceCap: 182, spacing: 14)
+        XCTAssertEqual(heights[0], 182, accuracy: 0.6)
+        XCTAssertEqual(heights[3], 28, accuracy: 0.6)
+        XCTAssertLessThanOrEqual(PanelSectionSizer.stackedHeight(heights, spacing: 14), 508)
+    }
+
+    func testLongTranslationShrinksInsideTheBodyLimit() {
+        let sections = [
+            PanelSectionMeasurement(role: .source, idealHeight: 50),
+            PanelSectionMeasurement(role: .divider, idealHeight: 1),
+            PanelSectionMeasurement(role: .status, idealHeight: 80),
+            PanelSectionMeasurement(role: .translation, idealHeight: 1_000),
+            PanelSectionMeasurement(role: .actions, idealHeight: 36)
+        ]
+        let heights = PanelSectionSizer.resolve(sections: sections, limit: 400, sourceCap: 180, spacing: 14)
+        XCTAssertEqual(heights[0], 50, accuracy: 0.6)
+        XCTAssertEqual(heights[2], 80, accuracy: 0.6)
+        XCTAssertEqual(heights[3], 177, accuracy: 0.6)
+        XCTAssertEqual(PanelSectionSizer.stackedHeight(heights, spacing: 14), 400, accuracy: 0.6)
+    }
+
+    func testLongErrorStaysFullyVisibleUntilTextAreasReachTheirFloor() {
+        let fitting = [
+            PanelSectionMeasurement(role: .source, idealHeight: 40),
+            PanelSectionMeasurement(role: .divider, idealHeight: 1),
+            PanelSectionMeasurement(role: .status, idealHeight: 220),
+            PanelSectionMeasurement(role: .translation, idealHeight: 36),
+            PanelSectionMeasurement(role: .actions, idealHeight: 36)
+        ]
+        let shown = PanelSectionSizer.resolve(sections: fitting, limit: 508, sourceCap: 182, spacing: 14)
+        XCTAssertEqual(shown[2], 220, accuracy: 0.6)
+
+        let overflowing = [
+            PanelSectionMeasurement(role: .source, idealHeight: 40),
+            PanelSectionMeasurement(role: .divider, idealHeight: 1),
+            PanelSectionMeasurement(role: .status, idealHeight: 400),
+            PanelSectionMeasurement(role: .translation, idealHeight: 200),
+            PanelSectionMeasurement(role: .actions, idealHeight: 36)
+        ]
+        let heights = PanelSectionSizer.resolve(sections: overflowing, limit: 300, sourceCap: 182, spacing: 14)
+        XCTAssertEqual(heights[3], 72, accuracy: 0.6)
+        XCTAssertEqual(heights[2], 95, accuracy: 0.6)
+        XCTAssertLessThanOrEqual(PanelSectionSizer.stackedHeight(heights, spacing: 14), 300.5)
+    }
+
+    func testHeightBudgetFollowsTheScreenAndKeepsTheAbsoluteCap() {
+        let tall = PopoverContent.heightBudget(visibleHeight: 1_600)
+        XCTAssertEqual(tall.panelMax, PopoverContent.maxHeight)
+        XCTAssertEqual(tall.bodyMax, PopoverContent.maxScrollableHeight)
+        XCTAssertGreaterThan(tall.sourceMax, 72)
+        XCTAssertLessThanOrEqual(tall.sourceMax, 200)
+
+        let short = PopoverContent.heightBudget(visibleHeight: 480)
+        XCTAssertLessThan(short.panelMax, tall.panelMax)
+        XCTAssertLessThanOrEqual(short.panelMax, 480 - 16)
+        XCTAssertGreaterThanOrEqual(short.panelMax, PopoverContent.minHeight)
+        XCTAssertLessThan(short.bodyMax, short.panelMax)
+        XCTAssertLessThan(short.sourceMax, tall.sourceMax)
+    }
+
+    func testGrowthKeepsTheTopEdgeAndClampsIntoTheScreen() {
+        let visible = CGRect(x: 0, y: 24, width: 1440, height: 800)
+        let current = CGRect(x: 100, y: 80, width: 500, height: 200)
+        let grown = ContentFittingFrame.resized(
+            current: current,
+            newSize: CGSize(width: 500, height: 260),
+            visible: visible,
+            margin: 8
+        )
+        XCTAssertEqual(grown.maxY, 280, accuracy: 0.1)
+        XCTAssertEqual(grown.height, 260, accuracy: 0.1)
+        XCTAssertEqual(grown.minX, 100, accuracy: 0.1)
+
+        let nearBottom = CGRect(x: 100, y: 30, width: 500, height: 200)
+        let clamped = ContentFittingFrame.resized(
+            current: nearBottom,
+            newSize: CGSize(width: 500, height: 400),
+            visible: visible,
+            margin: 8
+        )
+        XCTAssertGreaterThanOrEqual(clamped.minY, visible.minY + 8)
+        XCTAssertLessThanOrEqual(clamped.maxY, visible.maxY - 8)
+        XCTAssertEqual(clamped.height, 400, accuracy: 0.1)
+    }
+
     func testLongTranslationLeavesRoomForHeaderAndFooter() async throws {
         let original = "Long source text"
         let translated = Array(repeating: "长段译文应当在内容区域滚动，顶部语言菜单和底部操作栏始终可用。", count: 100).joined(separator: "\n")
@@ -101,6 +243,28 @@ final class PopoverContentSizingTests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func fittedTranslationHeight(original: String, translated: String) async throws -> CGFloat {
+        let progress = TranslationProgress()
+        progress.start(translator: PanelTranslator(text: translated), originals: [original], target: .chinese)
+        for _ in 0..<50 {
+            if case .success = progress.state { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard case .success = progress.state else {
+            XCTFail("Fixture translation did not complete")
+            return 0
+        }
+        let host = NSHostingController(rootView: PopoverContent(
+            original: original,
+            progress: progress,
+            termProgress: TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original], language: .chinese),
+            speech: SpeechController(),
+            onCancel: {},
+            onRetry: {}
+        ))
+        return host.sizeThatFits(in: NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.maxHeight)).height
     }
 
     private func fittingSize(original: String) -> NSSize {

@@ -11,6 +11,7 @@ final class FloatingScreenshotWindow {
     private let speech = SpeechController()
     private var keyMonitor: Any?
     private var hostingController: NSHostingController<ResultView>?
+    private let fitter: ContentFittingWindow
 
     init(
         image: NSImage,
@@ -21,10 +22,11 @@ final class FloatingScreenshotWindow {
         self.progress = progress
         self.termProgress = termProgress
 
-        let initialSize = NSSize(width: 500, height: 480)
+        let budget = PanelSizeBudget(visibleHeight: PanelScreenPicker.visibleHeight(placement: nil))
+        let initialSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
         window = DraggableWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
-            styleMask: [.borderless, .resizable],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
@@ -35,33 +37,30 @@ final class FloatingScreenshotWindow {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 440, height: 260)
+        window.minSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
+        window.maxSize = NSSize(width: PopoverContent.fixedWidth, height: budget.budget.panelMax)
+        fitter = ContentFittingWindow(window: window, sizeBudget: budget, placement: nil)
 
         var closeRef: (@MainActor () -> Void)?
         var retryRef: (@MainActor () -> Void)?
         var pinRef: (@MainActor (Bool) -> Void)?
+        var layoutRef: (@MainActor () -> Void)?
         let view = ResultView(
             image: image,
             originals: originals,
             progress: progress,
             termProgress: termProgress,
             speech: speech,
+            sizeBudget: budget,
             onClose:  { closeRef?() },
             onRetry:  { retryRef?() },
-            onPin: { pinRef?($0) }
+            onPin: { pinRef?($0) },
+            onLayoutChange: { layoutRef?() }
         )
         let host = NSHostingController(rootView: view)
         host.view.frame = NSRect(origin: .zero, size: initialSize)
         window.contentView = host.view
         hostingController = host
-
-        if let screen = NSScreen.main {
-            let f = screen.visibleFrame
-            window.setFrameOrigin(NSPoint(
-                x: f.midX - initialSize.width / 2,
-                y: f.midY - initialSize.height / 2
-            ))
-        }
 
         window.escapeHandler = { [weak self] in self?.close() }
         closeRef = { [weak self] in self?.close() }
@@ -69,12 +68,15 @@ final class FloatingScreenshotWindow {
         pinRef = { [weak self] pinned in
             self?.window.level = pinned ? .floating : .normal
         }
+        layoutRef = { [weak self] in self?.scheduleContentSizeAdjustment() }
     }
 
     func show() {
         WindowRegistry.shared.add(self)
+        adjustToContentSize()
         window.orderFrontRegardless()
         installEscMonitor()
+        scheduleContentSizeAdjustment()
     }
 
     func close() {
@@ -85,6 +87,24 @@ final class FloatingScreenshotWindow {
         window.orderOut(nil)
         hostingController = nil
         WindowRegistry.shared.remove(self)
+    }
+
+    private func scheduleContentSizeAdjustment() {
+        fitter.scheduleApply { [weak self] probe in
+            guard let host = self?.hostingController else { return nil }
+            let fitting = host.sizeThatFits(in: probe)
+            guard fitting.width.isFinite, fitting.height.isFinite else { return nil }
+            return fitting
+        }
+    }
+
+    private func adjustToContentSize() {
+        fitter.applyNow { [weak self] probe in
+            guard let host = self?.hostingController else { return nil }
+            let fitting = host.sizeThatFits(in: probe)
+            guard fitting.width.isFinite, fitting.height.isFinite else { return nil }
+            return fitting
+        }
     }
 
     private func installEscMonitor() {
@@ -121,9 +141,11 @@ private struct ResultView: View {
     @ObservedObject var progress: TranslationProgress
     @ObservedObject var termProgress: TermExplanationProgress
     @ObservedObject var speech: SpeechController
+    @ObservedObject var sizeBudget: PanelSizeBudget
     var onClose: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
     var onPin: @MainActor (Bool) -> Void
+    var onLayoutChange: @MainActor () -> Void = {}
 
     var body: some View {
         TranslationPanel(
@@ -132,11 +154,13 @@ private struct ResultView: View {
             progress: progress,
             termProgress: termProgress,
             speech: speech,
-            fillsHeight: true,
-            maxBodyHeight: .infinity,
+            heightBudget: sizeBudget.budget,
             onClose: onClose,
             onRetry: onRetry,
-            onPin: onPin
+            onPin: onPin,
+            onLayoutChange: onLayoutChange
         )
+        .frame(width: PopoverContent.fixedWidth, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }

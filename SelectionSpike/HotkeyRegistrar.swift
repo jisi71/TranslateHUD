@@ -100,7 +100,7 @@ final class HotkeyRegistrar {
         return InstallEventHandler(
             GetEventDispatcherTarget(),
             spikeHotKeyEventHandler,
-            UInt32(1),
+            1,
             &spec,
             Unmanaged.passUnretained(self).toOpaque(),
             &eventHandler
@@ -147,7 +147,7 @@ private func spikeHotKeyEventHandler(
             EventParamName(kEventParamDirectObject),
             EventParamType(typeEventHotKeyID),
             nil,
-            ByteCount(buffer.count),
+            MemoryLayout<EventHotKeyID>.size,
             nil,
             buffer.baseAddress
         )

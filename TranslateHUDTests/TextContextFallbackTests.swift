@@ -947,6 +947,142 @@ final class TextContextFallbackTests: XCTestCase {
         XCTAssertEqual(negativeScans, 1)
     }
 
+    func testRecordedEnhancedIsUsedImmediatelyAndFallsBackAfterItMisses() {
+        let host = ContextHostIdentity(bundleID: "com.tencent.flue.WeChatAppEx", pid: 42, kind: .embeddedEngine)
+        var actions: [AccessibilityEnablement] = []
+
+        var first = TextContextEngine(
+            hostProvider: { host },
+            recordedMethod: { .enhanced },
+            enable: { action, enabled in
+                XCTAssertEqual(enabled.pid, host.pid)
+                actions.append(action)
+                return true
+            },
+            reload: { nil }
+        )
+        let missed = first.context(focused: FakeTextNode(id: "article", role: "AXGroup"), selected: "文章")
+        XCTAssertNil(missed.context)
+        XCTAssertEqual(missed.enablement, .enhanced)
+        XCTAssertFalse(missed.invalidatedShortcut)
+        XCTAssertFalse(missed.ladderExhausted)
+        XCTAssertEqual(actions, [.enhanced])
+
+        let document = markerNode(document: "前文 文章 后文", selected: "文章", support: [.paragraph, .length])
+        var warmed = TextContextEngine(
+            memory: first.memory,
+            hostProvider: { host },
+            recordedMethod: { .enhanced },
+            enable: { action, _ in
+                actions.append(action)
+                return true
+            }
+        )
+        let hit = warmed.context(focused: document, selected: "文章")
+        XCTAssertEqual(hit.source, .textMarkers)
+        XCTAssertNil(hit.enablement)
+        XCTAssertEqual(actions, [.enhanced])
+        XCTAssertEqual(
+            ContextEnablementLearning.method(
+                enablementThisCall: hit.enablement,
+                retainedPhase: warmed.memory.phase(for: host)
+            ),
+            .enhanced
+        )
+
+        var fallback = TextContextEngine(
+            memory: first.memory,
+            hostProvider: { host },
+            recordedMethod: { .enhanced },
+            enable: { action, _ in
+                actions.append(action)
+                return true
+            },
+            reload: { nil }
+        )
+        let again = fallback.context(focused: FakeTextNode(id: "still", role: "AXGroup"), selected: "文章")
+        XCTAssertEqual(actions, [.enhanced, .manual])
+        XCTAssertTrue(again.invalidatedShortcut)
+        XCTAssertFalse(again.ladderExhausted)
+
+        var done = TextContextEngine(
+            memory: fallback.memory,
+            hostProvider: { host },
+            recordedMethod: { nil },
+            enable: { action, _ in
+                actions.append(action)
+                return true
+            }
+        )
+        let exhausted = done.context(focused: FakeTextNode(id: "empty", role: "AXGroup"), selected: "文章")
+        XCTAssertNil(exhausted.context)
+        XCTAssertTrue(exhausted.ladderExhausted)
+        XCTAssertEqual(actions, [.enhanced, .manual])
+    }
+
+    func testNothingWorksSkipsTheLadderUntilTheRecordIsCleared() {
+        let host = ContextHostIdentity(bundleID: "com.tencent.xinWeChat", pid: 8, kind: .other)
+        var actions: [AccessibilityEnablement] = []
+        var engine = TextContextEngine(
+            hostProvider: { host },
+            recordedMethod: { .nothingWorks },
+            enable: { action, _ in
+                actions.append(action)
+                return true
+            }
+        )
+        let skipped = engine.context(focused: FakeTextNode(id: "chat", role: "AXGroup"), selected: "你好")
+        XCTAssertNil(skipped.context)
+        XCTAssertTrue(skipped.ladderExhausted)
+        XCTAssertFalse(skipped.invalidatedShortcut)
+        XCTAssertTrue(actions.isEmpty)
+        XCTAssertNil(engine.memory.phase(for: host))
+    }
+
+    func testStaleEnhancedRecordOnABrowserFallsBackToManual() {
+        let host = ContextHostIdentity(bundleID: "com.google.Chrome", pid: 5, kind: .chromiumBrowser)
+        var actions: [AccessibilityEnablement] = []
+        var engine = TextContextEngine(
+            hostProvider: { host },
+            recordedMethod: { .enhanced },
+            enable: { action, _ in
+                actions.append(action)
+                return true
+            },
+            reload: { nil }
+        )
+        let outcome = engine.context(focused: FakeTextNode(id: "page", role: "AXWebArea"), selected: "word")
+        XCTAssertEqual(actions, [.manual])
+        XCTAssertTrue(outcome.invalidatedShortcut)
+        XCTAssertFalse(outcome.ladderExhausted)
+        XCTAssertNil(TextContextEngine.shortcut(.enhanced, host: host))
+    }
+
+    func testRecordedNoneMissStartsTheLadder() {
+        let host = ContextHostIdentity(bundleID: "com.apple.TextEdit", pid: 3, kind: .other)
+        var actions: [AccessibilityEnablement] = []
+        var engine = TextContextEngine(
+            hostProvider: { host },
+            recordedMethod: { .none },
+            enable: { action, _ in
+                actions.append(action)
+                return true
+            },
+            reload: { nil }
+        )
+        let outcome = engine.context(focused: FakeTextNode(id: "note", role: "AXGroup"), selected: "word")
+        XCTAssertEqual(actions, [.manual])
+        XCTAssertTrue(outcome.invalidatedShortcut)
+        XCTAssertEqual(
+            ContextEnablementLearning.method(enablementThisCall: nil, retainedPhase: nil),
+            .none
+        )
+        XCTAssertEqual(
+            ContextEnablementLearning.method(enablementThisCall: .manual, retainedPhase: .enhanced),
+            .manual
+        )
+    }
+
     private var fixtureRoots: [URL] = []
 
     override func tearDown() {

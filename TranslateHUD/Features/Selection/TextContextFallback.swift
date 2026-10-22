@@ -24,6 +24,11 @@ import Foundation
 ///
 /// Nothing here changes the selection, sends keystrokes, or writes document text.
 ///
+/// When a method produces context, that choice is remembered per app version
+/// (`RecordedContextMethod`). A later miss for the same version jumps to the
+/// remembered switch instead of repeating the ladder. `nothingWorks` is remembered
+/// too, so the ladder stays idle until the app version changes or seven days pass.
+///
 /// Ambiguous selection inside assembled sibling text: a marker or AX range wins. Without one,
 /// the occurrence in the focused element's own piece wins; otherwise the first occurrence
 /// in reading order is used. Layer 0 does not adopt that rule.
@@ -71,6 +76,8 @@ enum AccessibilityEnablement: Equatable {
 /// Remembers which accessibility attribute was set for a process.
 /// Keyed by bundle id and pid so a relaunch (new pid) can be enabled again,
 /// while the same process is not toggled on every selection.
+/// `phase(for:)` is the strongest switch already set. Both switches can be recorded
+/// when a remembered shortcut fails and the ladder tries the other one.
 struct AccessibilityEnablementMemory: Equatable {
     enum Phase: Equatable {
         case manual
@@ -82,15 +89,34 @@ struct AccessibilityEnablementMemory: Equatable {
         var pid: pid_t
     }
 
-    private var phases: [Key: Phase] = [:]
+    private var applied: [Key: Set<Phase>] = [:]
 
     func phase(for host: ContextHostIdentity) -> Phase? {
-        phases[Key(bundleID: host.bundleID, pid: host.pid)]
+        let flags = applied[Key(bundleID: host.bundleID, pid: host.pid)] ?? []
+        if flags.contains(.enhanced) { return .enhanced }
+        if flags.contains(.manual) { return .manual }
+        return nil
+    }
+
+    func contains(_ phase: Phase, for host: ContextHostIdentity) -> Bool {
+        applied[Key(bundleID: host.bundleID, pid: host.pid)]?.contains(phase) == true
     }
 
     mutating func record(_ host: ContextHostIdentity, phase: Phase) {
-        phases[Key(bundleID: host.bundleID, pid: host.pid)] = phase
+        let key = Key(bundleID: host.bundleID, pid: host.pid)
+        var flags = applied[key] ?? []
+        flags.insert(phase)
+        applied[key] = flags
     }
+}
+
+/// What produced surrounding text for one app version, or the conclusion that no switch did.
+/// Stored without selection text. `nothingWorks` expires; the others stay until the version changes.
+enum RecordedContextMethod: String, Codable, Equatable {
+    case none
+    case manual
+    case enhanced
+    case nothingWorks
 }
 
 enum ContextHostClassifier {
@@ -207,6 +233,10 @@ struct TextContextOutcome: Equatable {
     var bundleID: String? = nil
     var pid: pid_t? = nil
     var timedOut: Bool = false
+    /// The final rung was already set and this selection still has no context.
+    var ladderExhausted: Bool = false
+    /// A remembered method was already in effect and still missed. The stored choice should be dropped.
+    var invalidatedShortcut: Bool = false
 }
 
 struct TextContextEngine {
@@ -216,6 +246,8 @@ struct TextContextEngine {
     var hostProvider: () -> ContextHostIdentity = {
         ContextHostIdentity(bundleID: nil, pid: 0, kind: .other)
     }
+    /// Effective record for this app version. `nil` means there is nothing to reuse.
+    var recordedMethod: () -> RecordedContextMethod? = { nil }
     var enable: (AccessibilityEnablement, ContextHostIdentity) -> Bool = { _, _ in false }
     var reload: () -> (any TextContextNode)? = { nil }
 
@@ -245,20 +277,64 @@ struct TextContextEngine {
         let host = hostProvider()
         guard host.pid > 0, host.kind != .excluded else { return TextContextOutcome() }
 
-        let action: AccessibilityEnablement
-        switch (host.kind, memory.phase(for: host)) {
-        case (_, nil):
-            action = .manual
-        case (.embeddedEngine, .manual):
-            // The manual switch was already tried on an earlier selection and the tree
-            // is still unreadable. Enhanced UI can disturb window animations and
-            // positioning for the rest of the process lifetime, so ordinary apps and
-            // standalone browsers never reach this arm.
-            action = .enhanced
-        default:
-            return TextContextOutcome(bundleID: host.bundleID, pid: host.pid)
+        let recorded = recordedMethod()
+        if recorded == .nothingWorks {
+            return TextContextOutcome(bundleID: host.bundleID, pid: host.pid, ladderExhausted: true)
         }
 
+        // A remembered switch that is not on this process yet is the only step this
+        // selection takes. The immediate retry can miss while the tree warms up;
+        // the next selection is what decides whether the shortcut failed.
+        if let shortcut = Self.shortcut(recorded, host: host),
+           !memory.contains(Self.rememberedPhase(shortcut), for: host) {
+            return apply(shortcut, host: host, selected: selected)
+        }
+
+        let shortcutFailed = recorded == .none || recorded == .manual || recorded == .enhanced
+        if !memory.contains(.manual, for: host) {
+            var outcome = apply(.manual, host: host, selected: selected)
+            outcome.invalidatedShortcut = shortcutFailed
+            return outcome
+        }
+        if host.kind == .embeddedEngine, !memory.contains(.enhanced, for: host) {
+            // Manual was already tried and the tree is still unreadable. Enhanced UI
+            // can disturb window animations and positioning for the rest of the
+            // process lifetime, so ordinary apps and standalone browsers never reach here.
+            var outcome = apply(.enhanced, host: host, selected: selected)
+            outcome.invalidatedShortcut = shortcutFailed
+            return outcome
+        }
+        return TextContextOutcome(
+            bundleID: host.bundleID,
+            pid: host.pid,
+            ladderExhausted: true,
+            invalidatedShortcut: shortcutFailed
+        )
+    }
+
+    /// Enhanced is never chosen for a standalone Chromium browser, even if a stale record asks for it.
+    static func shortcut(_ recorded: RecordedContextMethod?, host: ContextHostIdentity) -> AccessibilityEnablement? {
+        switch recorded {
+        case .manual:
+            return .manual
+        case .enhanced:
+            if host.kind == .chromiumBrowser { return nil }
+            if ContextHostClassifier.isStandaloneBrowser(bundleID: host.bundleID) { return nil }
+            return .enhanced
+        default:
+            return nil
+        }
+    }
+
+    private static func rememberedPhase(_ enablement: AccessibilityEnablement) -> AccessibilityEnablementMemory.Phase {
+        enablement == .manual ? .manual : .enhanced
+    }
+
+    private mutating func apply(
+        _ action: AccessibilityEnablement,
+        host: ContextHostIdentity,
+        selected: String
+    ) -> TextContextOutcome {
         let applied = enable(action, host)
         memory.record(host, phase: action == .manual ? .manual : .enhanced)
         var outcome = TextContextOutcome(

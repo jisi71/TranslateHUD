@@ -80,7 +80,11 @@ enum ScreenshotFlow {
 
 /// 用于「OCR 没识别出任何文字」时把 progress 推进到 success(空)，避免 UI 卡在 loading。
 private struct NoOpTranslator: Translator {
-    func translate(_ texts: [String], to target: TargetLanguage) async throws -> [String] {
+    func translate(
+        _ texts: [String],
+        to target: TargetLanguage,
+        context: SelectionFetcher.TextContext?
+    ) async throws -> [String] {
         return Array(repeating: "", count: texts.count)
     }
 }

@@ -30,6 +30,7 @@ final class TranslationProgress: ObservableObject {
     private var task: Task<Void, Never>?
     private var elapsedTimer: Timer?
     private var lastOriginals: [String] = []
+    private var lastContext: SelectionFetcher.TextContext?
     private var lastWasStreaming = false
     private var requestID = UUID()
 
@@ -38,9 +39,15 @@ final class TranslationProgress: ObservableObject {
     }
 
     /// 批量翻译（用于截图：多行 OCR 结果，需要按下标对齐）。
-    func start(translator: Translator, originals: [String], target: TargetLanguage) {
+    func start(
+        translator: Translator,
+        originals: [String],
+        target: TargetLanguage,
+        context: SelectionFetcher.TextContext? = nil
+    ) {
         cancel()
         lastOriginals = originals
+        lastContext = context
         lastWasStreaming = false
         targetLanguage = target
         state = .loading
@@ -53,7 +60,7 @@ final class TranslationProgress: ObservableObject {
             guard let self else { return }
             do {
                 let translations = try await withTimeout(seconds: self.timeoutSeconds) {
-                    try await translator.translate(originals, to: target)
+                    try await translator.translate(originals, to: target, context: context)
                 }
                 guard !Task.isCancelled, self.requestID == currentID else { return }
                 guard translations.count == originals.count else {
@@ -85,9 +92,15 @@ final class TranslationProgress: ObservableObject {
 
     /// 流式翻译单条文本（用于选区翻译；体感速度比批量快）。
     /// 收尾时检查换行数：如果输入有 ≥2 个换行而输出只有 0 个，自动 fallback 走批量请求。
-    func startStreaming(translator: Translator, original: String, target: TargetLanguage) {
+    func startStreaming(
+        translator: Translator,
+        original: String,
+        target: TargetLanguage,
+        context: SelectionFetcher.TextContext? = nil
+    ) {
         cancel()
         lastOriginals = [original]
+        lastContext = context
         lastWasStreaming = true
         targetLanguage = target
         state = .loading
@@ -97,11 +110,11 @@ final class TranslationProgress: ObservableObject {
 
         let timeoutSeconds = self.timeoutSeconds
         let currentID = requestID
-        task = Task.detached { [weak self, translator, original, target, timeoutSeconds, currentID] in
+        task = Task.detached { [weak self, translator, original, target, context, timeoutSeconds, currentID] in
             do {
-                let translated = try await withStreamingTimeout(idleSeconds: timeoutSeconds, totalSeconds: 120) { [weak self, translator, original, target] activity in
+                let translated = try await withStreamingTimeout(idleSeconds: timeoutSeconds, totalSeconds: 120) { [weak self, translator, original, target, context] activity in
                     var lastPartial = ""
-                    for try await event in translator.translateStreaming(original, to: target) {
+                    for try await event in translator.translateStreaming(original, to: target, context: context) {
                         try Task.checkCancellation()
                         switch event {
                         case .delta(let partial):
@@ -123,7 +136,12 @@ final class TranslationProgress: ObservableObject {
                     let outputNL = lastPartial.filter { $0 == "\n" }.count
                     if inputNL >= 2 && outputNL != inputNL {
                         AppLog.info("流式输出行数不匹配（inNL=\(inputNL) outNL=\(outputNL)），fallback 逐行 JSON 批量")
-                        return try await translateLineByLine(translator: translator, original: original, target: target)
+                        return try await translateLineByLine(
+                            translator: translator,
+                            original: original,
+                            target: target,
+                            context: context
+                        )
                     }
                     guard !lastPartial.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                         throw TranslationError.parse("服务返回了空译文，请重试或更换模型。")
@@ -171,9 +189,9 @@ final class TranslationProgress: ObservableObject {
         )
         let translator = OpenAICompatibleTranslator(config: config)
         if lastWasStreaming, let first = lastOriginals.first {
-            startStreaming(translator: translator, original: first, target: target)
+            startStreaming(translator: translator, original: first, target: target, context: lastContext)
         } else {
-            start(translator: translator, originals: lastOriginals, target: target)
+            start(translator: translator, originals: lastOriginals, target: target, context: lastContext)
         }
     }
 
@@ -224,10 +242,11 @@ final class TranslationProgress: ObservableObject {
 private func translateLineByLine(
     translator: Translator,
     original: String,
-    target: TargetLanguage
+    target: TargetLanguage,
+    context: SelectionFetcher.TextContext?
 ) async throws -> String {
     let lines = original.components(separatedBy: "\n")
-    let translated = try await translator.translate(lines, to: target)
+    let translated = try await translator.translate(lines, to: target, context: context)
     guard translated.count == lines.count else {
         throw TranslationError.parse("逐行译文数量与原文不一致，结果不完整。请重试或缩短原文。")
     }

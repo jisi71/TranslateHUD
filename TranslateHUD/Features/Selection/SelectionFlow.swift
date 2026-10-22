@@ -24,7 +24,8 @@ enum SelectionFlow {
         let termProgress = TermExplanationProgress(
             explainer: OpenAICompatibleTermExplainer(config: config),
             texts: [selection.text],
-            language: .chinese
+            language: .chinese,
+            context: selection.context
         )
 
         // 3. 立刻展示浮窗（loading 状态）
@@ -41,6 +42,11 @@ enum SelectionFlow {
 
         // 4. 异步流式翻译；progress 状态变化驱动浮窗 UI
         let translator = OpenAICompatibleTranslator(config: config)
-        progress.startStreaming(translator: translator, original: selection.text, target: target)
+        progress.startStreaming(
+            translator: translator,
+            original: selection.text,
+            target: target,
+            context: selection.context
+        )
     }
 }

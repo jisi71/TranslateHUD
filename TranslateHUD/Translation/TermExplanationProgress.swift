@@ -16,6 +16,7 @@ final class TermExplanationProgress: ObservableObject {
     private let explainer: any TermExplainer
     private let texts: [String]
     private let language: TargetLanguage
+    private let context: SelectionFetcher.TextContext?
     private let timeoutSeconds: TimeInterval
     private var task: Task<Void, Never>?
     private var requestID = UUID()
@@ -25,11 +26,13 @@ final class TermExplanationProgress: ObservableObject {
         explainer: any TermExplainer,
         texts: [String],
         language: TargetLanguage,
+        context: SelectionFetcher.TextContext? = nil,
         timeoutSeconds: TimeInterval = 20
     ) {
         self.explainer = explainer
         self.texts = texts
         self.language = language
+        self.context = context
         self.timeoutSeconds = timeoutSeconds
     }
 
@@ -67,12 +70,13 @@ final class TermExplanationProgress: ObservableObject {
         let explainer = self.explainer
         let texts = self.texts
         let language = self.language
+        let context = self.context
         let timeoutSeconds = self.timeoutSeconds
 
         task = Task { [weak self] in
             do {
                 let terms = try await withTimeout(seconds: timeoutSeconds) {
-                    try await explainer.explain(texts: texts, in: language)
+                    try await explainer.explain(texts: texts, in: language, context: context)
                 }
                 try Task.checkCancellation()
                 guard let self, self.requestID == currentID else { return }

@@ -290,14 +290,22 @@ final class PopoverContentSizingTests: XCTestCase {
 }
 
 private struct EmptyTermExplainer: TermExplainer {
-    func explain(texts: [String], in language: TargetLanguage) async throws -> [TermExplanation] {
+    func explain(
+        texts: [String],
+        in language: TargetLanguage,
+        context: SelectionFetcher.TextContext?
+    ) async throws -> [TermExplanation] {
         []
     }
 }
 
 private struct PanelTranslator: Translator {
     let text: String
-    func translate(_ texts: [String], to target: TargetLanguage) async throws -> [String] {
+    func translate(
+        _ texts: [String],
+        to target: TargetLanguage,
+        context: SelectionFetcher.TextContext?
+    ) async throws -> [String] {
         texts.map { _ in text }
     }
 }

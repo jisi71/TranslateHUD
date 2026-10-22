@@ -124,9 +124,11 @@ final class TermExplanationTests: XCTestCase {
         progress.toggleExpanded()
         let reachedEmpty = await waitUntil { progress.state == .empty }
         let batches = await explainer.receivedBatches()
+        let contexts = await explainer.receivedContexts()
 
         XCTAssertTrue(reachedEmpty)
         XCTAssertEqual(batches, [lines])
+        XCTAssertEqual(contexts, [nil])
     }
 
     func testFailureCanRetry() async {
@@ -176,6 +178,24 @@ final class TermExplanationTests: XCTestCase {
         XCTAssertTrue(observedCancellation)
     }
 
+    func testSelectionContextIsForwardedWhenTheUserExpandsTerms() async {
+        let explainer = ScriptedTermExplainer(outcomes: [.success([])])
+        let context = SelectionFetcher.TextContext(before: "mitochondrial ", after: " membrane")
+        let progress = TermExplanationProgress(
+            explainer: explainer,
+            texts: ["cell"],
+            language: .chinese,
+            context: context
+        )
+
+        progress.toggleExpanded()
+
+        let reachedEmpty = await waitUntil { progress.state == .empty }
+        let contexts = await explainer.receivedContexts()
+        XCTAssertTrue(reachedEmpty)
+        XCTAssertEqual(contexts, [context])
+    }
+
     func testBlankSpeechInputDoesNotStartPlayback() {
         let speech = SpeechController()
         speech.toggle(text: "  \n", id: "blank")
@@ -207,15 +227,21 @@ private actor ScriptedTermExplainer: TermExplainer {
     private var calls = 0
     private var cancellations = 0
     private var batches: [[String]] = []
+    private var contexts: [SelectionFetcher.TextContext?] = []
 
     init(outcomes: [Outcome], delayNanoseconds: UInt64 = 0) {
         self.outcomes = outcomes
         self.delayNanoseconds = delayNanoseconds
     }
 
-    func explain(texts: [String], in language: TargetLanguage) async throws -> [TermExplanation] {
+    func explain(
+        texts: [String],
+        in language: TargetLanguage,
+        context: SelectionFetcher.TextContext? = nil
+    ) async throws -> [TermExplanation] {
         calls += 1
         batches.append(texts)
+        contexts.append(context)
         if delayNanoseconds > 0 {
             do {
                 try await Task.sleep(nanoseconds: delayNanoseconds)
@@ -234,6 +260,7 @@ private actor ScriptedTermExplainer: TermExplainer {
     func callCount() -> Int { calls }
     func cancelledCount() -> Int { cancellations }
     func receivedBatches() -> [[String]] { batches }
+    func receivedContexts() -> [SelectionFetcher.TextContext?] { contexts }
 }
 
 private struct TestTermError: Error, LocalizedError, Sendable {

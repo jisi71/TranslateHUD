@@ -195,9 +195,17 @@ final class ServiceErrorMessageTests: XCTestCase {
 
 private struct FailingTranslator: Translator {
     let error: Error
-    func translate(_ texts: [String], to target: TargetLanguage) async throws -> [String] { throw error }
+    func translate(
+        _ texts: [String],
+        to target: TargetLanguage,
+        context: SelectionFetcher.TextContext?
+    ) async throws -> [String] { throw error }
 }
 
 private struct EmptyExplainer: TermExplainer {
-    func explain(texts: [String], in language: TargetLanguage) async throws -> [TermExplanation] { [] }
+    func explain(
+        texts: [String],
+        in language: TargetLanguage,
+        context: SelectionFetcher.TextContext?
+    ) async throws -> [TermExplanation] { [] }
 }

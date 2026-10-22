@@ -19,7 +19,11 @@ struct OpenAICompatibleTranslator: Translator {
 
     // MARK: - 批量
 
-    func translate(_ texts: [String], to target: TargetLanguage) async throws -> [String] {
+    func translate(
+        _ texts: [String],
+        to target: TargetLanguage,
+        context: SelectionFetcher.TextContext? = nil
+    ) async throws -> [String] {
         guard !texts.isEmpty else { throw TranslationError.empty }
 
         var strict = false
@@ -29,7 +33,13 @@ struct OpenAICompatibleTranslator: Translator {
             try Task.checkCancellation()
             let result: [String]
             do {
-                result = try await performBatch(texts: texts, to: target, strict: strict, using: retrySession ?? session)
+                result = try await performBatch(
+                    texts: texts,
+                    to: target,
+                    strict: strict,
+                    context: context,
+                    using: retrySession ?? session
+                )
             } catch TranslationError.parse where !strict && TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) {
                 AppLog.info("批量响应结构不完整，执行一次严格重试")
                 strict = true
@@ -60,7 +70,13 @@ struct OpenAICompatibleTranslator: Translator {
         throw TranslationError.quality("翻译未能在请求次数上限内完成，请重新发起；若持续失败，请更换模型。")
     }
 
-    private func performBatch(texts: [String], to target: TargetLanguage, strict: Bool, using session: URLSession) async throws -> [String] {
+    private func performBatch(
+        texts: [String],
+        to target: TargetLanguage,
+        strict: Bool,
+        context: SelectionFetcher.TextContext?,
+        using session: URLSession
+    ) async throws -> [String] {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
             throw TranslationError.missingConfig(config.validationMessage ?? "请打开设置检查 Base URL 和 Model。")
         }
@@ -98,12 +114,19 @@ struct OpenAICompatibleTranslator: Translator {
         let inputArr: [[String: Any]] = texts.enumerated().map { ["i": $0.offset, "text": $0.element] }
         let inputData = try JSONSerialization.data(withJSONObject: inputArr)
         let inputStr  = String(data: inputData, encoding: .utf8) ?? "[]"
+        let framed = TranslationContextPrompt.frame(
+            marked: texts.joined(separator: "\n"),
+            translating: inputStr,
+            context: context
+        )
+        let systemContent = framed.map { systemPrompt + $0.translationAddendum } ?? systemPrompt
+        let userContent = framed?.userMessage ?? inputStr
 
         var body: [String: Any] = [
             "model": config.model.trimmingCharacters(in: .whitespacesAndNewlines),
             "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user",   "content": inputStr]
+                ["role": "system", "content": systemContent],
+                ["role": "user",   "content": userContent]
             ],
             "temperature": strict ? 0.4 : 0.2
         ]
@@ -194,7 +217,11 @@ struct OpenAICompatibleTranslator: Translator {
 
     // MARK: - 流式
 
-    func translateStreaming(_ text: String, to target: TargetLanguage) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
+    func translateStreaming(
+        _ text: String,
+        to target: TargetLanguage,
+        context: SelectionFetcher.TextContext? = nil
+    ) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 var strict = false
@@ -208,6 +235,7 @@ struct OpenAICompatibleTranslator: Translator {
                                 text: text,
                                 to: target,
                                 strict: strict,
+                                context: context,
                                 using: retrySession ?? session,
                                 continuation: continuation
                             )
@@ -250,13 +278,19 @@ struct OpenAICompatibleTranslator: Translator {
         text: String,
         to target: TargetLanguage,
         strict: Bool,
+        context: SelectionFetcher.TextContext?,
         using session: URLSession,
         continuation: AsyncThrowingStream<TranslationStreamEvent, Error>.Continuation
     ) async throws -> String {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
             throw TranslationError.missingConfig(config.validationMessage ?? "请打开设置检查 Base URL 和 Model。")
         }
-        AppLog.info("流式请求(strict=\(strict)) target=\(target.rawValue) inLen=\(text.count)")
+        let framed = TranslationContextPrompt.frame(marked: text, translating: text, context: context)
+        var requestNote = "流式请求(strict=\(strict)) target=\(target.rawValue) inLen=\(text.count)"
+        if let framed {
+            requestNote += " ctx=\(framed.before.count)+\(framed.after.count)"
+        }
+        AppLog.info(requestNote)
 
         let example = exampleBlock(for: target)
         let strictPrefix = strict ? """
@@ -290,12 +324,15 @@ struct OpenAICompatibleTranslator: Translator {
         \(example)
         Output ONLY the translated text. No quotes wrapping the whole output, no explanations, no preamble. Preserve markdown fences only when they already exist in the input; never add them.
         """
+        // `text` remains the raw selection for echo checks. The user message may also carry the passage.
+        let systemContent = framed.map { systemPrompt + $0.translationAddendum } ?? systemPrompt
+        let userContent = framed?.userMessage ?? text
 
         var body: [String: Any] = [
             "model": config.model.trimmingCharacters(in: .whitespacesAndNewlines),
             "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user",   "content": text]
+                ["role": "system", "content": systemContent],
+                ["role": "user",   "content": userContent]
             ],
             "temperature": strict ? 0.4 : 0.2,
             "stream": true

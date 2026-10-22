@@ -186,16 +186,34 @@ final class PopoverContentSizingTests: XCTestCase {
 
     func testGrowthKeepsTheTopEdgeAndClampsIntoTheScreen() {
         let visible = CGRect(x: 0, y: 24, width: 1440, height: 800)
-        let current = CGRect(x: 100, y: 80, width: 500, height: 200)
+        let margin: CGFloat = 8
+        // Room under the top edge: a taller frame stays anchored there.
+        // current.maxY is 400; the new bottom (140) is inside the inset safe area.
+        let current = CGRect(x: 100, y: 200, width: 500, height: 200)
         let grown = ContentFittingFrame.resized(
             current: current,
             newSize: CGSize(width: 500, height: 260),
             visible: visible,
-            margin: 8
+            margin: margin
         )
-        XCTAssertEqual(grown.maxY, 280, accuracy: 0.1)
+        XCTAssertEqual(grown.maxY, current.maxY, accuracy: 0.1)
         XCTAssertEqual(grown.height, 260, accuracy: 0.1)
         XCTAssertEqual(grown.minX, 100, accuracy: 0.1)
+
+        // This lower frame cannot keep maxY at 280. Height 260 would put minY at 20,
+        // below visible.minY (24) plus the 8pt margin. The panel slides up to that edge.
+        let low = CGRect(x: 100, y: 80, width: 500, height: 200)
+        let lifted = ContentFittingFrame.resized(
+            current: low,
+            newSize: CGSize(width: 500, height: 260),
+            visible: visible,
+            margin: margin
+        )
+        let safeMinY = visible.minY + margin
+        XCTAssertEqual(lifted.minY, safeMinY, accuracy: 0.1)
+        XCTAssertEqual(lifted.maxY, safeMinY + 260, accuracy: 0.1)
+        XCTAssertEqual(lifted.height, 260, accuracy: 0.1)
+        XCTAssertEqual(lifted.minX, 100, accuracy: 0.1)
 
         let nearBottom = CGRect(x: 100, y: 30, width: 500, height: 200)
         let clamped = ContentFittingFrame.resized(
@@ -290,14 +308,22 @@ final class PopoverContentSizingTests: XCTestCase {
 }
 
 private struct EmptyTermExplainer: TermExplainer {
-    func explain(texts: [String], in language: TargetLanguage) async throws -> [TermExplanation] {
+    func explain(
+        texts: [String],
+        in language: TargetLanguage,
+        context: SelectionFetcher.TextContext?
+    ) async throws -> [TermExplanation] {
         []
     }
 }
 
 private struct PanelTranslator: Translator {
     let text: String
-    func translate(_ texts: [String], to target: TargetLanguage) async throws -> [String] {
+    func translate(
+        _ texts: [String],
+        to target: TargetLanguage,
+        context: SelectionFetcher.TextContext?
+    ) async throws -> [String] {
         texts.map { _ in text }
     }
 }

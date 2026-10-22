@@ -11,7 +11,8 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
 
     func explain(
         texts: [String],
-        in language: TargetLanguage
+        in language: TargetLanguage,
+        context: SelectionFetcher.TextContext? = nil
     ) async throws -> [TermExplanation] {
         _ = language
         let cleanedTexts = texts
@@ -23,7 +24,12 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
         }
 
         for strict in [false, true] {
-            let terms = try await performRequest(texts: cleanedTexts, endpoint: endpoint, strict: strict)
+            let terms = try await performRequest(
+                texts: cleanedTexts,
+                endpoint: endpoint,
+                strict: strict,
+                context: context
+            )
             if terms.isEmpty || Self.explanationsAreChinese(terms) { return terms }
             if !strict {
                 AppLog.info("名词解释首轮包含非中文内容，执行一次严格中文重试")
@@ -32,7 +38,12 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
         throw TermExplanationError.invalidResponse("模型连续两次未按要求返回中文解释，请更换模型后重试。")
     }
 
-    private func performRequest(texts: [String], endpoint: URL, strict: Bool) async throws -> [TermExplanation] {
+    private func performRequest(
+        texts: [String],
+        endpoint: URL,
+        strict: Bool,
+        context: SelectionFetcher.TextContext?
+    ) async throws -> [TermExplanation] {
         let strictInstruction = strict
             ? "CRITICAL: The previous response used English explanations. Every explanation MUST contain Simplified Chinese characters."
             : ""
@@ -44,13 +55,26 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
         If there are no qualifying terms, return {"terms":[]}.
         Return strict JSON only: {"terms":[{"term":"...","explanation":"..."}]}. No markdown or additional keys.
         """
-
-        let inputData = try JSONSerialization.data(withJSONObject: ["texts": texts])
+        let framed = TranslationContextPrompt.frame(
+            marked: texts.joined(separator: "\n"),
+            translating: texts.joined(separator: "\n"),
+            context: context
+        )
+        let systemContent = framed.map { systemPrompt + $0.explanationAddendum } ?? systemPrompt
+        let inputData: Data
+        if let framed {
+            inputData = try JSONSerialization.data(withJSONObject: [
+                "texts": texts,
+                "reference_passage": framed.passage
+            ])
+        } else {
+            inputData = try JSONSerialization.data(withJSONObject: ["texts": texts])
+        }
         let input = String(data: inputData, encoding: .utf8) ?? "{\"texts\":[]}"
         var body: [String: Any] = [
             "model": config.model,
             "messages": [
-                ["role": "system", "content": systemPrompt],
+                ["role": "system", "content": systemContent],
                 ["role": "user", "content": input]
             ],
             "temperature": 0.1

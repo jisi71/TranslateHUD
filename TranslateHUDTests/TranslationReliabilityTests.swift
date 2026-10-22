@@ -356,14 +356,22 @@ final class TranslationReliabilityTests: XCTestCase {
 }
 
 private struct FixedTranslator: Translator {
-    func translate(_ texts: [String], to target: TargetLanguage) async throws -> [String] {
+    func translate(
+        _ texts: [String],
+        to target: TargetLanguage,
+        context: SelectionFetcher.TextContext?
+    ) async throws -> [String] {
         texts.map { _ in "你好" }
     }
 }
 
 private actor LateFailureTranslator: Translator {
     private(set) var started = false
-    func translate(_ texts: [String], to target: TargetLanguage) async throws -> [String] {
+    func translate(
+        _ texts: [String],
+        to target: TargetLanguage,
+        context: SelectionFetcher.TextContext?
+    ) async throws -> [String] {
         started = true
         do { try await Task.sleep(for: .seconds(2)) }
         catch {

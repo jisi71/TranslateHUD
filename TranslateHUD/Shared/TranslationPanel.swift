@@ -203,7 +203,8 @@ struct TranslationPanel: View {
             width: max(PopoverContent.translationTextWidth, 1),
             maxLines: nil
         )
-        return HeightFitting(tracksTail: true, tailToken: translated.count) {
+        // Stay on the first line while text streams in. Do not follow the tail.
+        return HeightFitting {
             Text(translated)
                 .font(.system(size: 15))
                 .lineSpacing(5)
@@ -503,9 +504,9 @@ private struct MaxHeightLayout: Layout {
 }
 
 /// Reports the content's height, and scrolls only when the parent offers less than that.
+/// The scroll position starts at the top. It stays there while the content grows
+/// (streaming translation) until the person scrolls; a new panel starts at the top again.
 private struct HeightFitting<Content: View>: View {
-    var tracksTail = false
-    var tailToken = 0
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -516,28 +517,14 @@ private struct HeightFitting<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    @ViewBuilder
     private var scrolling: some View {
-        if tracksTail {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    ProposedWidth {
-                        content()
-                            .id("section-tail")
-                    }
-                }
-                .scrollBounceBehavior(.basedOnSize)
-                .onAppear { proxy.scrollTo("section-tail", anchor: .bottom) }
-                .onChange(of: tailToken) { _, _ in
-                    proxy.scrollTo("section-tail", anchor: .bottom)
-                }
-            }
-        } else {
-            ScrollView {
-                ProposedWidth { content() }
-            }
-            .scrollBounceBehavior(.basedOnSize)
+        ScrollView {
+            ProposedWidth { content() }
         }
+        // Holds the start of the text while content is appended. After a manual
+        // scroll, SwiftUI stops applying this anchor for the life of this scroll view.
+        .defaultScrollAnchor(.top)
+        .scrollBounceBehavior(.basedOnSize)
     }
 }
 

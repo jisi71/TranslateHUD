@@ -17,23 +17,84 @@ enum SelectionFetcher {
         let after: String
     }
 
-    static func textContext(in text: String, selected: String, range: NSRange? = nil, limit: Int = 240) -> TextContext? {
+    /// How to choose when `selected` occurs more than once and `range` does not identify an occurrence.
+    ///
+    /// Layer 0 keeps `.uniqueOnly`: an ambiguous value is not context. Assembled fallback text uses
+    /// `.firstIfAmbiguous` only after a marker or AX range has already failed to name the occurrence.
+    enum TextContextMatch: Equatable {
+        case uniqueOnly
+        case firstIfAmbiguous
+    }
+
+    static func textContext(
+        in text: String,
+        selected: String,
+        range: NSRange? = nil,
+        limit: Int = 240,
+        match: TextContextMatch = .uniqueOnly
+    ) -> TextContext? {
         guard !selected.isEmpty, limit > 0 else { return nil }
         let selectionRange: Range<String.Index>
         if let range, let exact = Range(range, in: text), String(text[exact]) == selected {
             selectionRange = exact
         } else {
-            guard let first = text.range(of: selected),
-                  first == text.range(of: selected, options: .backwards) else { return nil }
+            guard let first = text.range(of: selected) else { return nil }
+            switch match {
+            case .uniqueOnly:
+                guard first == text.range(of: selected, options: .backwards) else { return nil }
+            case .firstIfAmbiguous:
+                break
+            }
             selectionRange = first
         }
+        // Materialize only the window. AX values can be an entire document.
         let start = text.index(selectionRange.lowerBound, offsetBy: -limit, limitedBy: text.startIndex) ?? text.startIndex
         let end = text.index(selectionRange.upperBound, offsetBy: limit, limitedBy: text.endIndex) ?? text.endIndex
         let before = String(text[start..<selectionRange.lowerBound])
         let after = String(text[selectionRange.upperBound..<end])
-        guard !before.isEmpty || !after.isEmpty else { return nil }
-        return TextContext(before: (start > text.startIndex ? "…" : "") + before,
-                           after: after + (end < text.endIndex ? "…" : ""))
+        return limitedContext(
+            before: before,
+            after: after,
+            limit: limit,
+            moreBefore: start > text.startIndex,
+            moreAfter: end < text.endIndex
+        )
+    }
+
+    /// Same ellipsis and character-limit behavior as `textContext`.
+    /// `moreBefore` / `moreAfter` mean the supplied side is already a partial excerpt,
+    /// so the ellipsis is required even when that excerpt is shorter than `limit`.
+    static func limitedContext(
+        before: String,
+        after: String,
+        limit: Int,
+        moreBefore: Bool = false,
+        moreAfter: Bool = false
+    ) -> TextContext? {
+        guard limit > 0 else { return nil }
+        let beforeSlice = suffixCharacters(before, limit)
+        let afterSlice = prefixCharacters(after, limit)
+        guard !beforeSlice.isEmpty || !afterSlice.isEmpty else { return nil }
+        let showBefore = !beforeSlice.isEmpty && (moreBefore || beforeSlice.count < before.count)
+        let showAfter = !afterSlice.isEmpty && (moreAfter || afterSlice.count < after.count)
+        return TextContext(
+            before: (showBefore ? "…" : "") + beforeSlice,
+            after: afterSlice + (showAfter ? "…" : "")
+        )
+    }
+
+    static func prefixCharacters(_ text: String, _ limit: Int) -> String {
+        guard limit > 0, !text.isEmpty else { return "" }
+        guard text.count > limit else { return text }
+        let end = text.index(text.startIndex, offsetBy: limit)
+        return String(text[..<end])
+    }
+
+    static func suffixCharacters(_ text: String, _ limit: Int) -> String {
+        guard limit > 0, !text.isEmpty else { return "" }
+        guard text.count > limit else { return text }
+        let start = text.index(text.endIndex, offsetBy: -limit)
+        return String(text[start...])
     }
 
     // MARK: - 真实抓取
@@ -89,7 +150,7 @@ enum SelectionFetcher {
         return nil
     }
 
-    fileprivate static func focusedElement() -> AXUIElement? {
+    static func focusedElement() -> AXUIElement? {
         let system = AXUIElementCreateSystemWide()
         var focused: AnyObject?
         let err = AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused)
@@ -97,19 +158,11 @@ enum SelectionFetcher {
         return (element as! AXUIElement)
     }
 
+    /// Layer 0 is the focused element's `AXValue` plus `AXSelectedTextRange`.
+    /// Later layers (web text markers, ancestor/sibling text, and a one-time
+    /// accessibility enablement for Electron/Chromium) run only when that returns nil.
     fileprivate static func currentTextContext(_ focused: AXUIElement, selected: String) -> TextContext? {
-        var value: AnyObject?
-        guard AXUIElementCopyAttributeValue(focused, kAXValueAttribute as CFString, &value) == .success,
-              let text = value as? String else { return nil }
-        var rangeValue: AnyObject?
-        var range = CFRange()
-        let hasRange = AXUIElementCopyAttributeValue(focused, kAXSelectedTextRangeAttribute as CFString, &rangeValue) == .success
-        if hasRange, let rangeValue, CFGetTypeID(rangeValue) == AXValueGetTypeID(),
-           AXValueGetType(rangeValue as! AXValue) == .cfRange,
-           AXValueGetValue(rangeValue as! AXValue, .cfRange, &range) {
-            return textContext(in: text, selected: selected, range: NSRange(location: range.location, length: range.length))
-        }
-        return textContext(in: text, selected: selected)
+        TextContextSession.shared.context(focused: focused, selected: selected)
     }
 
     // MARK: - Cmd+C 兜底（用于 Chrome / VSCode / Electron 等不暴露 AX 文本属性的应用）

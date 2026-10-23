@@ -34,16 +34,21 @@
         <img src="assets/icon.png" width="512" height="512" alt="" aria-hidden="true">
         TranslateHUD
       </a>
+      <nav class="top-nav" aria-label="页面" data-aria-zh="页面" data-aria-en="Pages">
+        <a href="index.html" aria-current="page"><span class="lang-zh">首页</span><span class="lang-en">Home</span></a>
+        <a href="changelog/"><span class="lang-zh">更新说明</span><span class="lang-en">Release notes</span></a>
+      </nav>
       <div class="nav-actions">
         <div class="lang-switch" role="group" aria-label="语言" data-aria-zh="语言" data-aria-en="Language">
           <button type="button" data-set-lang="zh" aria-pressed="true">中文</button>
           <button type="button" data-set-lang="en" aria-pressed="false">English</button>
         </div>
-        <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 1.5v9M4.5 7.5 8 11l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span class="lang-zh">下载</span>
-          <span class="lang-en">Download</span>
-        </a>
+        <span class="btn-glow">
+          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+            <span class="lang-zh">下载</span>
+            <span class="lang-en">Download</span>
+          </a>
+        </span>
       </div>
     </div>
   </header>
@@ -51,148 +56,133 @@
   <main id="content">
     <div class="wrap">
       <section class="hero">
-        <div>
-          <p class="kicker">
-            <span class="lang-zh">macOS 菜单栏 · 14.0 及以上</span>
-            <span class="lang-en">macOS menu bar · 14.0 or later</span>
-          </p>
-          <h1>
-            <span class="lang-zh">屏幕上的字，译在旁边。</span>
-            <span class="lang-en">On-screen text, translated beside it.</span>
-          </h1>
-          <p class="lede">
-            <span class="lang-zh">选中一段文字，或框选一块屏幕，按 Option+W。译文在浮窗里边生成边出现。接口用你自己的，Key 存在钥匙串里。</span>
-            <span class="lang-en">Select a passage or drag a region of the screen, then press Option+W. The translation streams into a floating panel. You bring an OpenAI-compatible API, and the key stays in the Keychain.</span>
-          </p>
-          <div class="cta-row">
+        <p class="kicker">
+          <span class="lang-zh">macOS 菜单栏 · 14.0 及以上</span>
+          <span class="lang-en">macOS menu bar · 14.0 or later</span>
+        </p>
+        <h1>
+          <span class="lang-zh">屏幕上的字，译在旁边。</span>
+          <span class="lang-en">On-screen text, translated beside it.</span>
+        </h1>
+        <p class="lede">
+          <span class="lang-zh">选中一段文字，或框选一块屏幕，按 Option+W。译文在浮窗里边生成边出现。接口用你自己的，Key 存在钥匙串里。</span>
+          <span class="lang-en">Select a passage or drag a region of the screen, then press Option+W. The translation streams into a floating panel. You bring an OpenAI-compatible API, and the key stays in the Keychain.</span>
+        </p>
+        <div class="cta-row">
+          <span class="btn-glow">
             <a class="button large" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
-              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 1.5v9M4.5 7.5 8 11l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
               <span class="lang-zh">下载 macOS 版</span>
               <span class="lang-en">Download for macOS</span>
             </a>
-            <a class="text-link" href="changelog/">
-              <span class="lang-zh">更新说明</span>
-              <span class="lang-en">Release notes</span>
-            </a>
-          </div>
-          <p class="fine">
-            <span class="lang-zh">当前安装包是 v0.3.1，同时包含 Apple 芯片与 Intel 架构，ad-hoc 签名，尚未公证。v0.3.2 的公证包还没有发布。</span>
-            <span class="lang-en">The current package is v0.3.1. It includes both Apple silicon and Intel, is ad-hoc signed, and is not notarized. The notarized v0.3.2 package is not published.</span>
-          </p>
+          </span>
+          <a class="button secondary large" href="changelog/">
+            <span class="lang-zh">更新说明</span>
+            <span class="lang-en">Release notes</span>
+          </a>
         </div>
-        <figure class="shot">
-          <div class="shot-frame">
-            <img
-              src="assets/translation-panel.png"
-              width="1000"
-              height="654"
-              alt="TranslateHUD 深色翻译浮窗，使用示例文案。顶部可切换目标语言、置顶或关闭；中间是原文、状态和译文；底部是当前 API 与模型。"
-              data-alt-zh="TranslateHUD 深色翻译浮窗，使用示例文案。顶部可切换目标语言、置顶或关闭；中间是原文、状态和译文；底部是当前 API 与模型。"
-              data-alt-en="TranslateHUD’s dark translation panel, using sample copy. The top switches the target language, pins, or closes the panel. The middle shows the source, status, and translation. The bottom shows the current API and model.">
-          </div>
-          <figcaption>
-            <span class="lang-zh">深色翻译浮窗。图中文字是示例，不是某次真实请求的结果。</span>
-            <span class="lang-en">The dark translation panel. The words in the picture are sample copy, not the result of a live request.</span>
-          </figcaption>
-        </figure>
+        <p class="fine">
+          <span class="lang-zh">当前安装包是 v0.3.1，同时包含 Apple 芯片与 Intel 架构，ad-hoc 签名，尚未公证。v0.3.2 的公证包还没有发布。</span>
+          <span class="lang-en">The current package is v0.3.1. It includes both Apple silicon and Intel, is ad-hoc signed, and is not notarized. The notarized v0.3.2 package is not published.</span>
+        </p>
       </section>
 
       <!--
         Intro video slot. Do not point this at a URL until a real file exists.
+        The panel still is the product, shown inside the stage until a film is supplied.
         Planned film: the features, the panel UI, and a little of the design reasoning.
-        When Yahao supplies it, add assets/intro.mp4 (and a poster) and replace this block.
       -->
-      <figure class="video-slot" id="video">
-        <div class="video-frame">
-          <div class="video-ring" aria-hidden="true"></div>
-          <p class="video-label">
+      <figure class="media-stage" id="video">
+        <div class="stage">
+          <div class="stage-pill">
             <span class="lang-zh">介绍片还没有放进来</span>
             <span class="lang-en">Intro video not added yet</span>
-          </p>
-          <p class="video-note">
-            <span class="lang-zh">留给以后的一段片子：功能怎么用、浮窗长什么样，以及一点设计上的取舍。这里没有视频地址。</span>
-            <span class="lang-en">Reserved for a later film: how the features work, what the panel looks like, and a little of the design reasoning. There is no video address here.</span>
+          </div>
+          <img
+            src="assets/translation-panel.png"
+            width="1000"
+            height="654"
+            alt="TranslateHUD 深色翻译浮窗，使用示例文案。顶部可切换目标语言、置顶或关闭；中间是原文、状态和译文；底部是当前 API 与模型。"
+            data-alt-zh="TranslateHUD 深色翻译浮窗，使用示例文案。顶部可切换目标语言、置顶或关闭；中间是原文、状态和译文；底部是当前 API 与模型。"
+            data-alt-en="TranslateHUD’s dark translation panel, using sample copy. The top switches the target language, pins, or closes the panel. The middle shows the source, status, and translation. The bottom shows the current API and model.">
+          <p class="stage-note">
+            <span class="lang-zh">留给以后的一段片子：功能怎么用、浮窗长什么样，以及一点设计上的取舍。这里没有视频地址。画面是现在的浮窗，文案是示例。</span>
+            <span class="lang-en">Reserved for a later film: how the features work, what the panel looks like, and a little of the design reasoning. There is no video address. The picture is the current panel, and the words are sample copy.</span>
           </p>
         </div>
-        <figcaption>
-          <span class="lang-zh">占位。不会播放，也不能点击。</span>
-          <span class="lang-en">A placeholder. It does not play, and it is not a control.</span>
-        </figcaption>
       </figure>
 
       <section class="section" id="features" aria-labelledby="features-title">
-        <p class="kicker" id="features-title">
-          <span class="lang-zh">当前安装包里有的</span>
-          <span class="lang-en">In the current package</span>
-        </p>
-        <h2>
-          <span class="lang-zh">五件已经能用的事</span>
-          <span class="lang-en">Five things that work today</span>
-        </h2>
-        <p class="section-intro">
-          <span class="lang-zh">下面写的都在说明文档里，并且包含在已发布的 v0.3.1 里。浮窗随内容变高、把前后文交给模型当翻译参考，是 v0.3.2 草案，还不能下载。</span>
-          <span class="lang-en">Everything below is documented and included in the published v0.3.1 build. Panels that grow with their content, and sending surrounding text to the model as translation context, are in the v0.3.2 draft. That build cannot be downloaded yet.</span>
-        </p>
+        <div class="section-head">
+          <p class="kicker" id="features-title">
+            <span class="lang-zh">当前安装包里有的</span>
+            <span class="lang-en">In the current package</span>
+          </p>
+          <h2>
+            <span class="lang-zh">五件已经能用的事</span>
+            <span class="lang-en">Five things that work today</span>
+          </h2>
+          <p class="section-intro">
+            <span class="lang-zh">下面写的都在说明文档里，并且包含在已发布的 v0.3.1 里。浮窗随内容变高、把前后文交给模型当翻译参考，是 v0.3.2 草案，还不能下载。</span>
+            <span class="lang-en">Everything below is documented and included in the published v0.3.1 build. Panels that grow with their content, and sending surrounding text to the model as translation context, are in the v0.3.2 draft. That build cannot be downloaded yet.</span>
+          </p>
+        </div>
 
         <article class="feature">
-          <div>
-            <h2>
-              <span class="lang-zh">翻译选中的文字</span>
-              <span class="lang-en">Translate a selection</span>
-            </h2>
-            <p>
-              <span class="lang-zh">在当前应用里选中文字，按默认快捷键 Option+W。辅助功能读得到选区时，浮窗贴在选区下方。读不到时，会复制一次来取得文字，并尝试把剪贴板还原；剪贴板历史里仍可能多出一条记录。</span>
-              <span class="lang-en">Select text in the current app and press Option+W, the default shortcut. When Accessibility can see the selection, the panel opens beneath it. When it cannot, TranslateHUD copies once to read the text and tries to restore the clipboard. A clipboard history tool may still record that change.</span>
-            </p>
-            <p>
-              <span class="lang-zh">浮窗里可以改目标语言并马上重译，也可以置顶、复制译文、刷新，或打开 API 设置。比较长的文字在内容区里滚动，顶部和底部的操作还在。默认目标语言是简体中文；这段话主要是中文时，会改译成英语。也可以在设置里把选区翻译和截图翻译分成两个快捷键。</span>
-              <span class="lang-en">From the panel you can change the target language and retranslate immediately, pin the panel, copy the translation, refresh, or open API settings. Longer text scrolls inside the body, while the top and bottom bars stay put. The default target is Simplified Chinese; when the passage is mainly Chinese, it translates into English instead. Settings can also give selection and screenshot translation two different shortcuts.</span>
-            </p>
-          </div>
-          <figure class="shot">
-            <div class="shot-frame">
-              <img
-                src="assets/translation-panel.png"
-                width="1000"
-                height="654"
-                alt="同一张深色翻译浮窗示例。原文与译文并排，标题旁有复制和朗读。"
-                data-alt-zh="同一张深色翻译浮窗示例。原文与译文并排，标题旁有复制和朗读。"
-                data-alt-en="The same dark translation panel. Source and translation sit together, with copy and speak controls beside the headings.">
-            </div>
+          <p class="tag"><span class="lang-zh">选区</span><span class="lang-en">Selection</span></p>
+          <h2>
+            <span class="lang-zh">翻译选中的文字</span>
+            <span class="lang-en">Translate a selection</span>
+          </h2>
+          <p class="feature-copy">
+            <span class="lang-zh">在当前应用里选中文字，按默认快捷键 Option+W。辅助功能读得到选区时，浮窗贴在选区下方。读不到时，会复制一次来取得文字，并尝试把剪贴板还原；剪贴板历史里仍可能多出一条记录。</span>
+            <span class="lang-en">Select text in the current app and press Option+W, the default shortcut. When Accessibility can see the selection, the panel opens beneath it. When it cannot, TranslateHUD copies once to read the text and tries to restore the clipboard. A clipboard history tool may still record that change.</span>
+          </p>
+          <p class="feature-copy">
+            <span class="lang-zh">浮窗里可以改目标语言并马上重译，也可以置顶、复制译文、刷新，或打开 API 设置。比较长的文字在内容区里滚动，顶部和底部的操作还在。默认目标语言是简体中文；这段话主要是中文时，会改译成英语。也可以在设置里把选区翻译和截图翻译分成两个快捷键。</span>
+            <span class="lang-en">From the panel you can change the target language and retranslate immediately, pin the panel, copy the translation, refresh, or open API settings. Longer text scrolls inside the body, while the top and bottom bars stay put. The default target is Simplified Chinese; when the passage is mainly Chinese, it translates into English instead. Settings can also give selection and screenshot translation two different shortcuts.</span>
+          </p>
+          <figure class="frame">
+            <img
+              src="assets/translation-panel.png"
+              width="1000"
+              height="654"
+              alt="同一张深色翻译浮窗示例。原文与译文并排，标题旁有复制和朗读。"
+              data-alt-zh="同一张深色翻译浮窗示例。原文与译文并排，标题旁有复制和朗读。"
+              data-alt-en="The same dark translation panel. Source and translation sit together, with copy and speak controls beside the headings.">
           </figure>
         </article>
 
         <article class="feature">
-          <figure class="schematic">
-            <div class="schematic-stage" aria-hidden="true">
-              <div class="fake-window">
-                <span></span><span></span><span></span><span></span>
+          <p class="tag"><span class="lang-zh">截图</span><span class="lang-en">Region</span></p>
+          <h2>
+            <span class="lang-zh">框选屏幕上的文字</span>
+            <span class="lang-en">Translate a screen region</span>
+          </h2>
+          <p class="feature-copy">
+            <span class="lang-zh">没有选中文字时，同一个快捷键会请你拖出一块区域。松开之后，用 Vision 识别框里的文字，再交给你配置的模型。原文和译文仍在同一个浮窗里，原始截图可以按需展开。</span>
+            <span class="lang-en">If nothing is selected, the same shortcut asks you to drag a rectangle. After you release, Vision reads the text in that region and your configured model translates it. Source and translation stay in the same panel, and the original capture can be opened when you want it.</span>
+          </p>
+          <p class="feature-copy">
+            <span class="lang-zh">菜单栏里也可以直接选「截取屏幕区域翻译」，不必先按快捷键。</span>
+            <span class="lang-en">The menu bar also has “截取屏幕区域翻译”, so a region capture does not have to start from the shortcut.</span>
+          </p>
+          <figure class="scene">
+            <div class="scene-stage">
+              <div class="scene-sheet" aria-hidden="true">
+                <p><span class="lang-zh">屏幕上任意一段话。</span><span class="lang-en">Any passage on the screen.</span></p>
+                <p class="is-selected"><span class="lang-zh">拖出这块区域。</span><span class="lang-en">Drag this region.</span></p>
+                <p><span class="lang-zh">松开，译文就在旁边。</span><span class="lang-en">Release. The translation sits beside it.</span></p>
               </div>
-              <div class="sel-rect"></div>
-              <p class="schematic-tag">
-                <span class="lang-zh">示意图</span>
-                <span class="lang-en">Diagram</span>
-              </p>
+              <div class="scene-panel" aria-hidden="true">
+                <p><span class="lang-zh">译文</span><span class="lang-en">Translation</span></p>
+                <p><span class="lang-zh">就在旁边。</span><span class="lang-en">Right beside it.</span></p>
+              </div>
             </div>
             <figcaption>
-              <span class="lang-zh">示意图，不是产品截图。框选用的是系统区域截图，这一步还没有真实图片。</span>
-              <span class="lang-en">A diagram, not a product screenshot. Region capture uses the system tool, and there is no real picture of that step yet.</span>
+              <span class="lang-zh">这是框选那一步的示意，不是产品截图。真正拉起的是系统区域截图，仓库里还没有那一步的图片。</span>
+              <span class="lang-en">An illustration of the drag step, not a product screenshot. Capture uses the system region tool, and the repo has no picture of that step yet.</span>
             </figcaption>
           </figure>
-          <div>
-            <h2>
-              <span class="lang-zh">框选屏幕上的文字</span>
-              <span class="lang-en">Translate a screen region</span>
-            </h2>
-            <p>
-              <span class="lang-zh">没有选中文字时，同一个快捷键会请你拖出一块区域。松开之后，用 Vision 识别框里的文字，再交给你配置的模型。原文和译文仍在同一个浮窗里，原始截图可以按需展开。</span>
-              <span class="lang-en">If nothing is selected, the same shortcut asks you to drag a rectangle. After you release, Vision reads the text in that region and your configured model translates it. Source and translation stay in the same panel, and the original capture can be opened when you want it.</span>
-            </p>
-            <p>
-              <span class="lang-zh">菜单栏里也可以直接选「截取屏幕区域翻译」，不必先按快捷键。</span>
-              <span class="lang-en">The menu bar also has “截取屏幕区域翻译”, so a region capture does not have to start from the shortcut.</span>
-            </p>
-          </div>
         </article>
 
         <div class="cards">
@@ -233,14 +223,16 @@
       </section>
 
       <section class="section" id="permissions" aria-labelledby="permissions-title">
-        <p class="kicker" id="permissions-title">
-          <span class="lang-zh">权限</span>
-          <span class="lang-en">Permissions</span>
-        </p>
-        <h2>
-          <span class="lang-zh">两项都要手动打开</span>
-          <span class="lang-en">Both switches are manual</span>
-        </h2>
+        <div class="section-head">
+          <p class="kicker" id="permissions-title">
+            <span class="lang-zh">权限</span>
+            <span class="lang-en">Permissions</span>
+          </p>
+          <h2>
+            <span class="lang-zh">两项都要手动打开</span>
+            <span class="lang-en">Both switches are manual</span>
+          </h2>
+        </div>
         <div class="split">
           <ul class="perm-list">
             <li>
@@ -313,10 +305,12 @@
           <code class="hash">542c9fbf8ae53f53a86046a9f9e7e72470d32c6ba8df62666938e82fb9f7eacf</code>
         </p>
         <div class="cta-row">
-          <a class="button large light" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
-            <span class="lang-zh">下载 macOS 版</span>
-            <span class="lang-en">Download for macOS</span>
-          </a>
+          <span class="btn-glow">
+            <a class="button large" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+              <span class="lang-zh">下载 macOS 版</span>
+              <span class="lang-en">Download for macOS</span>
+            </a>
+          </span>
           <a href="changelog/">
             <span class="lang-zh">更新说明</span>
             <span class="lang-en">Release notes</span>
@@ -337,10 +331,12 @@
         <img src="assets/icon.png" width="512" height="512" alt="" aria-hidden="true">
         TranslateHUD
       </a>
-      <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
-        <span class="lang-zh">下载 macOS 版</span>
-        <span class="lang-en">Download for macOS</span>
-      </a>
+      <span class="btn-glow">
+        <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+          <span class="lang-zh">下载 macOS 版</span>
+          <span class="lang-en">Download for macOS</span>
+        </a>
+      </span>
       <a href="changelog/">
         <span class="lang-zh">更新说明</span>
         <span class="lang-en">Release notes</span>

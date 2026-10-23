@@ -245,7 +245,11 @@ struct SettingsView: View {
             testStatus = .fail(message)
         case .ready(let ready):
             do {
-                let res = try await ready.translator.translate(["Hello, world"], to: store.targetLanguage)
+                let res = try await ready.translator.translate(
+                    ["Hello, world"],
+                    to: store.targetLanguage,
+                    context: nil
+                )
                 testStatus = .ok("译：\(res.first ?? "?")")
             } catch {
                 testStatus = .fail(ServiceErrorMessage.describe(error))

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// 选中文字翻译浮窗：触发后立即显示，loading → 翻译完成 / 超时 / 失败 状态切换。
-/// 自动消失：ESC、点窗口外任意位置、用户点取消。
+/// 自动消失：ESC、未置顶时点窗口外、用户点取消。已置顶点外不关闭。
 @MainActor
 final class FloatingTranslationPopover {
     private let window: PopoverWindow
@@ -127,21 +127,32 @@ final class FloatingTranslationPopover {
     // MARK: - 自动消失
 
     private func installDismissMonitors() {
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+        let mouseDown = FloatingPanelDismissPolicy.outsideMouseDown
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mouseDown) { [weak self] _ in
             Task { @MainActor in
-                guard let self, !self.isPinned else { return }
+                guard let self else { return }
+                guard FloatingPanelDismissPolicy.shouldCloseOnMouseDown(
+                    isPinned: self.isPinned,
+                    occurredOutsideThisApp: true,
+                    clickedWindow: nil,
+                    panelWindow: self.window
+                ) else { return }
                 self.close()
             }
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            if let self, !self.isPinned, let clickedWindow = event.window,
-               clickedWindow !== self.window, clickedWindow.level.rawValue < NSWindow.Level.popUpMenu.rawValue {
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseDown) { [weak self] event in
+            if let self, FloatingPanelDismissPolicy.shouldCloseOnMouseDown(
+                isPinned: self.isPinned,
+                occurredOutsideThisApp: false,
+                clickedWindow: event.window,
+                panelWindow: self.window
+            ) {
                 Task { @MainActor in self.close() }
             }
             return event
         }
         keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 {
+            if FloatingPanelDismissPolicy.shouldCloseOnKeyDown(keyCode: event.keyCode) {
                 Task { @MainActor in self?.close() }
             }
         }
@@ -160,7 +171,7 @@ private final class PopoverWindow: NSWindow {
     override var canBecomeKey: Bool { true }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 {
+        if FloatingPanelDismissPolicy.shouldCloseOnKeyDown(keyCode: event.keyCode) {
             escapeHandler?()
             return
         }

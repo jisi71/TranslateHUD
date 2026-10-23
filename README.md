@@ -4,7 +4,7 @@
 
 一款 macOS 菜单栏翻译工具。选中文字或框选屏幕区域，按下快捷键，即可在浮窗中查看译文；支持流式输出、原文与译文朗读，以及按需生成中文术语解释。
 
-[v0.4.0 更新说明](docs/releases/v0.4.0.md) · 普通用户请安装官网提供的 Developer ID 公证包，步骤见下方「安装（普通用户）」
+[v0.4.0 更新说明](docs/releases/v0.4.0.md) · [官网](website/README.md)（静态页面在 `website/`，预览和部署方式见该说明）。普通用户请安装官网提供的 Developer ID 公证包，步骤见下方「安装（普通用户）」
 
 ## 界面预览
 
@@ -88,6 +88,10 @@
 5. 打开后可自动更新。公证版大约每天检查一次，也可以在菜单栏选「检查更新…」。订阅里有新版本后，这一项会变成「更新」，并带一个图标；点开就能看说明并安装，不用自己再拖一次 `.app`。以后在软件里更新，不用重新打开「辅助功能」和「屏幕录制」
 
 已经装过、里面还没有「检查更新…」的版本，需要先手动安装一次带自动更新的公证包。这一次之后就可以在软件里更新。
+
+公证包还没放上官网。现在官网的下载按钮，以及这个链接，都是未公证的 [TranslateHUD-0.3.1-universal.zip](https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip)。若被 Gatekeeper 拦截，在「应用程序」里右键 TranslateHUD 并选择「打开」。
+
+本地预览官网：`cd website && python3 -m http.server 8080`，打开 <http://127.0.0.1:8080>。GitHub Pages 或 Vercel 要把站点根目录指到 `website/`，不要指到 `docs/`。细节见 [website/README.md](website/README.md)。
 
 > 从源码构建的开发者仍可使用 `scripts/install-local.sh` 的本地签名，或 `scripts/build-release.sh` 的本地 ad-hoc 签名。这两种都留在本机开发使用，在线更新保持关闭，本机安装会保持原样。它们的签名和公证版不是同一支，盖到「应用程序」里的公证版上时，辅助功能和屏幕录制可能要重新点一次。发公证包的步骤见 [docs/updates.md](docs/updates.md)。
 

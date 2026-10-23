@@ -403,18 +403,22 @@ final class NoFocusContextRecoveryTests: XCTestCase {
     }
 
     func testInFlightEmbeddedScanIsNotTreatedAsNothingWorks() {
-        let waiting = DispatchQueue(label: "nofocus-scan-wait", attributes: .initiallyInactive)
+        // A normal serial queue. The scan blocks on `gate` so the result stays
+        // unpublished without creating an inactive queue (releasing one aborts
+        // under newer libdispatch).
+        let started = DispatchSemaphore(value: 0)
+        let gate = DispatchSemaphore(value: 0)
+        let queue = DispatchQueue(label: "nofocus-scan-wait")
         let cache = BundleEngineCache(
-            queue: waiting,
-            scan: { _ in true },
+            queue: queue,
+            scan: { _ in
+                started.signal()
+                gate.wait()
+                return true
+            },
             readFrameworkNames: { _ in [] }
         )
         let article = URL(fileURLWithPath: "/Applications/WeChatAppEx.app")
-        XCTAssertTrue(ContextHostResolver.embeddedScanInFlight(
-            bundleID: "com.tencent.flue.WeChatAppEx",
-            bundleURL: article,
-            cache: cache
-        ))
         XCTAssertFalse(ContextHostResolver.embeddedScanInFlight(
             bundleID: "com.tencent.flue.WeChatAppEx",
             bundleURL: nil,
@@ -422,15 +426,22 @@ final class NoFocusContextRecoveryTests: XCTestCase {
         ))
 
         cache.scheduleScan(of: article)
-        waiting.activate()
-        waiting.sync {}
+        XCTAssertEqual(started.wait(timeout: .now() + 2), .success)
+        XCTAssertTrue(ContextHostResolver.embeddedScanInFlight(
+            bundleID: "com.tencent.flue.WeChatAppEx",
+            bundleURL: article,
+            cache: cache
+        ))
+
+        gate.signal()
+        queue.sync {}
         XCTAssertFalse(ContextHostResolver.embeddedScanInFlight(
             bundleID: "com.tencent.flue.WeChatAppEx",
             bundleURL: article,
             cache: cache
         ))
 
-        let electronQueue = DispatchQueue(label: "nofocus-scan-electron", attributes: .initiallyInactive)
+        let electronQueue = DispatchQueue(label: "nofocus-scan-electron")
         let electron = BundleEngineCache(
             queue: electronQueue,
             scan: { _ in true },
@@ -441,6 +452,7 @@ final class NoFocusContextRecoveryTests: XCTestCase {
             bundleURL: URL(fileURLWithPath: "/Applications/Host.app"),
             cache: electron
         ))
+        electronQueue.sync {}
     }
 
     func testPersistedMethodSkipsTimeoutsAndUnfinishedMisses() {

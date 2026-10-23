@@ -7,6 +7,50 @@ struct ContextEnablementRecord: Codable, Equatable {
     var version: String
     var method: RecordedContextMethod
     var timestamp: TimeInterval
+    /// Set only for `nothingWorks`. True means `AXEnhancedUserInterface` was already
+    /// part of the ladder. Missing or false means the ladder stopped at manual
+    /// accessibility, which is what a false "no embedded engine" scan used to store.
+    var embeddedLadderExhausted: Bool?
+
+    init(
+        bundleID: String,
+        version: String,
+        method: RecordedContextMethod,
+        timestamp: TimeInterval,
+        embeddedLadderExhausted: Bool? = nil
+    ) {
+        self.bundleID = bundleID
+        self.version = version
+        self.method = method
+        self.timestamp = timestamp
+        self.embeddedLadderExhausted = embeddedLadderExhausted
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bundleID = try container.decode(String.self, forKey: .bundleID)
+        version = try container.decode(String.self, forKey: .version)
+        method = try container.decode(RecordedContextMethod.self, forKey: .method)
+        timestamp = try container.decode(TimeInterval.self, forKey: .timestamp)
+        embeddedLadderExhausted = try container.decodeIfPresent(Bool.self, forKey: .embeddedLadderExhausted)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(bundleID, forKey: .bundleID)
+        try container.encode(version, forKey: .version)
+        try container.encode(method, forKey: .method)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encodeIfPresent(embeddedLadderExhausted, forKey: .embeddedLadderExhausted)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case bundleID
+        case version
+        case method
+        case timestamp
+        case embeddedLadderExhausted
+    }
 }
 
 /// Which switch to attribute when a selection already has context.
@@ -30,6 +74,21 @@ enum ContextEnablementLearning {
                 return .none
             }
         }
+    }
+
+    /// What to store after one selection. Nil means "do not write": a timeout,
+    /// or a miss that has not finished the ladder. A hit stores the switch that
+    /// explains it. An exhausted ladder stores `nothingWorks`.
+    static func persistedMethod(
+        outcome: TextContextOutcome,
+        retainedPhase: AccessibilityEnablementMemory.Phase?
+    ) -> RecordedContextMethod? {
+        if outcome.timedOut { return nil }
+        if outcome.context != nil {
+            return method(enablementThisCall: outcome.enablement, retainedPhase: retainedPhase)
+        }
+        if outcome.ladderExhausted { return .nothingWorks }
+        return nil
     }
 }
 
@@ -97,13 +156,26 @@ final class ContextEnablementStore {
         records = Self.load(from: defaults)
     }
 
-    func effectiveMethod(bundleID: String, version: String, now: Date) -> RecordedContextMethod? {
+    func effectiveMethod(
+        bundleID: String,
+        version: String,
+        now: Date,
+        hostKind: ContextHostKind = .other
+    ) -> RecordedContextMethod? {
         lock.lock()
         defer { lock.unlock() }
         guard let record = records[bundleID] else { return nil }
         if record.version != version {
             records[bundleID] = nil
             writeLocked()
+            return nil
+        }
+        if record.method == .nothingWorks,
+           hostKind == .embeddedEngine,
+           record.embeddedLadderExhausted != true {
+            records[bundleID] = nil
+            writeLocked()
+            AppLog.info("选区上下文: 丢弃 \(bundleID) 的无效记录，嵌入式引擎的 AXEnhancedUserInterface 尚未试过")
             return nil
         }
         if record.method == .nothingWorks,
@@ -115,10 +187,17 @@ final class ContextEnablementStore {
         return record.method
     }
 
-    func save(bundleID: String, version: String, method: RecordedContextMethod, now: Date) {
+    func save(
+        bundleID: String,
+        version: String,
+        method: RecordedContextMethod,
+        now: Date,
+        embeddedLadderExhausted: Bool = false
+    ) {
         guard !bundleID.isEmpty, !version.isEmpty else { return }
         lock.lock()
         defer { lock.unlock() }
+        let flag: Bool? = method == .nothingWorks ? Optional(embeddedLadderExhausted) : nil
         if let existing = records[bundleID], existing.version == version, existing.method == method {
             return
         }
@@ -126,7 +205,8 @@ final class ContextEnablementStore {
             bundleID: bundleID,
             version: version,
             method: method,
-            timestamp: now.timeIntervalSince1970
+            timestamp: now.timeIntervalSince1970,
+            embeddedLadderExhausted: flag
         )
         writeLocked()
     }
@@ -234,7 +314,13 @@ final class ContextEnablementMonitor {
     func handle(_ event: ContextAppEvent) {
         guard event.pid > 0, let bundleID = event.bundleID, let version = event.version else { return }
         if isOwnProcess(event.pid, bundleID) { return }
-        guard let method = store.effectiveMethod(bundleID: bundleID, version: version, now: now()) else { return }
+        let hostKind = Self.hostKind(for: event)
+        guard let method = store.effectiveMethod(
+            bundleID: bundleID,
+            version: version,
+            now: now(),
+            hostKind: hostKind
+        ) else { return }
 
         let enablement: AccessibilityEnablement
         switch method {
@@ -274,6 +360,18 @@ final class ContextEnablementMonitor {
             standaloneBrowser: ContextHostClassifier.isStandaloneBrowser(bundleID: bundleID),
             bundleURL: app.bundleURL
         )
+    }
+
+    /// Known article viewers are embedded even before a bundle scan. Other apps stay
+    /// `.other` here so launch does not start a framework walk for every process.
+    private static func hostKind(for event: ContextAppEvent) -> ContextHostKind {
+        if event.standaloneBrowser || ContextHostClassifier.isStandaloneBrowser(bundleID: event.bundleID) {
+            return .chromiumBrowser
+        }
+        if ContextHostClassifier.isKnownEmbeddedEngine(bundleID: event.bundleID) {
+            return .embeddedEngine
+        }
+        return .other
     }
 
     /// Bundle id is enough for the known browsers. A wrapper with a browser framework

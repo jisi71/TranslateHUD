@@ -14,6 +14,12 @@ import Foundation
 /// bundle's Frameworks folder holds the runtime. The main WeChat app keeps the viewer
 /// next to its executable; walking MacOS would treat the chat process as the embedder.
 ///
+/// Inside `WeChatAppEx Framework.framework/Versions/<letter>`, `Resources`
+/// (`icudtl.dat`, `v8_context_snapshot*.bin`) and `Helpers` (`Helper (Renderer).app`)
+/// sit beside a large nested `Frameworks` tree. Those two directories are visited
+/// first. Walking the nested tree first exhausts the directory cap and reports that
+/// the bundle has no engine.
+///
 /// Symbolic links are not followed. The real `Versions/<letter>/Resources` directory
 /// is what gets read. `Versions/Current` is usually a link to that directory.
 enum EmbeddedChromiumDetector {
@@ -56,9 +62,10 @@ enum EmbeddedChromiumDetector {
                 }
             }
             children.sort { descentPriority($0.name) > descentPriority($1.name) }
-            // Visit the likely runtime path before sibling directories that were already
-            // queued. Appending would spend the directory cap on helpers and other
-            // frameworks before opening Versions/Resources, where icudtl.dat lives.
+            // Insert in front of siblings already queued. `Versions/<letter>/Frameworks`
+            // in WeChatAppEx holds dozens of nested vendor frameworks (TXLiteAV, ilink2,
+            // …). Those must not be walked before `Resources` and `Helpers`, or the
+            // directory cap returns a false miss and the log says 未发现嵌入式浏览器引擎.
             let next = children.map { (url: $0.url, depth: current.depth + 1) }
             pending.insert(contentsOf: next, at: index)
         }
@@ -73,17 +80,17 @@ enum EmbeddedChromiumDetector {
         return false
     }
 
-    /// Frameworks and the version/resource directories that hold Chromium's runtime
-    /// files are visited before the rest of a wide folder, so the directory cap still
-    /// reaches `icudtl.dat` in a normal embedder layout.
+    /// Enter the engine `.framework` before junk siblings. Inside
+    /// `Versions/<letter>`, visit `Resources` and `Helpers` before a nested
+    /// `Frameworks` directory: the Chromium files are siblings of that directory,
+    /// not inside it.
     private static func descentPriority(_ name: String) -> Int {
         let lower = name.lowercased()
-        if lower.hasSuffix(".framework") { return 4 }
-        if lower == "frameworks" { return 3 }
-        if lower.hasSuffix(".app"), lower.contains("helper") { return 2 }
-        if lower == "versions" || lower == "resources" || lower == "libraries" || lower == "contents" {
-            return 1
-        }
+        if lower.hasSuffix(".framework") { return 6 }
+        if lower == "resources" || lower == "helpers" || lower == "helper" { return 5 }
+        if lower.hasSuffix(".app"), lower.contains("helper") { return 4 }
+        if lower == "versions" || lower == "libraries" || lower == "contents" { return 3 }
+        if lower == "frameworks" { return 1 }
         return 0
     }
 
@@ -217,6 +224,10 @@ enum ContextHostResolver {
         if ContextHostClassifier.isStandaloneBrowser(bundleID: bundleID) {
             return .chromiumBrowser
         }
+        if ContextHostClassifier.isKnownEmbeddedEngine(bundleID: bundleID) {
+            noteKnownEmbedded(bundleID)
+            return .embeddedEngine
+        }
         let names = bundleURL.map { cache.frameworkNames(in: $0) } ?? []
         let cached = bundleURL.flatMap { cache.embeddedIfKnown($0) }
         let resolved = ContextHostClassifier.kind(
@@ -228,5 +239,41 @@ enum ContextHostResolver {
             cache.scheduleScan(of: bundleURL)
         }
         return resolved
+    }
+
+    /// True when this bundle is still unclassified and its background scan has
+    /// not finished. Callers must not store `nothingWorks` in that window:
+    /// the next selection may learn that the process is an embedded engine and
+    /// still needs `AXEnhancedUserInterface`.
+    static func embeddedScanInFlight(
+        bundleID: String?,
+        bundleURL: URL?,
+        cache: BundleEngineCache
+    ) -> Bool {
+        guard let bundleURL else { return false }
+        if ContextHostClassifier.isStandaloneBrowser(bundleID: bundleID) { return false }
+        if ContextHostClassifier.isKnownEmbeddedEngine(bundleID: bundleID) { return false }
+        let names = cache.frameworkNames(in: bundleURL)
+        let cached = cache.embeddedIfKnown(bundleURL)
+        let kind = ContextHostClassifier.kind(
+            bundleID: bundleID,
+            frameworkNames: names,
+            embeddedEngineCached: cached
+        )
+        return kind == .other && cached == nil
+    }
+
+    private static let knownLogLock = NSLock()
+    private static var loggedKnownEmbedded: Set<String> = []
+
+    /// Once per process. The selection log otherwise only shows the manual switch
+    /// and looks like the bundle was still unclassified.
+    private static func noteKnownEmbedded(_ bundleID: String?) {
+        guard let bundleID, !bundleID.isEmpty else { return }
+        knownLogLock.lock()
+        let fresh = loggedKnownEmbedded.insert(bundleID).inserted
+        knownLogLock.unlock()
+        guard fresh else { return }
+        AppLog.info("选区上下文: \(bundleID) 按已知嵌入式引擎处理，可使用 AXEnhancedUserInterface")
     }
 }

@@ -4,6 +4,11 @@ import XCTest
 
 @MainActor
 final class FloatingPanelDismissPolicyTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        _ = NSApplication.shared
+    }
+
     func testUnpinnedClickOutsideThisAppCloses() {
         let panel = makeWindow()
         XCTAssertTrue(

@@ -113,7 +113,7 @@ final class NoFocusContextRecoveryTests: XCTestCase {
     func testPasteboardPathReadsViewerContextWhenFocusIsNil() {
         let article = makeArticleRoot()
         let logs = Box<[String]>([])
-        let enabled = Box<[pid_t]>([])
+        let enabled = Box<[AccessibilityEnablement]>([])
         let recovery = makeRecovery(
             candidates: [viewer(), weChatHost()],
             article: article,

@@ -467,7 +467,7 @@ final class NoFocusContextRecoveryTests: XCTestCase {
                 ),
                 retainedPhase: nil
             ),
-            .none
+            Optional.some(.none)
         )
     }
 

@@ -48,6 +48,8 @@ final class AXTextContextNode: TextContextNode {
     private var cachedRole: String?
     private var didReadRange = false
     private var cachedRange: NSRange?
+    private var didReadSelectedText = false
+    private var cachedSelectedText: String?
 
     init(element: AXUIElement) {
         self.element = element
@@ -80,6 +82,23 @@ final class AXTextContextNode: TextContextNode {
               range.length >= 0 else { return nil }
         cachedRange = NSRange(location: range.location, length: range.length)
         return cachedRange
+    }
+
+    var selectedText: String? {
+        if didReadSelectedText { return cachedSelectedText }
+        didReadSelectedText = true
+        cachedSelectedText = copyAttribute(kAXSelectedTextAttribute as String) as? String
+        return cachedSelectedText
+    }
+
+    var owningPID: pid_t {
+        var pid: pid_t = 0
+        if AXUIElementGetPid(element, &pid) != .success { return 0 }
+        return pid
+    }
+
+    func surroundingContext(selected: String) -> SelectionFetcher.TextContext? {
+        TextContextSession.shared.context(focused: element, selected: selected)
     }
 
     var parent: (any TextContextNode)? {
@@ -300,6 +319,8 @@ final class AXTextContextNode: TextContextNode {
 /// not consume the 150ms context budget: until it finishes, only `AXManualAccessibility` is tried.
 /// A remembered method is stored in UserDefaults (bundle id, version, method, time) and applied
 /// when that app launches or becomes frontmost.
+/// No-focus recovery shares this memory. Its record uses the candidate process's own
+/// bundle id and version (WeChatAppEx, not the frontmost WeChat app).
 final class TextContextSession {
     static let shared = TextContextSession()
 
@@ -347,6 +368,73 @@ final class TextContextSession {
         return outcome.context
     }
 
+    /// Pasteboard hit with no usable focused element. The candidate list is built
+    /// before the clock starts. The clock is a fresh 150ms
+    /// (`TextContextFallback.budgetMilliseconds`): the only context budget when
+    /// focus was nil, and an extra 150ms when a focused element was already tried.
+    func recoverWithoutFocus(selected: String, excludingPID: pid_t?) -> SelectionFetcher.TextContext? {
+        let trimmed = selected.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let frontmostApp = NSWorkspace.shared.frontmostApplication else {
+            AppLog.info("选区上下文: 无焦点恢复找不到前台应用")
+            return nil
+        }
+
+        let snapshots = Self.processSnapshots()
+        let frontPID = frontmostApp.processIdentifier
+        let frontmost = snapshots.processes.first { $0.pid == frontPID }
+            ?? ContextProcessInfo(
+                pid: frontPID,
+                bundleID: frontmostApp.bundleIdentifier,
+                bundleURL: frontmostApp.bundleURL,
+                teamID: snapshots.teamByPID[frontPID]
+            )
+        let candidates = NoFocusCandidateSelector.select(
+            frontmost: frontmost,
+            running: snapshots.processes,
+            excludingPID: excludingPID
+        )
+        AppLog.info(NoFocusCandidateSelector.entryMessage(candidates: candidates))
+        guard !candidates.isEmpty else { return nil }
+
+        let started = DispatchTime.now().uptimeNanoseconds
+        let recovery = NoFocusContextRecovery(
+            candidates: candidates,
+            budget: TextContextBudget(
+                limitMilliseconds: TextContextFallback.budgetMilliseconds,
+                now: {
+                    let now = DispatchTime.now().uptimeNanoseconds
+                    guard now >= started else { return 0 }
+                    return Int((now - started) / 1_000_000)
+                }
+            ),
+            memory: memoryBox.memory,
+            hostProvider: { Self.host(for: $0) },
+            recordedMethod: { process in
+                self.recordedMethod(for: process)
+            },
+            enable: { enablement, host in Self.set(enablement, pid: host.pid) },
+            focusedNode: {
+                SelectionFetcher.focusedElement().map { AXTextContextNode(element: $0) }
+            },
+            applicationRoot: { pid in
+                guard pid > 0 else { return nil }
+                return AXTextContextNode(element: AXUIElementCreateApplication(pid))
+            },
+            log: { AppLog.info($0) }
+        )
+        let result = recovery.recover(selected: trimmed)
+        memoryBox.memory = recovery.memory
+        for attempt in result.attempts {
+            persist(attempt.outcome, process: attempt.process)
+            log(attempt.outcome)
+        }
+        if result.context == nil {
+            AppLog.info("选区上下文: 无焦点恢复未获得上下文")
+        }
+        return result.context
+    }
+
     private func recordedMethod(for element: AXUIElement) -> RecordedContextMethod? {
         let id = Self.identity(for: element)
         guard let bundleID = id.bundleID, let version = id.version else { return nil }
@@ -361,31 +449,106 @@ final class TextContextSession {
         return records.effectiveMethod(bundleID: bundleID, version: version, now: Date())
     }
 
+    private func recordedMethod(for process: ContextProcessInfo) -> RecordedContextMethod? {
+        guard process.pid > 0, let bundleID = process.bundleID else { return nil }
+        guard let version = AppVersionCache.shared.version(bundleURL: process.bundleURL) else { return nil }
+        if Self.isExcluded(pid: process.pid, bundleID: bundleID) { return nil }
+        return records.effectiveMethod(bundleID: bundleID, version: version, now: Date())
+    }
+
     private func persist(_ outcome: TextContextOutcome, element: AXUIElement) {
         let id = Self.identity(for: element)
-        guard let bundleID = id.bundleID, let version = id.version, id.pid > 0 else { return }
-        if ContextHostGate.isExcluded(
-            pid: id.pid,
-            ownPID: ProcessInfo.processInfo.processIdentifier,
-            bundleID: bundleID,
-            ownBundleID: Bundle.main.bundleIdentifier
-        ) {
+        persist(outcome, bundleID: id.bundleID, version: id.version, pid: id.pid)
+    }
+
+    private func persist(_ outcome: TextContextOutcome, process: ContextProcessInfo) {
+        if outcome.ladderExhausted,
+           outcome.context == nil,
+           !outcome.timedOut,
+           ContextHostResolver.embeddedScanInFlight(
+               bundleID: process.bundleID,
+               bundleURL: process.bundleURL,
+               cache: .shared
+           ) {
+            let name = process.bundleID ?? "未知"
+            AppLog.info("选区上下文: 无焦点暂不记录无效 pid=\(process.pid) 应用=\(name)，嵌入式引擎扫描未完成")
+            if outcome.invalidatedShortcut, let bundleID = process.bundleID {
+                records.clear(bundleID: bundleID)
+            }
             return
         }
+        let version = AppVersionCache.shared.version(bundleURL: process.bundleURL)
+        persist(outcome, bundleID: process.bundleID, version: version, pid: process.pid)
+    }
+
+    private func persist(
+        _ outcome: TextContextOutcome,
+        bundleID: String?,
+        version: String?,
+        pid: pid_t
+    ) {
+        guard let bundleID, let version, pid > 0 else { return }
+        if Self.isExcluded(pid: pid, bundleID: bundleID) { return }
         if outcome.invalidatedShortcut {
             records.clear(bundleID: bundleID)
         }
-        if outcome.timedOut { return }
-        if outcome.context != nil {
-            let host = ContextHostIdentity(bundleID: bundleID, pid: id.pid, kind: .other)
-            let method = ContextEnablementLearning.method(
-                enablementThisCall: outcome.enablement,
-                retainedPhase: memoryBox.memory.phase(for: host)
-            )
-            records.save(bundleID: bundleID, version: version, method: method, now: Date())
-        } else if outcome.ladderExhausted {
-            records.save(bundleID: bundleID, version: version, method: .nothingWorks, now: Date())
+        let host = ContextHostIdentity(bundleID: bundleID, pid: pid, kind: .other)
+        guard let method = ContextEnablementLearning.persistedMethod(
+            outcome: outcome,
+            retainedPhase: memoryBox.memory.phase(for: host)
+        ) else { return }
+        records.save(bundleID: bundleID, version: version, method: method, now: Date())
+    }
+
+    private static func isExcluded(pid: pid_t, bundleID: String?) -> Bool {
+        ContextHostGate.isExcluded(
+            pid: pid,
+            ownPID: ProcessInfo.processInfo.processIdentifier,
+            bundleID: bundleID,
+            ownBundleID: Bundle.main.bundleIdentifier
+        )
+    }
+
+    private struct ProcessSnapshots {
+        var processes: [ContextProcessInfo]
+        var teamByPID: [pid_t: String]
+    }
+
+    /// Team ids are resolved before the 150ms context clock. Only the frontmost
+    /// app and helper-named processes are asked, and each pid is cached.
+    private static func processSnapshots() -> ProcessSnapshots {
+        let apps = NSWorkspace.shared.runningApplications
+        var lookup: [pid_t] = []
+        func consider(_ pid: pid_t) {
+            guard pid > 0, !lookup.contains(pid) else { return }
+            guard lookup.count < NoFocusCandidateSelector.maximumTeamLookups else { return }
+            lookup.append(pid)
         }
+        if let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier {
+            consider(frontPID)
+        }
+        for app in apps where NoFocusCandidateSelector.looksLikeChromiumHelper(
+            bundleID: app.bundleIdentifier,
+            bundleURL: app.bundleURL
+        ) {
+            consider(app.processIdentifier)
+        }
+
+        var teamByPID: [pid_t: String] = [:]
+        for pid in lookup {
+            if let team = SigningTeamID.cachedTeamID(for: pid) {
+                teamByPID[pid] = team
+            }
+        }
+        let processes = apps.map { app in
+            ContextProcessInfo(
+                pid: app.processIdentifier,
+                bundleID: app.bundleIdentifier,
+                bundleURL: app.bundleURL,
+                teamID: teamByPID[app.processIdentifier]
+            )
+        }
+        return ProcessSnapshots(processes: processes, teamByPID: teamByPID)
     }
 
     /// Pid, bundle id, and version of the process that owns the focused element.
@@ -435,8 +598,28 @@ final class TextContextSession {
         return ContextHostIdentity(bundleID: bundleID, pid: pid, kind: kind)
     }
 
+    /// No-focus candidates are already a specific pid. Do not substitute the
+    /// frontmost app: a 公众号 article lives in WeChatAppEx while WeChat stays frontmost.
+    private static func host(for process: ContextProcessInfo) -> ContextHostIdentity {
+        let pid = process.pid
+        let bundleID = process.bundleID
+        guard pid > 0 else {
+            return ContextHostIdentity(bundleID: bundleID, pid: 0, kind: .other)
+        }
+        if isExcluded(pid: pid, bundleID: bundleID) {
+            return ContextHostIdentity(bundleID: bundleID, pid: pid, kind: .excluded)
+        }
+        let kind = ContextHostResolver.kind(
+            bundleID: bundleID,
+            bundleURL: process.bundleURL,
+            cache: .shared
+        )
+        return ContextHostIdentity(bundleID: bundleID, pid: pid, kind: kind)
+    }
+
     /// Sets the switch on the application element for `pid` only. `pid` is the process
-    /// that owns the focused element. This does not touch the focused element, the
+    /// whose tree we need to read: the focused element's process, or a no-focus
+    /// candidate such as WeChatAppEx. This does not touch the focused element, the
     /// selection, or the document, and it does not turn the switch back off.
     /// A failure (the app ignores the attribute) is reported as `false` and treated
     /// as a no-op by the caller.

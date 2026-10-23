@@ -229,4 +229,25 @@ enum ContextHostResolver {
         }
         return resolved
     }
+
+    /// True when this bundle is still unclassified and its background scan has
+    /// not finished. Callers must not store `nothingWorks` in that window:
+    /// the next selection may learn that the process is an embedded engine and
+    /// still needs `AXEnhancedUserInterface`.
+    static func embeddedScanInFlight(
+        bundleID: String?,
+        bundleURL: URL?,
+        cache: BundleEngineCache
+    ) -> Bool {
+        guard let bundleURL else { return false }
+        if ContextHostClassifier.isStandaloneBrowser(bundleID: bundleID) { return false }
+        let names = cache.frameworkNames(in: bundleURL)
+        let cached = cache.embeddedIfKnown(bundleURL)
+        let kind = ContextHostClassifier.kind(
+            bundleID: bundleID,
+            frameworkNames: names,
+            embeddedEngineCached: cached
+        )
+        return kind == .other && cached == nil
+    }
 }

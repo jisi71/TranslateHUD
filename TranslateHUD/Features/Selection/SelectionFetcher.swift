@@ -268,12 +268,35 @@ private final class SystemSelectionProbeProvider: SelectionProbeProviding {
                 if let copied = pasteboard.string(forType: .string)?
                     .trimmingCharacters(in: .whitespacesAndNewlines),
                    !copied.isEmpty {
-                    let focused = SelectionFetcher.focusedElement()
-                    let rect = focused.flatMap(SelectionFetcher.currentSelectionRectViaAX)
-                    let context = focused.flatMap { SelectionFetcher.currentTextContext($0, selected: copied) }
-                    restore(savedItems, to: pasteboard)
+                    // Context recovery can take another 150ms after this copy.
+                    // When focus is nil that is the only context budget; when a
+                    // focused element already missed, it is an extra 150ms so a
+                    // nested viewer (WeChatAppEx) is still searched. The original
+                    // clipboard is restored after that read. No further keystrokes.
                     AppLog.info("Cmd+C 兜底命中: len=\(copied.count)")
-                    return .found(SelectionFetcher.Selection(text: copied, screenRectTopLeft: rect, context: context))
+                    let focused = SelectionFetcher.focusedElement()
+                    let requery: AXUIElement? = focused == nil ? SelectionFetcher.focusedElement() : nil
+                    let rect = (focused ?? requery).flatMap(SelectionFetcher.currentSelectionRectViaAX)
+                    let context = PasteboardFocusContext.resolve(
+                        selected: copied,
+                        focused: focused.map { AXTextContextNode(element: $0) },
+                        requeryFocused: { requery.map { AXTextContextNode(element: $0) } },
+                        contextForFocused: { node in
+                            (node as? AXTextContextNode)?.surroundingContext(selected: copied)
+                        },
+                        recover: { excludingPID in
+                            TextContextSession.shared.recoverWithoutFocus(
+                                selected: copied,
+                                excludingPID: excludingPID
+                            )
+                        }
+                    )
+                    restore(savedItems, to: pasteboard)
+                    return .found(SelectionFetcher.Selection(
+                        text: copied,
+                        screenRectTopLeft: rect,
+                        context: context
+                    ))
                 }
             }
 

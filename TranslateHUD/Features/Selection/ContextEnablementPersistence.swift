@@ -31,6 +31,21 @@ enum ContextEnablementLearning {
             }
         }
     }
+
+    /// What to store after one selection. Nil means "do not write": a timeout,
+    /// or a miss that has not finished the ladder. A hit stores the switch that
+    /// explains it. An exhausted ladder stores `nothingWorks`.
+    static func persistedMethod(
+        outcome: TextContextOutcome,
+        retainedPhase: AccessibilityEnablementMemory.Phase?
+    ) -> RecordedContextMethod? {
+        if outcome.timedOut { return nil }
+        if outcome.context != nil {
+            return method(enablementThisCall: outcome.enablement, retainedPhase: retainedPhase)
+        }
+        if outcome.ladderExhausted { return .nothingWorks }
+        return nil
+    }
 }
 
 /// `CFBundleShortVersionString` and `CFBundleVersion` from the process's own bundle.

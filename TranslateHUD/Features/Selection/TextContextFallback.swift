@@ -24,6 +24,11 @@ import Foundation
 ///
 /// Nothing here changes the selection, sends keystrokes, or writes document text.
 ///
+/// Cmd+C can still copy a WeChat 公众号 selection when Accessibility reports no
+/// focused element. `NoFocusContextRecovery` then runs these layers against a
+/// short list of candidate processes. That path has its own 150ms clock; the
+/// focused-element clock is not spent when focus was already nil.
+///
 /// When a method produces context, that choice is remembered per app version
 /// (`RecordedContextMethod`). A later miss for the same version jumps to the
 /// remembered switch instead of repeating the ladder. `nothingWorks` is remembered
@@ -219,6 +224,14 @@ struct TextContextBudget {
 
     var isTimedOut: Bool { now() >= limitMilliseconds }
 
+    /// A new element counter that still shares `now`, so several walks can each
+    /// visit `maxElements` nodes while one clock stops all of them.
+    func resettingElementCount() -> TextContextBudget {
+        var copy = self
+        copy.elementsVisited = 0
+        return copy
+    }
+
     mutating func consumeElement() -> Bool {
         if isTimedOut || elementsVisited >= maxElements { return false }
         elementsVisited += 1
@@ -384,7 +397,11 @@ struct MarkerBounds: Equatable {
 protocol TextContextNode: AnyObject {
     var role: String? { get }
     var value: String? { get }
+    /// `AXSelectedText`. Nil when the element does not expose that attribute.
+    var selectedText: String? { get }
     var selectedTextRange: NSRange? { get }
+    /// Process that owns the element. Zero when this node does not know.
+    var owningPID: pid_t { get }
     var parent: (any TextContextNode)? { get }
     var children: [any TextContextNode] { get }
     func isSameElement(as other: any TextContextNode) -> Bool
@@ -410,6 +427,9 @@ protocol TextContextNode: AnyObject {
 }
 
 extension TextContextNode {
+    var selectedText: String? { nil }
+    var owningPID: pid_t { 0 }
+
     func selectedMarkerBounds() -> MarkerBounds? { nil }
     func markerString(from start: TextMarker, to end: TextMarker) -> String? { nil }
     func markerLength(from start: TextMarker, to end: TextMarker) -> Int? { nil }

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-title-zh="TranslateHUD — macOS 菜单栏翻译" data-title-en="TranslateHUD — menu-bar translation for macOS">TranslateHUD — macOS 菜单栏翻译</title>
+  <meta
+    name="description"
+    data-desc-zh="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看流式译文。原文和译文可以朗读，专有名词可以按需用中文解释。需要自备 OpenAI 兼容接口。"
+    data-desc-en="TranslateHUD is a macOS menu-bar translator. Select text or drag a screen region and read the streaming translation in a floating panel. Speak either side, and ask for a Chinese gloss of names and terms. You bring your own OpenAI-compatible API."
+    content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看流式译文。原文和译文可以朗读，专有名词可以按需用中文解释。需要自备 OpenAI 兼容接口。">
+  <link rel="icon" href="assets/icon.png" type="image/png">
+  <link rel="apple-touch-icon" href="assets/icon.png">
+  <style>
+    html[data-lang="zh"] .lang-en { display: none !important; }
+    html[data-lang="en"] .lang-zh { display: none !important; }
+  </style>
+  <script>
+    try {
+      var savedLang = localStorage.getItem("translatehud.lang");
+      if (savedLang === "en" || savedLang === "zh") {
+        document.documentElement.setAttribute("data-lang", savedLang);
+        document.documentElement.lang = savedLang === "en" ? "en" : "zh-CN";
+      }
+    } catch (error) {}
+  </script>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#content"><span class="lang-zh">跳到内容</span><span class="lang-en">Skip to content</span></a>
+  <header class="site-header">
+    <div class="wrap bar">
+      <a class="brand" href="index.html">
+        <img src="assets/icon.png" width="512" height="512" alt="" aria-hidden="true">
+        TranslateHUD
+      </a>
+      <nav class="top-nav" aria-label="页面" data-aria-zh="页面" data-aria-en="Pages">
+        <a href="index.html" aria-current="page"><span class="lang-zh">首页</span><span class="lang-en">Home</span></a>
+        <a href="changelog/"><span class="lang-zh">更新说明</span><span class="lang-en">Release notes</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-switch" role="group" aria-label="语言" data-aria-zh="语言" data-aria-en="Language">
+          <button type="button" data-set-lang="zh" aria-pressed="true">中文</button>
+          <button type="button" data-set-lang="en" aria-pressed="false">English</button>
+        </div>
+        <span class="btn-glow">
+          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+            <span class="lang-zh">下载</span>
+            <span class="lang-en">Download</span>
+          </a>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main id="content">
+    <div class="wrap">
+      <section class="hero">
+        <p class="kicker">
+          <span class="lang-zh">macOS 菜单栏 · 14.0 及以上</span>
+          <span class="lang-en">macOS menu bar · 14.0 or later</span>
+        </p>
+        <h1>
+          <span class="lang-zh">屏幕上的字，译在旁边。</span>
+          <span class="lang-en">On-screen text, translated beside it.</span>
+        </h1>
+        <p class="lede">
+          <span class="lang-zh">选中一段文字，或框选一块屏幕，按 Option+W。译文在浮窗里边生成边出现。接口用你自己的，Key 存在钥匙串里。</span>
+          <span class="lang-en">Select a passage or drag a region of the screen, then press Option+W. The translation streams into a floating panel. You bring an OpenAI-compatible API, and the key stays in the Keychain.</span>
+        </p>
+        <div class="cta-row">
+          <span class="btn-glow">
+            <a class="button large" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+              <span class="lang-zh">下载 macOS 版</span>
+              <span class="lang-en">Download for macOS</span>
+            </a>
+          </span>
+          <a class="button secondary large" href="changelog/">
+            <span class="lang-zh">更新说明</span>
+            <span class="lang-en">Release notes</span>
+          </a>
+        </div>
+        <p class="fine">
+          <span class="lang-zh">当前安装包是 v0.3.1，同时包含 Apple 芯片与 Intel 架构，ad-hoc 签名，尚未公证。v0.3.2 的公证包还没有发布。</span>
+          <span class="lang-en">The current package is v0.3.1. It includes both Apple silicon and Intel, is ad-hoc signed, and is not notarized. The notarized v0.3.2 package is not published.</span>
+        </p>
+      </section>
+
+      <!--
+        Intro video slot. Do not point this at a URL until a real file exists.
+        The panel still is the product, shown inside the stage until a film is supplied.
+        Planned film: the features, the panel UI, and a little of the design reasoning.
+      -->
+      <figure class="media-stage" id="video">
+        <div class="stage">
+          <div class="stage-pill">
+            <span class="lang-zh">介绍片还没有放进来</span>
+            <span class="lang-en">Intro video not added yet</span>
+          </div>
+          <img
+            src="assets/translation-panel.png"
+            width="1000"
+            height="654"
+            alt="TranslateHUD 深色翻译浮窗，使用示例文案。顶部可切换目标语言、置顶或关闭；中间是原文、状态和译文；底部是当前 API 与模型。"
+            data-alt-zh="TranslateHUD 深色翻译浮窗，使用示例文案。顶部可切换目标语言、置顶或关闭；中间是原文、状态和译文；底部是当前 API 与模型。"
+            data-alt-en="TranslateHUD’s dark translation panel, using sample copy. The top switches the target language, pins, or closes the panel. The middle shows the source, status, and translation. The bottom shows the current API and model.">
+          <p class="stage-note">
+            <span class="lang-zh">留给以后的一段片子：功能怎么用、浮窗长什么样，以及一点设计上的取舍。这里没有视频地址。画面是现在的浮窗，文案是示例。</span>
+            <span class="lang-en">Reserved for a later film: how the features work, what the panel looks like, and a little of the design reasoning. There is no video address. The picture is the current panel, and the words are sample copy.</span>
+          </p>
+        </div>
+      </figure>
+
+      <section class="section" id="features" aria-labelledby="features-title">
+        <div class="section-head">
+          <p class="kicker" id="features-title">
+            <span class="lang-zh">当前安装包里有的</span>
+            <span class="lang-en">In the current package</span>
+          </p>
+          <h2>
+            <span class="lang-zh">五件已经能用的事</span>
+            <span class="lang-en">Five things that work today</span>
+          </h2>
+          <p class="section-intro">
+            <span class="lang-zh">下面写的都在说明文档里，并且包含在已发布的 v0.3.1 里。浮窗随内容变高、把前后文交给模型当翻译参考，是 v0.3.2 草案，还不能下载。</span>
+            <span class="lang-en">Everything below is documented and included in the published v0.3.1 build. Panels that grow with their content, and sending surrounding text to the model as translation context, are in the v0.3.2 draft. That build cannot be downloaded yet.</span>
+          </p>
+        </div>
+
+        <article class="feature">
+          <p class="tag"><span class="lang-zh">选区</span><span class="lang-en">Selection</span></p>
+          <h2>
+            <span class="lang-zh">翻译选中的文字</span>
+            <span class="lang-en">Translate a selection</span>
+          </h2>
+          <p class="feature-copy">
+            <span class="lang-zh">在当前应用里选中文字，按默认快捷键 Option+W。辅助功能读得到选区时，浮窗贴在选区下方。读不到时，会复制一次来取得文字，并尝试把剪贴板还原；剪贴板历史里仍可能多出一条记录。</span>
+            <span class="lang-en">Select text in the current app and press Option+W, the default shortcut. When Accessibility can see the selection, the panel opens beneath it. When it cannot, TranslateHUD copies once to read the text and tries to restore the clipboard. A clipboard history tool may still record that change.</span>
+          </p>
+          <p class="feature-copy">
+            <span class="lang-zh">浮窗里可以改目标语言并马上重译，也可以置顶、复制译文、刷新，或打开 API 设置。比较长的文字在内容区里滚动，顶部和底部的操作还在。默认目标语言是简体中文；这段话主要是中文时，会改译成英语。也可以在设置里把选区翻译和截图翻译分成两个快捷键。</span>
+            <span class="lang-en">From the panel you can change the target language and retranslate immediately, pin the panel, copy the translation, refresh, or open API settings. Longer text scrolls inside the body, while the top and bottom bars stay put. The default target is Simplified Chinese; when the passage is mainly Chinese, it translates into English instead. Settings can also give selection and screenshot translation two different shortcuts.</span>
+          </p>
+          <figure class="frame">
+            <img
+              src="assets/translation-panel.png"
+              width="1000"
+              height="654"
+              alt="同一张深色翻译浮窗示例。原文与译文并排，标题旁有复制和朗读。"
+              data-alt-zh="同一张深色翻译浮窗示例。原文与译文并排，标题旁有复制和朗读。"
+              data-alt-en="The same dark translation panel. Source and translation sit together, with copy and speak controls beside the headings.">
+          </figure>
+        </article>
+
+        <article class="feature">
+          <p class="tag"><span class="lang-zh">截图</span><span class="lang-en">Region</span></p>
+          <h2>
+            <span class="lang-zh">框选屏幕上的文字</span>
+            <span class="lang-en">Translate a screen region</span>
+          </h2>
+          <p class="feature-copy">
+            <span class="lang-zh">没有选中文字时，同一个快捷键会请你拖出一块区域。松开之后，用 Vision 识别框里的文字，再交给你配置的模型。原文和译文仍在同一个浮窗里，原始截图可以按需展开。</span>
+            <span class="lang-en">If nothing is selected, the same shortcut asks you to drag a rectangle. After you release, Vision reads the text in that region and your configured model translates it. Source and translation stay in the same panel, and the original capture can be opened when you want it.</span>
+          </p>
+          <p class="feature-copy">
+            <span class="lang-zh">菜单栏里也可以直接选「截取屏幕区域翻译」，不必先按快捷键。</span>
+            <span class="lang-en">The menu bar also has “截取屏幕区域翻译”, so a region capture does not have to start from the shortcut.</span>
+          </p>
+          <figure class="scene">
+            <div class="scene-stage">
+              <div class="scene-sheet" aria-hidden="true">
+                <p><span class="lang-zh">屏幕上任意一段话。</span><span class="lang-en">Any passage on the screen.</span></p>
+                <p class="is-selected"><span class="lang-zh">拖出这块区域。</span><span class="lang-en">Drag this region.</span></p>
+                <p><span class="lang-zh">松开，译文就在旁边。</span><span class="lang-en">Release. The translation sits beside it.</span></p>
+              </div>
+              <div class="scene-panel" aria-hidden="true">
+                <p><span class="lang-zh">译文</span><span class="lang-en">Translation</span></p>
+                <p><span class="lang-zh">就在旁边。</span><span class="lang-en">Right beside it.</span></p>
+              </div>
+            </div>
+            <figcaption>
+              <span class="lang-zh">这是框选那一步的示意，不是产品截图。真正拉起的是系统区域截图，仓库里还没有那一步的图片。</span>
+              <span class="lang-en">An illustration of the drag step, not a product screenshot. Capture uses the system region tool, and the repo has no picture of that step yet.</span>
+            </figcaption>
+          </figure>
+        </article>
+
+        <div class="cards">
+          <article class="card">
+            <p class="index">01</p>
+            <h3>
+              <span class="lang-zh">流式译文</span>
+              <span class="lang-en">Streaming</span>
+            </h3>
+            <p>
+              <span class="lang-zh">选中文字的翻译边到达边显示，不必等整段结束。翻译中可以取消，失败后可以重试。批量请求最多等 45 秒。流式请求如果连续 45 秒没有新译文，或总耗时超过 120 秒，会超时。</span>
+              <span class="lang-en">A selection streams into the panel as tokens arrive, instead of waiting for the whole passage. You can cancel, and you can retry after a failure. A batch request waits at most 45 seconds. A stream times out after 45 seconds without new text, or 120 seconds in total.</span>
+            </p>
+          </article>
+          <article class="card">
+            <p class="index">02</p>
+            <h3>
+              <span class="lang-zh">朗读原文或译文</span>
+              <span class="lang-en">Speak either side</span>
+            </h3>
+            <p>
+              <span class="lang-zh">原文和译文可以分别朗读或停止。优先使用这台 Mac 上已经安装的高级或增强语音，也能中英混着读，语速在设置里调。语音要在系统设置里另行下载，没有的话会用基础语音。朗读走系统语音，不会为了出声再请求一次翻译接口。</span>
+              <span class="lang-en">Source and translation can be spoken separately, and stopped. TranslateHUD prefers premium or enhanced voices already installed on the Mac, can mix Chinese and English, and the rate is set in Settings. Those voices are downloaded in System Settings; otherwise it uses a basic voice. Speech uses macOS voices and does not call the translation API again.</span>
+            </p>
+          </article>
+          <article class="card">
+            <p class="index">03</p>
+            <h3>
+              <span class="lang-zh">名词解释</span>
+              <span class="lang-en">Term notes</span>
+            </h3>
+            <p>
+              <span class="lang-zh">展开「名词解释」之后才会单独请求。最多用中文说明 5 个专有名词、缩写或领域术语。没有需要解释的词时，会直接告诉你。这项能力有界面，但仓库里还没有展开后的截图。</span>
+              <span class="lang-en">A separate request starts only after you expand Term notes. It explains at most five proper nouns, abbreviations, or domain terms, in Chinese. If there is nothing to explain, it says so. The control exists; the repo does not yet have a screenshot of it expanded.</span>
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="permissions" aria-labelledby="permissions-title">
+        <div class="section-head">
+          <p class="kicker" id="permissions-title">
+            <span class="lang-zh">权限</span>
+            <span class="lang-en">Permissions</span>
+          </p>
+          <h2>
+            <span class="lang-zh">两项都要手动打开</span>
+            <span class="lang-en">Both switches are manual</span>
+          </h2>
+        </div>
+        <div class="split">
+          <ul class="perm-list">
+            <li>
+              <h3>
+                <span class="lang-zh">辅助功能</span>
+                <span class="lang-en">Accessibility</span>
+              </h3>
+              <p>
+                <span class="lang-zh">用来读取其他应用里选中的文字。没有它，选区翻译不能工作，快捷键也会提示你去打开。路径是「系统设置 → 隐私与安全性 → 辅助功能」。</span>
+                <span class="lang-en">This lets TranslateHUD read selected text in other apps. Without it, selection translation cannot run, and the shortcut asks you to turn it on. The path is System Settings → Privacy &amp; Security → Accessibility.</span>
+              </p>
+            </li>
+            <li>
+              <h3>
+                <span class="lang-zh">屏幕录制</span>
+                <span class="lang-en">Screen Recording</span>
+              </h3>
+              <p>
+                <span class="lang-zh">用来截取你框出的区域，再识别里面的文字。没有它，截图会失败。路径是「系统设置 → 隐私与安全性 → 屏幕录制」。打开之后如果仍然不行，退出 TranslateHUD 再打开一次。</span>
+                <span class="lang-en">This lets TranslateHUD capture the region you drag, then read the text in it. Without it, screenshots fail. The path is System Settings → Privacy &amp; Security → Screen Recording. If it still fails after you allow it, quit TranslateHUD and open it again.</span>
+              </p>
+            </li>
+          </ul>
+          <figure class="plain-shot">
+            <img
+              src="assets/permission-message.png"
+              width="720"
+              height="194"
+              alt="应用内的屏幕录制权限说明，提示到系统设置的隐私与安全性中打开屏幕录制，并在授权后重新启动。"
+              data-alt-zh="应用内的屏幕录制权限说明，提示到系统设置的隐私与安全性中打开屏幕录制，并在授权后重新启动。"
+              data-alt-en="The in-app screen-recording message. It says to enable Screen Recording under Privacy &amp; Security, then relaunch after granting access.">
+            <figcaption>
+              <span class="lang-zh">应用里的真实提示，说明的是屏幕录制。辅助功能会另外提示。</span>
+              <span class="lang-en">A real in-app message, for Screen Recording. Accessibility has its own prompt.</span>
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="install" id="install" aria-labelledby="install-title">
+        <h2 id="install-title">
+          <span class="lang-zh">下载与准备</span>
+          <span class="lang-en">Download and prepare</span>
+        </h2>
+        <p class="section-intro">
+          <span class="lang-zh">没有账号，也没有附送的 API 额度。模型列表是 OpenAI、DeepSeek、月之暗面 Kimi、智谱 GLM、通义千问、OpenRouter、本地 Ollama，或自定义的 OpenAI 兼容地址。云端服务要填 API Key；本地 Ollama 可以不填。</span>
+          <span class="lang-en">There is no account, and no included API credit. Providers are OpenAI, DeepSeek, Moonshot Kimi, Zhipu GLM, Qwen, OpenRouter, local Ollama, or a custom OpenAI-compatible address. Cloud services need an API key. Local Ollama can run without one.</span>
+        </p>
+        <ol>
+          <li>
+            <span class="lang-zh">下载 TranslateHUD-0.3.1-universal.zip，解压，把 TranslateHUD.app 放进「应用程序」。</span>
+            <span class="lang-en">Download TranslateHUD-0.3.1-universal.zip, unzip it, and move TranslateHUD.app into Applications.</span>
+          </li>
+          <li>
+            <span class="lang-zh">这个包未经 Apple 公证。若被拦截，在「应用程序」里右键 TranslateHUD，选择「打开」。</span>
+            <span class="lang-en">This package is not notarized. If macOS blocks it, right-click TranslateHUD in Applications and choose Open.</span>
+          </li>
+          <li>
+            <span class="lang-zh">菜单栏打开 TranslateHUD，选「检查权限…」，把辅助功能和屏幕录制都打开。</span>
+            <span class="lang-en">Open TranslateHUD from the menu bar, choose “检查权限…”, and turn on both Accessibility and Screen Recording.</span>
+          </li>
+          <li>
+            <span class="lang-zh">「打开设置…」里选服务商，需要的话填上 Key，再点「发送测试翻译」。</span>
+            <span class="lang-en">In “打开设置…”, pick a provider, add a key if that provider needs one, then choose “发送测试翻译”.</span>
+          </li>
+        </ol>
+        <p class="fine">
+          <span class="lang-zh">安装包同时包含 Apple 芯片与 Intel 架构。Intel 实机还没有跑过。SHA-256：</span>
+          <span class="lang-en">The zip contains both Apple silicon and Intel. It has not been run on Intel hardware. SHA-256:</span>
+          <code class="hash">542c9fbf8ae53f53a86046a9f9e7e72470d32c6ba8df62666938e82fb9f7eacf</code>
+        </p>
+        <div class="cta-row">
+          <span class="btn-glow">
+            <a class="button large" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+              <span class="lang-zh">下载 macOS 版</span>
+              <span class="lang-en">Download for macOS</span>
+            </a>
+          </span>
+          <a href="changelog/">
+            <span class="lang-zh">更新说明</span>
+            <span class="lang-en">Release notes</span>
+          </a>
+          <a href="https://github.com/jisi71/TranslateHUD/releases/tag/v0.3.1">
+            <span class="lang-zh">v0.3.1 的 GitHub Release</span>
+            <span class="lang-en">v0.3.1 on GitHub</span>
+          </a>
+          <a href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/SHA256SUMS-0.3.1.txt">SHA256SUMS</a>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-bar">
+      <a class="brand" href="index.html">
+        <img src="assets/icon.png" width="512" height="512" alt="" aria-hidden="true">
+        TranslateHUD
+      </a>
+      <span class="btn-glow">
+        <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+          <span class="lang-zh">下载 macOS 版</span>
+          <span class="lang-en">Download for macOS</span>
+        </a>
+      </span>
+      <a href="changelog/">
+        <span class="lang-zh">更新说明</span>
+        <span class="lang-en">Release notes</span>
+      </a>
+      <a href="https://github.com/jisi71/TranslateHUD">GitHub</a>
+      <span class="footer-note">macOS 14+</span>
+    </div>
+  </footer>
+  <script src="js/lang.js"></script>
+</body>
+</html>

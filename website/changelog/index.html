@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-title-zh="更新说明 — TranslateHUD" data-title-en="Release notes — TranslateHUD">更新说明 — TranslateHUD</title>
+  <meta
+    name="description"
+    data-desc-zh="TranslateHUD 已发布版本的更新说明，以及尚未发布的 v0.3.2 草案。当前可下载的安装包是 v0.3.1。"
+    data-desc-en="Release notes for published TranslateHUD versions, plus the unpublished v0.3.2 draft. The package you can download today is v0.3.1."
+    content="TranslateHUD 已发布版本的更新说明，以及尚未发布的 v0.3.2 草案。当前可下载的安装包是 v0.3.1。">
+  <link rel="icon" href="../assets/icon.png" type="image/png">
+  <style>
+    html[data-lang="zh"] .lang-en { display: none !important; }
+    html[data-lang="en"] .lang-zh { display: none !important; }
+  </style>
+  <script>
+    try {
+      var savedLang = localStorage.getItem("translatehud.lang");
+      if (savedLang === "en" || savedLang === "zh") {
+        document.documentElement.setAttribute("data-lang", savedLang);
+        document.documentElement.lang = savedLang === "en" ? "en" : "zh-CN";
+      }
+    } catch (error) {}
+  </script>
+  <link rel="stylesheet" href="../css/site.css">
+</head>
+<body>
+  <a class="skip" href="#content"><span class="lang-zh">跳到内容</span><span class="lang-en">Skip to content</span></a>
+  <header class="site-header">
+    <div class="wrap bar">
+      <a class="brand" href="../index.html">
+        <img src="../assets/icon.png" width="512" height="512" alt="" aria-hidden="true">
+        TranslateHUD
+      </a>
+      <nav class="top-nav" aria-label="页面" data-aria-zh="页面" data-aria-en="Pages">
+        <a href="../index.html"><span class="lang-zh">首页</span><span class="lang-en">Home</span></a>
+        <a href="./" aria-current="page"><span class="lang-zh">更新说明</span><span class="lang-en">Release notes</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-switch" role="group" aria-label="语言" data-aria-zh="语言" data-aria-en="Language">
+          <button type="button" data-set-lang="zh" aria-pressed="true">中文</button>
+          <button type="button" data-set-lang="en" aria-pressed="false">English</button>
+        </div>
+        <span class="btn-glow">
+          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+            <span class="lang-zh">下载</span>
+            <span class="lang-en">Download</span>
+          </a>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main id="content">
+    <div class="wrap">
+      <div class="page-intro">
+        <p class="kicker">
+          <span class="lang-zh">更新说明</span>
+          <span class="lang-en">Release notes</span>
+        </p>
+        <h1>
+          <span class="lang-zh">发布过的版本，和一份草案。</span>
+          <span class="lang-en">Published versions, and one draft.</span>
+        </h1>
+        <p>
+          <span class="lang-zh">能下载的最新安装包是 v0.3.1（2026-10-09）。v0.3.2 来自仓库里的草案，GitHub Release 上没有它的压缩包。已发布条目根据 GitHub Release 整理，原文链接在每一节下面。</span>
+          <span class="lang-en">The newest package you can download is v0.3.1 (2026-10-09). v0.3.2 comes from a draft in the repository. GitHub Releases has no zip for it. Published entries are summarized from GitHub Releases, and each section links to the original note.</span>
+        </p>
+      </div>
+
+      <nav class="version-nav" aria-label="版本" data-aria-zh="版本" data-aria-en="Versions">
+        <a href="#v0.3.2">v0.3.2</a>
+        <a href="#v0.3.1">v0.3.1</a>
+        <a href="#v0.3.0">v0.3.0</a>
+        <a href="#v0.2.0">v0.2.0</a>
+        <a href="#v0.1.3">v0.1.3</a>
+        <a href="#v0.1.2">v0.1.2</a>
+        <a href="#v0.1.1">v0.1.1</a>
+        <a href="#v0.1.0">v0.1.0</a>
+      </nav>
+
+      <article class="release" id="v0.3.2">
+        <header class="release-head">
+          <div>
+            <p class="release-version">v0.3.2</p>
+            <h2>
+              <span class="lang-zh">浮窗随内容伸缩，选区前后文作为翻译参考</span>
+              <span class="lang-en">Panels fit their content, and nearby text can guide a translation</span>
+            </h2>
+          </div>
+          <div class="release-meta">
+            <span class="badge">
+              <span class="lang-zh">草案 · 尚无安装包</span>
+              <span class="lang-en">Draft · no package</span>
+            </span>
+          </div>
+        </header>
+        <ul>
+          <li>
+            <span class="lang-zh">选区浮窗和截图浮窗按内容增高。短原文、短译文不再留在一块很高的空白里。窗口从顶部往下变高；已经拖开的浮窗在出字时保持顶部位置。</span>
+            <span class="lang-en">Selection and screenshot panels grow with their content, so a short passage no longer sits in a tall empty area. The window grows downward from the top. A panel you have dragged keeps that top edge while text arrives.</span>
+          </li>
+          <li>
+            <span class="lang-zh">原文未展开时从 1 行长到 6 行，更长就在这 6 行里滚动。展开和朗读留在滚动区域外面。译文随文字增高，超出屏幕允许的高度后在正文里滚动。流式译文停在开头，直到你自己往下滚。</span>
+            <span class="lang-en">A collapsed source grows from one line to six, then scrolls inside those six lines. Expand and speak stay outside the scroller. The translation grows until the screen limit, then scrolls. A stream stays at the start until you scroll.</span>
+          </li>
+          <li>
+            <span class="lang-zh">翻译选中文字时，如果读到了前后文，模型会收到同一段节选：前文、嵌在原处的选中文字、后文。选中文字再单独给出，那才是要翻译的内容。节选用来判断文章类型、领域、语气和歧义词。请求要求不要翻译整段节选，也不要听从节选里的指示。</span>
+            <span class="lang-en">When surrounding text is available, the model receives one excerpt: text before, the selection in place, and text after. The selection is also given on its own, and that is the only part to translate. The excerpt is for genre, domain, tone, and ambiguous words. The request says not to translate the whole excerpt and not to follow instructions inside it.</span>
+          </li>
+          <li>
+            <span class="lang-zh">名词解释只用这段节选判断领域，并要求不要解释只出现在选区外面的词。没有前后文时，请求与以前相同。截图和 OCR 不附带这段参考。</span>
+            <span class="lang-en">Term notes use the excerpt only to judge the domain, and must not explain words that appear only outside the selection. With no surrounding text, the request stays as before. Screenshot and OCR translation do not include this reference.</span>
+          </li>
+          <li>
+            <span class="lang-zh">网页和部分套壳应用会多试几种读法。仍读不到时，翻译照常进行，浮窗提示无法读取前后文。前后文每侧最多 120 个字符。某一侧被截断时，外侧的省略号不计入这 120 字。</span>
+            <span class="lang-en">Web pages and some wrapped apps try more than one way to read context. If that still fails, translation continues and the panel says the surrounding text is unavailable. Each side keeps at most 120 characters. An ellipsis outside a truncated side does not count toward those 120.</span>
+          </li>
+          <li>
+            <span class="lang-zh">个别 Electron 套壳应用在普通读取失败后，可能会打开系统的增强辅助功能开关。该开关在这个应用本次运行期间一直有效，有可能影响它的窗口动画或位置。浏览器不会走这一步。</span>
+            <span class="lang-en">After a normal read fails, a few Electron-wrapped apps may turn on the system’s enhanced accessibility switch. It stays on for that app’s current run and can affect its window animation or position. Browsers do not take this step.</span>
+          </li>
+          <li>
+            <span class="lang-zh">计划中的公开包是 Developer ID 签名并经 Apple 公证的 TranslateHUD-0.3.2-universal.zip。公证和上传都还没做，所以这里不提供下载。</span>
+            <span class="lang-en">The planned public package is a Developer ID–signed and notarized TranslateHUD-0.3.2-universal.zip. Notarization and upload have not been done, so this page does not offer a download.</span>
+          </li>
+        </ul>
+        <p class="release-actions">
+          <a href="https://github.com/jisi71/TranslateHUD/blob/main/docs/releases/v0.3.2.md">
+            <span class="lang-zh">仓库里的草案原文</span>
+            <span class="lang-en">Draft note in the repository</span>
+          </a>
+        </p>
+      </article>
+
+      <article class="release" id="v0.3.1">
+        <header class="release-head">
+          <div>
+            <p class="release-version">v0.3.1</p>
+            <h2>
+              <span class="lang-zh">统一错误提示与完整处理建议</span>
+              <span class="lang-en">Clearer errors, with a next step</span>
+            </h2>
+          </div>
+          <div class="release-meta">
+            <span class="badge badge-live">
+              <span class="lang-zh">当前发布</span>
+              <span class="lang-en">Current release</span>
+            </span>
+            <time datetime="2026-10-09">2026-10-09</time>
+          </div>
+        </header>
+        <ul>
+          <li>
+            <span class="lang-zh">鉴权、余额、权限、接口参数、模型与服务端错误会分别说明原因和下一步。HTTP 402 明确提示 API 账户余额不足。</span>
+            <span class="lang-en">Authentication, balance, permission, parameter, model, and server errors each explain the cause and a next step. HTTP 402 says the API account balance is insufficient.</span>
+          </li>
+          <li>
+            <span class="lang-zh">HTTP 429 会按已知错误码区分限流和额度不足；无法确定时保持中性说明，不直接判定余额耗尽。额度错误不会当作译文格式错误反复请求。</span>
+            <span class="lang-en">HTTP 429 distinguishes rate limits from quota when a known error code says which is which. If the cause is unclear, the message stays neutral and does not claim the balance is gone. A quota error is not retried as a formatting failure.</span>
+          </li>
+          <li>
+            <span class="lang-zh">断网、DNS、连接中断、TLS 和证书错误使用中文提示。超时会说明是请求等待、连续没有新译文，还是总耗时超限，并写出实际时间限制。</span>
+            <span class="lang-en">Offline, DNS, dropped connection, TLS, and certificate failures use Chinese messages. A timeout says whether the wait was for the request, for new translation text, or for the total time, and it shows the actual limit.</span>
+          </li>
+          <li>
+            <span class="lang-zh">长提示完整换行。通知浮窗按内容调整高度和停留时间。名词解释不再显示服务响应正文。截图、OCR 和选区错误会补充下一步。API Key 改为按需读取，普通浮窗渲染不再触发钥匙串读取。</span>
+            <span class="lang-en">Long messages wrap in full. A notice sizes itself to the text and stays up long enough to read. Term notes no longer show the service response body. Screenshot, OCR, and selection errors add a next step. The API key is read only when needed, so drawing an ordinary panel no longer touches the Keychain.</span>
+          </li>
+          <li>
+            <span class="lang-zh">公开包是 ad-hoc 签名，未经 Apple 公证。首次打开若被拦截，右键应用并选择「打开」。需要 macOS 14.0 及以上，安装包包含两种架构。Intel 实机还没有验证。升级后系统可能要求重新确认两项权限。</span>
+            <span class="lang-en">The public package is ad-hoc signed and not notarized. If the first open is blocked, right-click the app and choose Open. It needs macOS 14.0 or later and contains both architectures. Intel hardware has not been verified. After an upgrade, macOS may ask you to confirm both permissions again.</span>
+          </li>
+        </ul>
+        <figure>
+          <img src="../assets/quota-message.png" width="1000" height="618" alt="模拟的额度不足提示，展示排版和处理建议，不是真实账户余额。" data-alt-zh="模拟的额度不足提示，展示排版和处理建议，不是真实账户余额。" data-alt-en="A simulated quota message, showing layout and advice. It is not a real account balance.">
+          <figcaption>
+            <span class="lang-zh">额度提示用的是模拟错误，只为展示排版和建议。不代表真实余额。</span>
+            <span class="lang-en">The quota message is a simulated error, shown for layout and advice. It is not a real balance.</span>
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="../assets/permission-message.png" width="720" height="194" alt="v0.3.1 中的屏幕录制权限说明。" data-alt-zh="v0.3.1 中的屏幕录制权限说明。" data-alt-en="The screen-recording guidance included with v0.3.1.">
+          <figcaption>
+            <span class="lang-zh">同一版里的屏幕录制权限说明。</span>
+            <span class="lang-en">Screen-recording guidance from the same version.</span>
+          </figcaption>
+        </figure>
+        <p class="release-actions">
+          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+            <span class="lang-zh">下载 v0.3.1</span>
+            <span class="lang-en">Download v0.3.1</span>
+          </a>
+          <a href="https://github.com/jisi71/TranslateHUD/releases/tag/v0.3.1">
+            <span class="lang-zh">GitHub 上的原文</span>
+            <span class="lang-en">Original note on GitHub</span>
+          </a>
+        </p>
+      </article>
+
+      <article class="release" id="v0.3.0">
+        <header class="release-head">
+          <div>
+            <p class="release-version">v0.3.0</p>
+            <h2>
+              <span class="lang-zh">全新翻译浮窗与连接自动恢复</span>
+              <span class="lang-en">A new translation panel, and one automatic reconnect</span>
+            </h2>
+          </div>
+          <div class="release-meta">
+            <time datetime="2026-10-08">2026-10-08</time>
+          </div>
+        </header>
+        <ul>
+          <li>
+            <span class="lang-zh">选中文字和截图翻译改用同一套深色浮窗。顶部是语言、置顶和关闭，底部是 API 操作。长文本在内容区滚动。</span>
+            <span class="lang-en">Selection and screenshot translation share one dark panel. Language, pin, and close sit at the top. API actions sit at the bottom. Long text scrolls in the body.</span>
+          </li>
+          <li>
+            <span class="lang-zh">可以在浮窗里切换目标语言并立即重译，也可以复制译文、朗读原文与译文、刷新、进入 API 设置。置顶后的选区浮窗不会因为点了其他窗口而关闭。</span>
+            <span class="lang-en">The panel can switch the target language and retranslate immediately. It can also copy, speak either side, refresh, and open API settings. A pinned selection panel stays open when you click another window.</span>
+          </li>
+          <li>
+            <span class="lang-zh">可以展开选中文字前后读到的文本，并突出选中内容。来源应用没有提供时会提示。截图翻译可以展开原始截图。这一版只是查看；把前后文交给模型，是上面的 v0.3.2 草案。</span>
+            <span class="lang-en">You can expand text read from around the selection, with the selection marked. If the source app did not provide it, the panel says so. Screenshot translation can expand the original capture. This version only shows that text. Sending it to the model is the v0.3.2 draft above.</span>
+          </li>
+          <li>
+            <span class="lang-zh">译文还没出来时，若发生特定的 TLS 数据校验中断，会自动新建会话并重试一次，界面显示「重试中」。系统代理和证书校验保留。空译文、缺索引、重复索引和提前结束的流式响应不会当成成功。</span>
+            <span class="lang-en">If a specific TLS data-check failure happens before any translation has appeared, TranslateHUD opens a new session and retries once, and the panel says it is retrying. The system proxy and certificate checks stay in place. An empty translation, a missing or repeated index, or a stream that ends early is not treated as success.</span>
+          </li>
+          <li>
+            <span class="lang-zh">公开包同样是 ad-hoc 签名、未公证，需要 macOS 14.0 及以上。Intel 实机尚未验证。</span>
+            <span class="lang-en">The public package is also ad-hoc signed and not notarized, and it needs macOS 14.0 or later. Intel hardware was not verified.</span>
+          </li>
+        </ul>
+        <p class="release-actions">
+          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.0/TranslateHUD-0.3.0-universal.zip">
+            <span class="lang-zh">下载 v0.3.0</span>
+            <span class="lang-en">Download v0.3.0</span>
+          </a>
+          <a href="https://github.com/jisi71/TranslateHUD/releases/tag/v0.3.0">
+            <span class="lang-zh">GitHub 上的原文</span>
+            <span class="lang-en">Original note on GitHub</span>
+          </a>
+        </p>
+      </article>
+
+      <article class="release" id="v0.2.0">
+        <header class="release-head">
+          <div>
+            <p class="release-version">v0.2.0</p>
+            <h2>
+              <span class="lang-zh">朗读与专有名词解释</span>
+              <span class="lang-en">Speech and term notes</span>
+            </h2>
+          </div>
+          <div class="release-meta">
+            <time datetime="2026-07-11">2026-07-11</time>
+          </div>
+        </header>
+        <ul>
+          <li>
+            <span class="lang-zh">新增原文与译文朗读，优先使用已下载的高音质语音，并支持中英文混合文本分段朗读。设置里可以选语音和语速。</span>
+            <span class="lang-en">Adds speech for the source and the translation, preferring downloaded higher-quality voices, including mixed Chinese and English read in segments. Voice and rate are in Settings.</span>
+          </li>
+          <li>
+            <span class="lang-zh">新增专有名词解释，可在翻译结果下按需生成中文解释。</span>
+            <span class="lang-en">Adds on-demand Chinese notes for proper nouns, under the translation.</span>
+          </li>
+          <li>
+            <span class="lang-zh">修复翻译浮窗偶尔出现在屏幕左下角的问题。同一快捷键下，没读到选中文字时进入截图翻译。改进屏幕录制权限提示，本地 Ollama 可以不填 API Key。</span>
+            <span class="lang-en">Fixes a panel that sometimes opened at the bottom-left of the screen. With the shared shortcut, a missed selection falls through to screenshot translation. Screen-recording guidance is clearer, and local Ollama can be used without an API key.</span>
+          </li>
+          <li>
+            <span class="lang-zh">首次打开若被拦截，右键应用并选择「打开」。安装包包含 Apple 芯片与 Intel 架构。</span>
+            <span class="lang-en">If the first open is blocked, right-click the app and choose Open. The package contains Apple silicon and Intel.</span>
+          </li>
+        </ul>
+        <p class="release-actions">
+          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.2.0/TranslateHUD-0.2.0-universal.zip">
+            <span class="lang-zh">下载 v0.2.0</span>
+            <span class="lang-en">Download v0.2.0</span>
+          </a>
+          <a href="https://github.com/jisi71/TranslateHUD/releases/tag/v0.2.0">
+            <span class="lang-zh">GitHub 上的原文</span>
+            <span class="lang-en">Original note on GitHub</span>
+          </a>
+        </p>
+      </article>
+
+      <article class="release" id="v0.1.3">
+        <header class="release-head">
+          <div>
+            <p class="release-version">v0.1.3</p>
+            <h2>
+              <span class="lang-zh">更稳的流式输出</span>
+              <span class="lang-en">More reliable streaming</span>
+            </h2>
+          </div>
+          <div class="release-meta">
+            <time datetime="2026-05-09">2026-05-09</time>
+          </div>
+        </header>
+        <ul>
+          <li>
+            <span class="lang-zh">选区浮窗高度随内容变化，多行原文和译文不再被截成一行。流式文字填入时窗口不会往上飘。</span>
+            <span class="lang-en">The selection panel’s height follows the content, so multiple lines are no longer cut down to one. The window does not drift upward as streamed text arrives.</span>
+          </li>
+          <li>
+            <span class="lang-zh">对原文回吐、拒绝翻译、代码块包裹和只翻了一半做检查，命中后用更严的提示重试一次。流式过程中如果发现输出仍是原文前缀，会中断并重试。</span>
+            <span class="lang-en">Checks for echoing the source, refusing to translate, wrapping the result in a code block, or translating only halfway, then retries once with a stricter prompt. If a stream is still just the start of the source, it stops and retries.</span>
+          </li>
+          <li>
+            <span class="lang-zh">SSE 按规范合并多行 data，并兼容不发空行分隔的服务。没有内容片段时不再静默变成空译文。用户取消截图不会再被报成截图失败。</span>
+            <span class="lang-en">SSE joins multiline data fields, including services that omit the blank-line separator. A response with no content is no longer a silent empty translation. Cancelling a screenshot is no longer reported as a screenshot failure.</span>
+          </li>
+        </ul>
+        <p class="release-actions">
+          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.1.3/TranslateHUD-0.1.3-universal.zip">
+            <span class="lang-zh">下载 v0.1.3</span>
+            <span class="lang-en">Download v0.1.3</span>
+          </a>
+          <a href="https://github.com/jisi71/TranslateHUD/releases/tag/v0.1.3">
+            <span class="lang-zh">GitHub 上的原文</span>
+            <span class="lang-en">Original note on GitHub</span>
+          </a>
+        </p>
+      </article>
+
+      <article class="release" id="v0.1.2">
+        <header class="release-head">
+          <div>
+            <p class="release-version">v0.1.2</p>
+            <h2>
+              <span class="lang-zh">选区浮窗可以拖动</span>
+              <span class="lang-en">The selection panel can be dragged</span>
+            </h2>
+          </div>
+          <div class="release-meta">
+            <time datetime="2026-05-07">2026-05-07</time>
+          </div>
+        </header>
+        <ul>
+          <li>
+            <span class="lang-zh">按住选区浮窗的空白区域可以移动。按住文字本身会变成选择文字。截图浮窗在 v0.1.0 已经可以拖动。</span>
+            <span class="lang-en">Drag the selection panel from an empty area. Pressing the text itself selects text. The screenshot panel was already draggable in v0.1.0.</span>
+          </li>
+        </ul>
+        <p class="release-actions">
+          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.1.2/TranslateHUD-0.1.2-universal.zip">
+            <span class="lang-zh">下载 v0.1.2</span>
+            <span class="lang-en">Download v0.1.2</span>
+          </a>
+          <a href="https://github.com/jisi71/TranslateHUD/releases/tag/v0.1.2">
+            <span class="lang-zh">GitHub 上的原文</span>
+            <span class="lang-en">Original note on GitHub</span>
+          </a>
+        </p>
+      </article>
+
+      <article class="release" id="v0.1.1">
+        <header class="release-head">
+          <div>
+            <p class="release-version">v0.1.1</p>
+            <h2>
+              <span class="lang-zh">选中文字改为流式翻译</span>
+              <span class="lang-en">Selection translation starts streaming</span>
+            </h2>
+          </div>
+          <div class="release-meta">
+            <time datetime="2026-05-06">2026-05-06</time>
+          </div>
+        </header>
+        <ul>
+          <li>
+            <span class="lang-zh">选中文字的翻译改为流式输出，译文边生成边显示。多段输入如果被模型压掉换行，会改走逐行批量翻译。</span>
+            <span class="lang-en">Selection translation becomes a stream, so the translation appears as it is generated. If a multi-paragraph input loses its line breaks, TranslateHUD falls back to a line-by-line batch.</span>
+          </li>
+          <li>
+            <span class="lang-zh">针对 DeepSeek 默认开启的 thinking 模式做了兼容：检测到 DeepSeek 地址时会关掉 thinking。预设模型改为当时的 deepseek-v4-flash。</span>
+            <span class="lang-en">DeepSeek’s thinking mode, which was on by default, is turned off when the address is recognized as DeepSeek. The preset model of that release was deepseek-v4-flash.</span>
+          </li>
+          <li>
+            <span class="lang-zh">选区浮窗的长文本放进滚动区域，右下角可以拖大。剪贴板兜底会保留原来的多项内容；没有选区时不再做一次无意义的还原。</span>
+            <span class="lang-en">Long selection text scrolls, and the panel can be resized from the corner. The clipboard fallback keeps the original multi-item clipboard, and it no longer restores anything when there was no selection.</span>
+          </li>
+          <li>
+            <span class="lang-zh">这一版的公开包是 ad-hoc 签名。首次打开需要右键并选择「打开」。</span>
+            <span class="lang-en">This public package is ad-hoc signed. The first open needs a right-click and Open.</span>
+          </li>
+        </ul>
+        <p class="release-actions">
+          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.1.1/TranslateHUD-0.1.1-universal.zip">
+            <span class="lang-zh">下载 v0.1.1</span>
+            <span class="lang-en">Download v0.1.1</span>
+          </a>
+          <a href="https://github.com/jisi71/TranslateHUD/releases/tag/v0.1.1">
+            <span class="lang-zh">GitHub 上的原文</span>
+            <span class="lang-en">Original note on GitHub</span>
+          </a>
+        </p>
+      </article>
+
+      <article class="release" id="v0.1.0">
+        <header class="release-head">
+          <div>
+            <p class="release-version">v0.1.0</p>
+            <h2>
+              <span class="lang-zh">第一个公开版本</span>
+              <span class="lang-en">First public release</span>
+            </h2>
+          </div>
+          <div class="release-meta">
+            <time datetime="2026-05-05">2026-05-05</time>
+          </div>
+        </header>
+        <ul>
+          <li>
+            <span class="lang-zh">菜单栏工具。默认 Option+W：有选中文字就翻译选区，否则框选屏幕。读选区时先试辅助功能，不行再试复制，最后才截图。</span>
+            <span class="lang-en">A menu-bar tool. Option+W by default translates a selection when there is one, and otherwise captures a screen region. Reading a selection tries Accessibility, then a copy, and only then a screenshot.</span>
+          </li>
+          <li>
+            <span class="lang-zh">接入 OpenAI 兼容接口，预设包括 OpenAI、DeepSeek、Kimi、智谱、通义、OpenRouter、本地 Ollama 和自定义。默认译成简体中文；输入主体是中文时改译成英语。</span>
+            <span class="lang-en">Connects to an OpenAI-compatible API. Presets include OpenAI, DeepSeek, Kimi, Zhipu, Qwen, OpenRouter, local Ollama, and a custom endpoint. The default target is Simplified Chinese; mainly Chinese input is translated into English.</span>
+          </li>
+          <li>
+            <span class="lang-zh">触发后先出现等待中的浮窗，可以取消和重试。需要 macOS 14.0 及以上。公开包 ad-hoc 签名，未公证，首次打开要右键并选择「打开」。</span>
+            <span class="lang-en">A waiting panel appears when you trigger a translation, and it can be cancelled or retried. Requires macOS 14.0 or later. The public package is ad-hoc signed and not notarized, so the first open needs a right-click and Open.</span>
+          </li>
+        </ul>
+        <p class="release-actions">
+          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.1.0/TranslateHUD-0.1.0-universal.zip">
+            <span class="lang-zh">下载 v0.1.0</span>
+            <span class="lang-en">Download v0.1.0</span>
+          </a>
+          <a href="https://github.com/jisi71/TranslateHUD/releases/tag/v0.1.0">
+            <span class="lang-zh">GitHub 上的原文</span>
+            <span class="lang-en">Original note on GitHub</span>
+          </a>
+        </p>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-bar">
+      <a class="brand" href="../index.html">
+        <img src="../assets/icon.png" width="512" height="512" alt="" aria-hidden="true">
+        TranslateHUD
+      </a>
+      <span class="btn-glow">
+        <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+          <span class="lang-zh">下载 macOS 版</span>
+          <span class="lang-en">Download for macOS</span>
+        </a>
+      </span>
+      <a href="../index.html">
+        <span class="lang-zh">回到首页</span>
+        <span class="lang-en">Home</span>
+      </a>
+      <a href="https://github.com/jisi71/TranslateHUD">GitHub</a>
+      <span class="footer-note">macOS 14+</span>
+    </div>
+  </footer>
+  <script src="../js/lang.js"></script>
+</body>
+</html>

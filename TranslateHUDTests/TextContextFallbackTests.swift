@@ -3,8 +3,15 @@ import XCTest
 
 final class TextContextFallbackTests: XCTestCase {
     func testContextLimitsMatchTheExistingWindow() {
-        XCTAssertEqual(TextContextFallback.characterLimit, 240)
+        XCTAssertEqual(TextContextFallback.characterLimit, 120)
         XCTAssertEqual(TextContextFallback.budgetMilliseconds, 150)
+
+        let selected = "X"
+        let before = String(repeating: "前", count: 200)
+        let after = String(repeating: "后", count: 200)
+        let context = SelectionFetcher.textContext(in: before + selected + after, selected: selected)
+        XCTAssertEqual(context?.before, "…" + String(repeating: "前", count: TextContextFallback.characterLimit))
+        XCTAssertEqual(context?.after, String(repeating: "后", count: TextContextFallback.characterLimit) + "…")
     }
 
     func testLimitedContextPreservesEllipsisAndGraphemeLimit() {
@@ -60,7 +67,7 @@ final class TextContextFallbackTests: XCTestCase {
         let context = ContextTextAssembler.context(
             pieces: [earlier, owner],
             selected: "the",
-            limit: 240
+            limit: TextContextFallback.characterLimit
         )
         XCTAssertEqual(context?.before, "the cat ")
         XCTAssertEqual(context?.after, " mat")
@@ -70,7 +77,7 @@ final class TextContextFallbackTests: XCTestCase {
         let ranged = ContextTextAssembler.context(
             pieces: [ContextTextPiece(text: whole, containsSelection: true, selectionUTF16: second)],
             selected: "the",
-            limit: 240
+            limit: TextContextFallback.characterLimit
         )
         XCTAssertEqual(ranged?.before, "the cat sat on ")
         XCTAssertEqual(ranged?.after, " mat")
@@ -78,7 +85,7 @@ final class TextContextFallbackTests: XCTestCase {
         let unlabeled = ContextTextAssembler.context(
             pieces: [ContextTextPiece(text: whole, containsSelection: false, selectionUTF16: nil)],
             selected: "the",
-            limit: 240
+            limit: TextContextFallback.characterLimit
         )
         XCTAssertEqual(unlabeled?.before, "")
         XCTAssertEqual(unlabeled?.after, " cat sat on the mat")
@@ -95,7 +102,7 @@ final class TextContextFallbackTests: XCTestCase {
                 ),
             ],
             selected: "中",
-            limit: 240
+            limit: TextContextFallback.characterLimit
         )
         XCTAssertEqual(context?.before, "前文选")
         XCTAssertEqual(context?.after, "文")
@@ -110,7 +117,7 @@ final class TextContextFallbackTests: XCTestCase {
                 ),
             ],
             selected: "world",
-            limit: 240
+            limit: TextContextFallback.characterLimit
         )
         XCTAssertEqual(latin?.before, "Hello ")
         XCTAssertEqual(latin?.after, "")

@@ -112,8 +112,8 @@ final class TranslationContextPromptTests: XCTestCase {
     }
 
     func testNormalAccessibilityWindowIsNotCutAgain() throws {
-        let before = "…" + String(repeating: "词", count: 240)
-        let after = String(repeating: "后", count: 240) + "…"
+        let before = "…" + String(repeating: "词", count: TextContextFallback.characterLimit)
+        let after = String(repeating: "后", count: TextContextFallback.characterLimit) + "…"
         let frame = try XCTUnwrap(TranslationContextPrompt.frame(
             marked: "细胞",
             translating: "细胞",

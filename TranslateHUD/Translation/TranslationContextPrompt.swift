@@ -6,9 +6,9 @@ import Foundation
 /// marked in place, then the text after it. The text to translate is sent again on its
 /// own. Surrounding sides stay bounded so a large document cannot grow the request.
 enum TranslationContextPrompt {
-    /// Above the Accessibility window (240 characters plus a leading or trailing …)
-    /// so a normal `TextContext` is copied unchanged. Longer strings are cut on the
-    /// side farthest from the selection.
+    /// Above the Accessibility window (`TextContextFallback.characterLimit` characters
+    /// plus a leading or trailing …) so a normal `TextContext` is copied unchanged.
+    /// Longer strings are cut on the side farthest from the selection.
     static let maximumCharacters = 280
     static let maximumUTF8Bytes = 2_048
 

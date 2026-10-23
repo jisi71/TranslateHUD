@@ -21,7 +21,9 @@ import Foundation
 /// the occurrence in the focused element's own piece wins; otherwise the first occurrence
 /// in reading order is used. Layer 0 does not adopt that rule.
 enum TextContextFallback {
-    static let characterLimit = 240
+    /// Characters of surrounding text kept on each side of the selection.
+    /// A leading or trailing … is added when that side is truncated, and is not counted here.
+    static let characterLimit = 120
     static let budgetMilliseconds = 150
 }
 

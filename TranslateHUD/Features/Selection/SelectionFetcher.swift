@@ -30,7 +30,7 @@ enum SelectionFetcher {
         in text: String,
         selected: String,
         range: NSRange? = nil,
-        limit: Int = 240,
+        limit: Int = TextContextFallback.characterLimit,
         match: TextContextMatch = .uniqueOnly
     ) -> TextContext? {
         guard !selected.isEmpty, limit > 0 else { return nil }

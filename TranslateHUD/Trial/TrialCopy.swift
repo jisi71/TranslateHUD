@@ -1,0 +1,18 @@
+import Foundation
+
+/// Sentences shown to people using the trial. Keep them identical to
+/// `backend/src/trialPolicy.js` so the HUD and the proxy say the same thing.
+enum TrialCopy {
+    static let lengthLimit = "超出单次翻译上限（体验额度单次最多 500 字）"
+    static let balanceExhausted = "体验额度已用完。请在设置里填写你自己的 API Key，之后会直接使用你的接口。"
+    static let balanceInsufficient = "体验额度不够支付这次翻译。请缩短原文，或在设置里填写你自己的 API Key。"
+    static let authExpired = "体验登录已失效，请在设置里重新登录。"
+    static let notConfigured = "体验翻译服务还没配置好。请稍后再试，或在设置里填写你自己的 API Key。"
+    static let upstream = "体验翻译暂时没有完成，额度已退回。请稍后再试。"
+    static let empty = "没有可翻译的文字，请重新选中文字或框选包含文字的区域。"
+    static let bodyTooLong = "这次请求太长了，请缩短原文后再试。"
+    static let sourceRequired = "体验翻译需要原文。请更新到最新版 TranslateHUD。"
+    static let needLogin = "请先用手机号登录，或在设置里填写你自己的 API Key。"
+    static let needProxy = "体验服务地址还没填。请在设置里填写我们提供的地址，或改用你自己的 API Key。"
+    static let badProxy = "体验服务地址需要以 http:// 或 https:// 开头，例如 https://example.com/v1。"
+}

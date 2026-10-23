@@ -1,0 +1,8 @@
+{
+  "name": "translatehud-trial",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.10.0"
+  }
+}

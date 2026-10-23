@@ -8,14 +8,9 @@ enum ScreenshotFlow {
 
     @MainActor
     private static func run() async {
-        // 1. 配置检查
-        let config = SettingsStore.shared.providerConfig
-        guard config.isUsable else {
-            ToastCenter.shared.show(
-                title: "翻译服务配置需要检查",
-                message: config.validationMessage ?? "请打开设置检查 Base URL 和 Model。",
-                duration: 4
-            )
+        // 1. 还没拿到原文时，只检查登录、余额是否已用完、以及自己的 API。
+        if case .blocked(let title, let message) = TranslationSession.prepare(sourceText: nil) {
+            ToastCenter.shared.show(title: title, message: message, duration: 6)
             return
         }
 
@@ -41,14 +36,15 @@ enum ScreenshotFlow {
         }
 
         let originals = lines.map { $0.text }
+        let source = originals.joined(separator: "\n")
         let target = TargetLanguage.resolved(
             for: originals,
             configured: SettingsStore.shared.targetLanguage
         )
         let termProgress = TermExplanationProgress(
-            explainer: OpenAICompatibleTermExplainer(config: config),
             texts: originals,
-            language: .chinese
+            language: .chinese,
+            explainer: { TranslationSession.explainer(for: source) }
         )
 
         // 4. 立刻展示浮窗（loading 状态 + 已识别的原文）
@@ -72,9 +68,13 @@ enum ScreenshotFlow {
             return
         }
 
-        // 6. 异步翻译；progress 状态变化驱动浮窗 UI
-        let translator = OpenAICompatibleTranslator(config: config)
-        progress.start(translator: translator, originals: originals, target: target)
+        // 6. 异步翻译；progress 状态变化驱动浮窗 UI。超长原文在这里被拦住。
+        switch TranslationSession.prepare(sourceText: source) {
+        case .blocked(_, let message):
+            progress.start(translator: FailingTranslator(message: message), originals: originals, target: target)
+        case .ready(let ready):
+            progress.start(translator: ready.translator, originals: originals, target: target)
+        }
     }
 }
 

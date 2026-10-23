@@ -1,0 +1,13 @@
+{
+  "envId": "liusheng-d0g430h1f486532bd",
+  "functionRoot": "./functions",
+  "functions": [
+    {
+      "name": "trial",
+      "timeout": 120,
+      "runtime": "Nodejs18.15",
+      "installDependency": true,
+      "handler": "index.main"
+    }
+  ]
+}

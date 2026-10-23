@@ -3,10 +3,16 @@ import Foundation
 struct OpenAICompatibleTermExplainer: TermExplainer {
     let config: ProviderConfig
     let session: URLSession
+    let extraHTTPHeaders: [String: String]
 
-    init(config: ProviderConfig, session: URLSession = .shared) {
+    init(
+        config: ProviderConfig,
+        session: URLSession = .shared,
+        extraHTTPHeaders: [String: String] = [:]
+    ) {
         self.config = config
         self.session = session
+        self.extraHTTPHeaders = extraHTTPHeaders
     }
 
     func explain(
@@ -89,6 +95,9 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if !config.apiKey.isEmpty {
             request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        for (field, value) in extraHTTPHeaders where !value.isEmpty {
+            request.setValue(value, forHTTPHeaderField: field)
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

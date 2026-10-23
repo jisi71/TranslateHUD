@@ -29,12 +29,18 @@ targets:
         NSHumanReadableCopyright: "© 2026"
         NSScreenCaptureDescription: "TranslateHUD 需要屏幕录制权限来截取你选定的区域并翻译图中的文字。"
         NSAppleEventsUsageDescription: "TranslateHUD 需要发送 Apple Event 以读取其他应用中的选中文字。"
+        CloudBaseEnvId: "$(CLOUDBASE_ENV_ID)"
+        CloudBaseRegion: "$(CLOUDBASE_REGION)"
+        TrialProxyBaseURL: "$(TRIAL_PROXY_BASE_URL)"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qi.TranslateHUD
         MACOSX_DEPLOYMENT_TARGET: "14.0"
-        MARKETING_VERSION: "0.3.2"
-        CURRENT_PROJECT_VERSION: "9"
+        MARKETING_VERSION: "0.4.0"
+        CURRENT_PROJECT_VERSION: "10"
+        CLOUDBASE_ENV_ID: liusheng-d0g430h1f486532bd
+        CLOUDBASE_REGION: ap-shanghai
+        TRIAL_PROXY_BASE_URL: ""
         ENABLE_HARDENED_RUNTIME: NO   # 自签名 + AX 兜底用 CGEvent 时关掉硬化运行时更省心
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "TranslateHUD Local Sign"

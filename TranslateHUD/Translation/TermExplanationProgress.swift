@@ -13,7 +13,7 @@ final class TermExplanationProgress: ObservableObject {
     @Published private(set) var state: State = .idle
     @Published private(set) var isExpanded = false
 
-    private let explainer: any TermExplainer
+    private let explainerProvider: @MainActor () -> any TermExplainer
     private let texts: [String]
     private let language: TargetLanguage
     private let context: SelectionFetcher.TextContext?
@@ -22,14 +22,30 @@ final class TermExplanationProgress: ObservableObject {
     private var requestID = UUID()
     private var hasRequested = false
 
-    init(
+    convenience init(
         explainer: any TermExplainer,
         texts: [String],
         language: TargetLanguage,
         context: SelectionFetcher.TextContext? = nil,
         timeoutSeconds: TimeInterval = 20
     ) {
-        self.explainer = explainer
+        self.init(
+            texts: texts,
+            language: language,
+            context: context,
+            timeoutSeconds: timeoutSeconds,
+            explainer: { explainer }
+        )
+    }
+
+    init(
+        texts: [String],
+        language: TargetLanguage,
+        context: SelectionFetcher.TextContext? = nil,
+        timeoutSeconds: TimeInterval = 20,
+        explainer: @escaping @MainActor () -> any TermExplainer
+    ) {
+        self.explainerProvider = explainer
         self.texts = texts
         self.language = language
         self.context = context
@@ -67,7 +83,7 @@ final class TermExplanationProgress: ObservableObject {
         invalidateTask()
         state = .loading
         let currentID = requestID
-        let explainer = self.explainer
+        let explainer = explainerProvider()
         let texts = self.texts
         let language = self.language
         let context = self.context

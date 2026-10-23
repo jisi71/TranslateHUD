@@ -13,7 +13,12 @@ struct TranslateHUDApp: App {
 }
 
 private struct MenuBarMenu: View {
+    @ObservedObject private var trial = TrialAccountStore.shared
+    @ObservedObject private var settings = SettingsStore.shared
+
     var body: some View {
+        Text(trialLabel)
+        Divider()
         // 注：选区翻译只能走快捷键——点菜单会把焦点抢到我们 App，AX 就读不到原 App 的选中文字。
         Button("截取屏幕区域翻译") {
             ScreenshotFlow.start()
@@ -33,5 +38,27 @@ private struct MenuBarMenu: View {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")
+    }
+
+    private var trialLabel: String {
+        let input = TranslationRouteInput(
+            hasOwnAPIKey: settings.hasOwnAPIKey,
+            baseURL: settings.baseURL,
+            isLoggedIn: trial.isLoggedIn,
+            proxyBaseURL: trial.effectiveProxyBaseURL,
+            balanceFen: trial.balanceFen,
+            sourceText: nil
+        )
+        switch TranslationRoute.endpoint(input) {
+        case .trial:
+            if let fen = trial.balanceFen {
+                return "体验余额 \(TrialPricing.yuanString(fen: fen))"
+            }
+            return "体验账号已登录"
+        case .ownKey:
+            return "正在使用自己的 API"
+        case .unavailable:
+            return "手机号登录后可试用"
+        }
     }
 }

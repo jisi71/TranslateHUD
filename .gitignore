@@ -21,6 +21,12 @@ Package.resolved
 # 本地设计草稿（运行时图标位于 Assets.xcassets）
 Artwork/
 
+# 体验额度：真实密钥和本地账本不入库
+backend/.env
+backend/data/
+backend/functions/trial/src/
+Config/Secrets.xcconfig
+
 # 系统
 .DS_Store
 *.swp

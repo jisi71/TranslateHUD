@@ -225,6 +225,130 @@ final class ContextEnablementPersistenceTests: XCTestCase {
         XCTAssertNil(store.effectiveMethod(bundleID: "com.tencent.flue.WeChatAppEx", version: "2.5.7 (25800)", now: now))
     }
 
+    func testStaleNothingWorksIsDroppedOnceTheViewerIsAnEmbeddedEngine() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        _ = try makeStore()
+        let json = """
+        [{"bundleID":"com.tencent.flue.WeChatAppEx","method":"nothingWorks","timestamp":1700000000,"version":"2.5.7 (25800)"},\
+        {"bundleID":"com.tencent.xinWeChat.xplayer","method":"nothingWorks","timestamp":1700000000,"version":"4.1.15 (4.1.15.55)"}]
+        """
+        defaults?.set(Data(json.utf8), forKey: ContextEnablementStore.defaultsKey)
+        let loaded = try makeStore(existingSuite: true)
+
+        XCTAssertEqual(
+            loaded.effectiveMethod(
+                bundleID: "com.tencent.xinWeChat.xplayer",
+                version: "4.1.15 (4.1.15.55)",
+                now: now
+            ),
+            .nothingWorks
+        )
+        XCTAssertNil(
+            loaded.effectiveMethod(
+                bundleID: "com.tencent.flue.WeChatAppEx",
+                version: "2.5.7 (25800)",
+                now: now,
+                hostKind: .embeddedEngine
+            )
+        )
+        XCTAssertFalse(loaded.allRecords().contains { $0.bundleID == "com.tencent.flue.WeChatAppEx" })
+        XCTAssertEqual(
+            loaded.effectiveMethod(
+                bundleID: "com.tencent.xinWeChat.xplayer",
+                version: "4.1.15 (4.1.15.55)",
+                now: now,
+                hostKind: .other
+            ),
+            .nothingWorks
+        )
+    }
+
+    func testNothingWorksAfterTheEmbeddedLadderIsKept() throws {
+        let store = try makeStore()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        store.save(
+            bundleID: "com.tencent.flue.WeChatAppEx",
+            version: "2.5.7 (25800)",
+            method: .nothingWorks,
+            now: now,
+            embeddedLadderExhausted: true
+        )
+        XCTAssertEqual(
+            store.effectiveMethod(
+                bundleID: "com.tencent.flue.WeChatAppEx",
+                version: "2.5.7 (25800)",
+                now: now,
+                hostKind: .embeddedEngine
+            ),
+            .nothingWorks
+        )
+        let data = try XCTUnwrap(defaults?.data(forKey: ContextEnablementStore.defaultsKey))
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(json.contains("embeddedLadderExhausted"))
+        XCTAssertFalse(json.contains("前文"))
+    }
+
+    func testNothingWorksSavedBeforeEmbeddedClassificationIsDropped() throws {
+        let store = try makeStore()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        store.save(
+            bundleID: "com.example.Shell",
+            version: "1.0 (1)",
+            method: .nothingWorks,
+            now: now
+        )
+        XCTAssertEqual(
+            store.effectiveMethod(bundleID: "com.example.Shell", version: "1.0 (1)", now: now),
+            .nothingWorks
+        )
+        XCTAssertNil(
+            store.effectiveMethod(
+                bundleID: "com.example.Shell",
+                version: "1.0 (1)",
+                now: now,
+                hostKind: .embeddedEngine
+            )
+        )
+        XCTAssertTrue(store.allRecords().isEmpty)
+    }
+
+    func testLaunchDropsStaleNothingWorksForTheArticleViewer() throws {
+        let store = try makeStore()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        store.save(
+            bundleID: "com.tencent.flue.WeChatAppEx",
+            version: "2.5.7 (25800)",
+            method: .nothingWorks,
+            now: now
+        )
+        var applied: [AccessibilityEnablement] = []
+        let monitor = ContextEnablementMonitor(
+            store: store,
+            memory: ContextEnablementMemoryBox(),
+            apply: { action, _ in
+                applied.append(action)
+                return true
+            },
+            now: { now }
+        )
+        monitor.handle(ContextAppEvent(
+            bundleID: "com.tencent.flue.WeChatAppEx",
+            version: "2.5.7 (25800)",
+            pid: 55,
+            standaloneBrowser: false
+        ))
+        XCTAssertTrue(applied.isEmpty)
+        XCTAssertTrue(store.allRecords().isEmpty)
+        XCTAssertNil(
+            store.effectiveMethod(
+                bundleID: "com.tencent.flue.WeChatAppEx",
+                version: "2.5.7 (25800)",
+                now: now,
+                hostKind: .embeddedEngine
+            )
+        )
+    }
+
     func testProactiveApplyFailureDoesNotMarkTheProcess() throws {
         let store = try makeStore()
         let now = Date(timeIntervalSince1970: 1_700_000_000)

@@ -337,6 +337,7 @@ final class NoFocusContextRecoveryTests: XCTestCase {
         let attempt = try XCTUnwrap(result.attempts.first)
         XCTAssertNil(result.context)
         XCTAssertTrue(attempt.outcome.ladderExhausted)
+        XCTAssertTrue(attempt.outcome.embeddedLadderExhausted)
         XCTAssertTrue(enabled.value.isEmpty)
         XCTAssertEqual(
             ContextEnablementLearning.persistedMethod(
@@ -424,11 +425,21 @@ final class NoFocusContextRecoveryTests: XCTestCase {
             bundleURL: nil,
             cache: cache
         ))
+        XCTAssertFalse(ContextHostResolver.embeddedScanInFlight(
+            bundleID: "com.tencent.flue.WeChatAppEx",
+            bundleURL: article,
+            cache: cache
+        ))
 
         cache.scheduleScan(of: article)
         XCTAssertEqual(started.wait(timeout: .now() + 2), .success)
-        XCTAssertTrue(ContextHostResolver.embeddedScanInFlight(
+        XCTAssertFalse(ContextHostResolver.embeddedScanInFlight(
             bundleID: "com.tencent.flue.WeChatAppEx",
+            bundleURL: article,
+            cache: cache
+        ))
+        XCTAssertTrue(ContextHostResolver.embeddedScanInFlight(
+            bundleID: "com.example.UnlistedShell",
             bundleURL: article,
             cache: cache
         ))
@@ -436,7 +447,7 @@ final class NoFocusContextRecoveryTests: XCTestCase {
         gate.signal()
         queue.sync {}
         XCTAssertFalse(ContextHostResolver.embeddedScanInFlight(
-            bundleID: "com.tencent.flue.WeChatAppEx",
+            bundleID: "com.example.UnlistedShell",
             bundleURL: article,
             cache: cache
         ))

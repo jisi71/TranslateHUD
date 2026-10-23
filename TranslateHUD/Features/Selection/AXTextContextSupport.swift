@@ -446,14 +446,25 @@ final class TextContextSession {
         ) {
             return nil
         }
-        return records.effectiveMethod(bundleID: bundleID, version: version, now: Date())
+        let running = NSRunningApplication(processIdentifier: id.pid)
+        let kind = ContextHostResolver.kind(
+            bundleID: bundleID,
+            bundleURL: running?.bundleURL,
+            cache: .shared
+        )
+        return records.effectiveMethod(bundleID: bundleID, version: version, now: Date(), hostKind: kind)
     }
 
     private func recordedMethod(for process: ContextProcessInfo) -> RecordedContextMethod? {
         guard process.pid > 0, let bundleID = process.bundleID else { return nil }
         guard let version = AppVersionCache.shared.version(bundleURL: process.bundleURL) else { return nil }
         if Self.isExcluded(pid: process.pid, bundleID: bundleID) { return nil }
-        return records.effectiveMethod(bundleID: bundleID, version: version, now: Date())
+        let kind = ContextHostResolver.kind(
+            bundleID: bundleID,
+            bundleURL: process.bundleURL,
+            cache: .shared
+        )
+        return records.effectiveMethod(bundleID: bundleID, version: version, now: Date(), hostKind: kind)
     }
 
     private func persist(_ outcome: TextContextOutcome, element: AXUIElement) {
@@ -497,7 +508,13 @@ final class TextContextSession {
             outcome: outcome,
             retainedPhase: memoryBox.memory.phase(for: host)
         ) else { return }
-        records.save(bundleID: bundleID, version: version, method: method, now: Date())
+        records.save(
+            bundleID: bundleID,
+            version: version,
+            method: method,
+            now: Date(),
+            embeddedLadderExhausted: method == .nothingWorks && outcome.embeddedLadderExhausted
+        )
     }
 
     private static func isExcluded(pid: pid_t, bundleID: String?) -> Bool {

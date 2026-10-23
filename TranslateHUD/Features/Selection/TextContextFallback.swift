@@ -33,6 +33,8 @@ import Foundation
 /// (`RecordedContextMethod`). A later miss for the same version jumps to the
 /// remembered switch instead of repeating the ladder. `nothingWorks` is remembered
 /// too, so the ladder stays idle until the app version changes or seven days pass.
+/// A `nothingWorks` record stored before the bundle was known to be an embedded
+/// engine is dropped, because that ladder never tried `AXEnhancedUserInterface`.
 ///
 /// Ambiguous selection inside assembled sibling text: a marker or AX range wins. Without one,
 /// the occurrence in the focused element's own piece wins; otherwise the first occurrence
@@ -56,8 +58,9 @@ enum ContextHostKind: Equatable {
     /// Chrome, Edge, Brave, and other standalone browser shells. Manual accessibility only.
     case chromiumBrowser
     /// Embedded Chromium, CEF, or Electron. Manual accessibility first; enhanced UI only
-    /// on a later miss. Known framework names are a fast path. A cached bundle scan can
-    /// classify an embedder that is not on those lists (WeChat's article viewer, for example).
+    /// on a later miss. Known bundle ids and framework names are a fast path.
+    /// WeChat's article viewer (`com.tencent.flue.WeChatAppEx`) is one of those ids.
+    /// A cached bundle scan classifies embedders that are on neither list.
     case embeddedEngine
 }
 
@@ -128,6 +131,16 @@ enum ContextHostClassifier {
     /// Fast path, compared case-insensitively. Framework names cover shells whose bundle id
     /// is not listed. Embedders missing from both lists are classified by
     /// `EmbeddedChromiumDetector`, whose result is passed in as `embeddedEngineCached`.
+    ///
+    /// `com.tencent.flue.WeChatAppEx` is the 公众号 article process. It ships Chromium
+    /// (`icudtl.dat`, `v8_context_snapshot*.bin`, and `Helper (Renderer).app` under
+    /// `WeChatAppEx Framework.framework/Versions/C`). The bundle id is enough; a missed
+    /// file scan must not keep it on the manual-only ladder. The main chat bundle
+    /// `com.tencent.xinWeChat` is not in this set.
+    static let embeddedEngineBundleIDs: Set<String> = [
+        "com.tencent.flue.wechatappex",
+    ]
+
     static let chromiumBrowserBundleIDs: Set<String> = [
         "com.google.chrome",
         "com.google.chrome.beta",
@@ -167,6 +180,11 @@ enum ContextHostClassifier {
         return chromiumBrowserBundleIDs.contains(bundleID.lowercased())
     }
 
+    static func isKnownEmbeddedEngine(bundleID: String?) -> Bool {
+        guard let bundleID else { return false }
+        return embeddedEngineBundleIDs.contains(bundleID.lowercased())
+    }
+
     /// `embeddedEngineCached` is the bundle scan result. `nil` means the scan has not
     /// finished; the caller keeps the manual-only path for this selection.
     static func kind(
@@ -175,6 +193,7 @@ enum ContextHostClassifier {
         embeddedEngineCached: Bool? = nil
     ) -> ContextHostKind {
         if isStandaloneBrowser(bundleID: bundleID) { return .chromiumBrowser }
+        if isKnownEmbeddedEngine(bundleID: bundleID) { return .embeddedEngine }
         let names = Set(frameworkNames.map { $0.lowercased() })
         if !names.isDisjoint(with: browserFrameworkNames) { return .chromiumBrowser }
         if !names.isDisjoint(with: electronFrameworkNames) { return .embeddedEngine }
@@ -250,6 +269,9 @@ struct TextContextOutcome: Equatable {
     var ladderExhausted: Bool = false
     /// A remembered method was already in effect and still missed. The stored choice should be dropped.
     var invalidatedShortcut: Bool = false
+    /// The exhausted ladder already included `AXEnhancedUserInterface`. `nothingWorks`
+    /// stored without this was recorded while the bundle was still a normal app.
+    var embeddedLadderExhausted: Bool = false
 }
 
 struct TextContextEngine {
@@ -324,7 +346,8 @@ struct TextContextEngine {
             bundleID: host.bundleID,
             pid: host.pid,
             ladderExhausted: true,
-            invalidatedShortcut: shortcutFailed
+            invalidatedShortcut: shortcutFailed,
+            embeddedLadderExhausted: host.kind == .embeddedEngine
         )
     }
 

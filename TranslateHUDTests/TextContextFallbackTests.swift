@@ -579,7 +579,19 @@ final class TextContextFallbackTests: XCTestCase {
                 bundleID: "com.tencent.flue.WeChatAppEx",
                 frameworkNames: ["WeChatAppEx Framework.framework"]
             ),
-            .other
+            .embeddedEngine
+        )
+        XCTAssertEqual(
+            ContextHostClassifier.kind(bundleID: "COM.TENCENT.FLUE.WECHATAPPEX", frameworkNames: []),
+            .embeddedEngine
+        )
+        XCTAssertEqual(
+            ContextHostClassifier.kind(
+                bundleID: "com.tencent.flue.WeChatAppEx",
+                frameworkNames: [],
+                embeddedEngineCached: false
+            ),
+            .embeddedEngine
         )
         XCTAssertEqual(
             ContextHostClassifier.kind(bundleID: "com.tencent.xinWeChat", frameworkNames: []),
@@ -824,6 +836,57 @@ final class TextContextFallbackTests: XCTestCase {
         XCTAssertTrue(EmbeddedChromiumDetector.containsEngine(in: wide, budget: preferFramework))
     }
 
+    /// Live WeChatAppEx keeps icudtl.dat and Helper (Renderer).app beside
+    /// Versions/C/Frameworks, which itself holds many vendor frameworks.
+    /// Visiting that nested tree first used to exhaust the directory cap.
+    func testWeChatAppExNestedFrameworksDoNotHideChromiumSignals() throws {
+        let article = try makeFixtureRoot().appendingPathComponent("WeChatAppEx.app", isDirectory: true)
+        let versionC = article.appendingPathComponent(
+            "Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C",
+            isDirectory: true
+        )
+        try writeEmptyFile(versionC.appendingPathComponent("Resources/icudtl.dat"))
+        try writeEmptyFile(versionC.appendingPathComponent("Resources/v8_context_snapshot.arm64.bin"))
+        try writeEmptyFile(versionC.appendingPathComponent("Resources/wmpf_100_percent.pak"))
+        try FileManager.default.createDirectory(
+            at: versionC.appendingPathComponent("Helpers/WeChatAppEx Helper (Renderer).app", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: versionC.appendingPathComponent("Helpers/WeChatAppEx Helper (GPU).app", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        let nested = versionC.appendingPathComponent("Frameworks", isDirectory: true)
+        for index in 0..<40 {
+            let name = String(format: "Vendor%02d.framework", index)
+            try writeEmptyFile(nested.appendingPathComponent("\(name)/Versions/A/Vendor"))
+        }
+
+        let stopsBeforeResources = EmbeddedChromiumDetector.Budget(maxDirectories: 4, maxDepth: 8)
+        let reachesResources = EmbeddedChromiumDetector.Budget(maxDirectories: 5, maxDepth: 8)
+        XCTAssertFalse(EmbeddedChromiumDetector.containsEngine(in: article, budget: stopsBeforeResources))
+        XCTAssertTrue(EmbeddedChromiumDetector.containsEngine(in: article, budget: reachesResources))
+        XCTAssertTrue(EmbeddedChromiumDetector.containsEngine(in: article))
+    }
+
+    func testVendorFrameworksWithoutChromiumSignalsAreNotAnEngine() throws {
+        let article = try makeFixtureRoot().appendingPathComponent("Plain.app", isDirectory: true)
+        let versionC = article.appendingPathComponent(
+            "Contents/Frameworks/App Framework.framework/Versions/C",
+            isDirectory: true
+        )
+        try writeEmptyFile(versionC.appendingPathComponent("Resources/wmpf_100_percent.pak"))
+        try FileManager.default.createDirectory(
+            at: versionC.appendingPathComponent("Helpers/App Helper (GPU).app", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        let nested = versionC.appendingPathComponent("Frameworks", isDirectory: true)
+        for index in 0..<3 {
+            try writeEmptyFile(nested.appendingPathComponent("Vendor\(index).framework/Versions/A/Vendor"))
+        }
+        XCTAssertFalse(EmbeddedChromiumDetector.containsEngine(in: article))
+    }
+
     func testEngineScanDoesNotFollowSymlinks() throws {
         let bundle = try makeFixtureRoot().appendingPathComponent("Linked.app", isDirectory: true)
         let outside = try makeFixtureRoot().appendingPathComponent("outside-resources", isDirectory: true)
@@ -848,10 +911,19 @@ final class TextContextFallbackTests: XCTestCase {
             },
             readFrameworkNames: { _ in [] }
         )
-        let bundle = URL(fileURLWithPath: "/Applications/WeChatAppEx.app")
+        let bundle = URL(fileURLWithPath: "/Applications/UnlistedShell.app")
         XCTAssertEqual(
             ContextHostResolver.kind(
                 bundleID: "com.tencent.flue.WeChatAppEx",
+                bundleURL: URL(fileURLWithPath: "/Applications/WeChatAppEx.app"),
+                cache: cache
+            ),
+            .embeddedEngine
+        )
+        XCTAssertEqual(scans, 0)
+        XCTAssertEqual(
+            ContextHostResolver.kind(
+                bundleID: "com.example.UnlistedShell",
                 bundleURL: bundle,
                 cache: cache
             ),
@@ -866,14 +938,14 @@ final class TextContextFallbackTests: XCTestCase {
         XCTAssertEqual(cache.embeddedIfKnown(bundle), true)
         XCTAssertEqual(
             ContextHostResolver.kind(
-                bundleID: "com.tencent.flue.WeChatAppEx",
+                bundleID: "com.example.UnlistedShell",
                 bundleURL: bundle,
                 cache: cache
             ),
             .embeddedEngine
         )
         _ = ContextHostResolver.kind(
-            bundleID: "com.tencent.flue.WeChatAppEx",
+            bundleID: "com.example.UnlistedShell",
             bundleURL: bundle,
             cache: cache
         )
@@ -1017,6 +1089,7 @@ final class TextContextFallbackTests: XCTestCase {
         let exhausted = done.context(focused: FakeTextNode(id: "empty", role: "AXGroup"), selected: "文章")
         XCTAssertNil(exhausted.context)
         XCTAssertTrue(exhausted.ladderExhausted)
+        XCTAssertTrue(exhausted.embeddedLadderExhausted)
         XCTAssertEqual(actions, [.enhanced, .manual])
     }
 
@@ -1034,9 +1107,26 @@ final class TextContextFallbackTests: XCTestCase {
         let skipped = engine.context(focused: FakeTextNode(id: "chat", role: "AXGroup"), selected: "你好")
         XCTAssertNil(skipped.context)
         XCTAssertTrue(skipped.ladderExhausted)
+        XCTAssertFalse(skipped.embeddedLadderExhausted)
         XCTAssertFalse(skipped.invalidatedShortcut)
         XCTAssertTrue(actions.isEmpty)
         XCTAssertNil(engine.memory.phase(for: host))
+    }
+
+    func testOrdinaryExhaustionDoesNotClaimTheEmbeddedLadderRan() {
+        let host = ContextHostIdentity(bundleID: "com.tencent.xinWeChat.xplayer", pid: 9, kind: .other)
+        var memory = AccessibilityEnablementMemory()
+        memory.record(host, phase: .manual)
+        var engine = TextContextEngine(
+            memory: memory,
+            hostProvider: { host },
+            enable: { _, _ in true },
+            reload: { nil }
+        )
+        let outcome = engine.context(focused: FakeTextNode(id: "player", role: "AXGroup"), selected: "文章")
+        XCTAssertTrue(outcome.ladderExhausted)
+        XCTAssertFalse(outcome.embeddedLadderExhausted)
+        XCTAssertNil(outcome.enablement)
     }
 
     func testStaleEnhancedRecordOnABrowserFallsBackToManual() {

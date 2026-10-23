@@ -27,7 +27,15 @@ import Security
 /// process that was tried — the viewer's own bundle id and version — including
 /// `nothingWorks` when that viewer's ladder is exhausted. `nothingWorks` is
 /// withheld while the viewer's embedded-engine scan is still running, so a
-/// second selection can still escalate to enhanced.
+/// second selection can still escalate to enhanced. A `nothingWorks` record
+/// written before the viewer was classified as an embedded engine is discarded,
+/// because that ladder never tried `AXEnhancedUserInterface`.
+///
+/// The article accessibility tree is expected on the WeChatAppEx main process.
+/// Renderer helper processes stay later in the candidate list and often fall
+/// outside the cap of three; they are not a substitute for enhanced UI on the
+/// viewer. If enhanced UI on that main process still exposes no article text,
+/// the page is not in the accessibility tree.
 ///
 /// Budget: building the candidate list happens before the clock starts.
 /// Code-signing team ids are cached per pid and looked up only for the frontmost

@@ -4,7 +4,7 @@
 
 一款 macOS 菜单栏翻译工具。选中文字或框选屏幕区域，按下快捷键，即可在浮窗中查看译文；支持流式输出、原文与译文朗读，以及按需生成中文术语解释。
 
-[v0.3.2 更新说明](docs/releases/v0.3.2.md) · 普通用户请安装官网提供的 Developer ID 公证包，步骤见下方「安装（普通用户）」
+[v0.3.2 更新说明](docs/releases/v0.3.2.md) · [官网](website/README.md)（静态页面在 `website/`，预览和部署方式见该说明）
 
 ## 界面预览
 
@@ -71,12 +71,16 @@
 
 ## 安装（普通用户）
 
-推荐安装 **Developer ID 公证包**。公证完成后，这个包会放在官网供下载。GitHub Release 目前仍是未公证的 v0.3.1，里面没有 v0.3.2 公证 zip。
+计划中的公开包是 **Developer ID 公证** 的 `TranslateHUD-0.3.2-universal.zip`。公证还没做，GitHub Release 里也没有这个 zip。
 
-1. 从官网下载公证后的 `TranslateHUD-0.3.2-universal.zip`
+现在能安装的是未公证的 v0.3.1。官网下载按钮和下面的链接是同一个文件。
+
+1. 下载 [TranslateHUD-0.3.1-universal.zip](https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip)
 2. 解压，把 `TranslateHUD.app` 拖到 `/Applications/`
-3. 在「应用程序」里直接双击打开。Gatekeeper 应接受这个包
+3. 若被 Gatekeeper 拦截，在「应用程序」里右键 TranslateHUD 并选择「打开」
 4. 「辅助功能」和「屏幕录制」仍需手动授权，然后按 [首次使用](#首次使用) 完成配置
+
+本地预览官网：`cd website && python3 -m http.server 8080`，打开 <http://127.0.0.1:8080>。GitHub Pages 或 Vercel 要把站点根目录指到 `website/`，不要指到 `docs/`。细节见 [website/README.md](website/README.md)。
 
 > 从源码构建的开发者仍可使用 `scripts/install-local.sh` 的本地签名，或 `scripts/build-release.sh` 的本地 ad-hoc 签名。这两种都留在本机开发使用。
 

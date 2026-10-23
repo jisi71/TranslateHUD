@@ -23,7 +23,7 @@ import Foundation
 enum TextContextFallback {
     /// Characters of surrounding text kept on each side of the selection.
     /// A leading or trailing … is added when that side is truncated, and is not counted here.
-    static let characterLimit = 80
+    static let characterLimit = 120
     static let budgetMilliseconds = 150
 }
 

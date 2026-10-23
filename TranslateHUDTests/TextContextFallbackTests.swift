@@ -3,7 +3,7 @@ import XCTest
 
 final class TextContextFallbackTests: XCTestCase {
     func testContextLimitsMatchTheExistingWindow() {
-        XCTAssertEqual(TextContextFallback.characterLimit, 80)
+        XCTAssertEqual(TextContextFallback.characterLimit, 120)
         XCTAssertEqual(TextContextFallback.budgetMilliseconds, 150)
 
         let selected = "X"

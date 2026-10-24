@@ -10,6 +10,7 @@ enum ServiceErrorMessage {
     }
 
     static func http(code: Int, body: String) -> String {
+        if let trial = trialMessage(body) { return trial }
         let message: String
         if [400, 403, 404, 413, 422, 429].contains(code), let detail = providerDetail(body) {
             message = detail
@@ -63,6 +64,34 @@ enum ServiceErrorMessage {
             return "已连续 \(seconds) 秒没有新译文，已停止请求。请检查网络或代理后重试，或更换模型。"
         case .total:
             return "\(operation)总耗时超过 \(seconds) 秒，已停止请求。请缩短原文或更换模型后重试。"
+        }
+    }
+
+    /// Trial-proxy codes map to fixed sentences. The response body is never shown,
+    /// so a buggy proxy cannot leak the source text or the server key into the HUD.
+    static func trialMessage(_ body: String) -> String? {
+        guard body.utf8.count <= 65_536, let data = body.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let code: String?
+        if let error = root["error"] as? [String: Any] {
+            code = (error["code"] as? String) ?? (error["type"] as? String)
+        } else if let error = root["error"] as? String {
+            code = error
+        } else {
+            code = root["code"] as? String
+        }
+        switch code?.lowercased() {
+        case "trial_length_limit": return TrialCopy.lengthLimit
+        case "trial_balance_exhausted": return TrialCopy.balanceExhausted
+        case "trial_balance_insufficient": return TrialCopy.balanceInsufficient
+        case "trial_auth": return TrialCopy.authExpired
+        case "trial_not_configured": return TrialCopy.notConfigured
+        case "trial_upstream": return TrialCopy.upstream
+        case "trial_empty": return TrialCopy.empty
+        case "trial_body_limit": return TrialCopy.bodyTooLong
+        case "trial_source_required": return TrialCopy.sourceRequired
+        case "trial_store": return TrialCopy.store
+        default: return nil
         }
     }
 

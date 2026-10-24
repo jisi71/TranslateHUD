@@ -9,6 +9,7 @@ struct TranslationPanel: View {
     @ObservedObject var termProgress: TermExplanationProgress
     @ObservedObject var speech: SpeechController
     @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var trial = TrialAccountStore.shared
     var heightBudget: PanelHeightBudget = PopoverContent.heightBudget(visibleHeight: 2_000)
     var onClose: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
@@ -334,14 +335,25 @@ struct TranslationPanel: View {
     private var footer: some View {
         HStack(spacing: 12) {
             Menu {
-                Text(providerName)
-                Text(settings.model)
+                switch TranslationRoute.endpoint(routeInput) {
+                case .trial:
+                    Text(trial.balanceTitle)
+                    if trial.balanceState == .failed {
+                        Text("点设置里的「重新读取」")
+                    }
+                    Text("单次最多 500 字")
+                case .ownKey:
+                    Text(providerName)
+                    Text(settings.model)
+                case .unavailable:
+                    Text("还没有可用的翻译接口")
+                }
                 Divider()
                 Button("配置 API…") { SettingsWindowController.shared.show() }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "cpu").font(.system(size: 13))
-                    Text(providerName).font(.system(size: 14))
+                    Text(footerTitle).font(.system(size: 14))
                     Image(systemName: "chevron.down").font(.system(size: 10, weight: .medium))
                 }
                 .padding(.horizontal, 12)
@@ -353,7 +365,7 @@ struct TranslationPanel: View {
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
-            .help("当前 API 与模型")
+            .help(footerTitle)
             Spacer()
             iconButton(image == nil ? "text.viewfinder" : "photo", help: image == nil ? "查看原文上下文" : "查看截图", active: showsContext) {
                 showsContext.toggle()
@@ -406,6 +418,28 @@ struct TranslationPanel: View {
     private var languageName: String {
         let language = progress.targetLanguage ?? settings.targetLanguage
         return language == .english ? "English" : language.displayName
+    }
+
+    private var routeInput: TranslationRouteInput {
+        TranslationRouteInput(
+            hasOwnAPIKey: settings.hasOwnAPIKey,
+            baseURL: settings.baseURL,
+            isLoggedIn: trial.isLoggedIn,
+            proxyBaseURL: trial.effectiveProxyBaseURL,
+            balanceFen: trial.balanceFen,
+            sourceText: nil
+        )
+    }
+
+    private var footerTitle: String {
+        switch TranslationRoute.endpoint(routeInput) {
+        case .trial:
+            return trial.balanceTitle
+        case .ownKey:
+            return providerName
+        case .unavailable:
+            return "请登录或填写 API Key"
+        }
     }
 
     private var providerName: String {

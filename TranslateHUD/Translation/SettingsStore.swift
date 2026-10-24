@@ -33,11 +33,13 @@ final class SettingsStore: ObservableObject {
             if let cachedAPIKey { return cachedAPIKey }
             let value = KeychainHelper.get(K.apiKey) ?? ""
             cachedAPIKey = value
+            hasOwnAPIKey = !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             return value
         }
         set {
             objectWillChange.send()
             cachedAPIKey = newValue
+            hasOwnAPIKey = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             guard !suppressPersist else { return }
             try? KeychainHelper.set(newValue, forKey: K.apiKey)
         }
@@ -66,6 +68,9 @@ final class SettingsStore: ObservableObject {
             UserDefaults.standard.set(speechRate, forKey: K.speechRate)
         }
     }
+    /// True after the keychain has been read once at launch, and whenever the key changes.
+    /// Views use this flag so drawing a translation panel does not read the keychain again.
+    @Published private(set) var hasOwnAPIKey: Bool
 
     private var suppressPersist = false
 
@@ -77,6 +82,9 @@ final class SettingsStore: ObservableObject {
         englishVoiceIdentifier = UserDefaults.standard.string(forKey: K.englishVoiceIdentifier) ?? ""
         let savedSpeechRate = UserDefaults.standard.object(forKey: K.speechRate) as? Double
         speechRate = min(max(savedSpeechRate ?? 0.46, 0.35), 0.55)
+        let storedKey = KeychainHelper.get(K.apiKey) ?? ""
+        cachedAPIKey = storedKey
+        hasOwnAPIKey = !storedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if let raw = UserDefaults.standard.string(forKey: K.targetLanguage),
            let lang = TargetLanguage(rawValue: raw) {
             targetLanguage = lang

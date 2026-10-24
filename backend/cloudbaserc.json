@@ -1,0 +1,13 @@
+{
+  "envId": "translatehud-d4gl951eo8bef4702",
+  "functionRoot": "./functions",
+  "functions": [
+    {
+      "name": "trial",
+      "timeout": 120,
+      "runtime": "Nodejs18.15",
+      "installDependency": true,
+      "handler": "index.main"
+    }
+  ]
+}

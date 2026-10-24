@@ -3,6 +3,7 @@ import KeyboardShortcuts
 
 struct SettingsView: View {
     @ObservedObject private var store = SettingsStore.shared
+    @ObservedObject private var trial = TrialAccountStore.shared
     @State private var preset: ProviderPreset = ProviderPreset.all[0]
     @State private var showApiKey = false
     @State private var testStatus: TestStatus = .idle
@@ -17,7 +18,10 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        ScrollView {
         Form {
+            trialSection
+
             Section("LLM 服务商") {
                 Picker("预设", selection: $preset) {
                     ForEach(ProviderPreset.all) { p in
@@ -45,7 +49,7 @@ struct SettingsView: View {
                     Button(showApiKey ? "隐藏" : "显示") { showApiKey.toggle() }
                         .buttonStyle(.bordered)
                 }
-                Text("API Key 存储于 macOS Keychain。本地 Ollama / LM Studio 等无鉴权服务可留空。")
+                Text("API Key 存在这台 Mac 的钥匙串里。填了 Key，或地址指向本机时，翻译直接走你的接口，不扣体验额度。没填 Key 时用上面的体验额度。本机模型可以不填 Key。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -117,10 +121,7 @@ struct SettingsView: View {
                     Button("发送测试翻译 \"Hello, world\"") {
                         Task { await runTest() }
                     }
-                    .disabled({
-                        if case .running = testStatus { return true }
-                        return store.validationMessage != nil
-                    }())
+                    .disabled(testDisabled)
                     statusView
                 }
                 if let message = store.validationMessage {
@@ -145,9 +146,81 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 620)
+        }
+        .frame(width: 560, height: 720)
         .navigationTitle("TranslateHUD 设置")
         .onDisappear { speechPreview.stop() }
+    }
+
+    @ViewBuilder
+    private var trialSection: some View {
+        Section("体验登录") {
+            Text("还没有自己的 API Key 时，用手机号登录就能试翻译。第一次登录送 ¥2.00，同一个账号只送一次。单次最多 500 字。大约每 10 个字扣 ¥0.01，不满 10 个字也扣 ¥0.01。额度用完后，在下面填写你自己的 API Key。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if trial.isLoggedIn {
+                LabeledContent("手机号", value: trial.maskedPhone.isEmpty ? "已登录" : trial.maskedPhone)
+                LabeledContent("体验余额") {
+                    Text(trial.balanceValueText)
+                }
+                if !trial.userId.isEmpty {
+                    LabeledContent("账号") {
+                        Text(trial.userId)
+                            .font(.caption)
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                    }
+                }
+                HStack {
+                    Button(trial.balanceState == .loading ? "正在读取…" : "重新读取") {
+                        Task { await trial.refreshFromServer() }
+                    }
+                    .disabled(trial.balanceState == .loading)
+                    Button("退出登录") { trial.logout() }
+                }
+            } else {
+                TextField("手机号", text: $trial.phone)
+                    .textFieldStyle(.roundedBorder)
+                TextField("短信验证码", text: $trial.code)
+                    .textFieldStyle(.roundedBorder)
+                HStack {
+                    Button(trial.codeCooldown > 0 ? "\(trial.codeCooldown) 秒后可重发" : "获取验证码") {
+                        Task { await trial.sendCode() }
+                    }
+                    .disabled(trial.isBusy || trial.codeCooldown > 0)
+                    Button("登录") {
+                        Task { await trial.login() }
+                    }
+                    .disabled(trial.isBusy || trial.code.filter(\.isNumber).count != 6)
+                }
+            }
+
+            TextField("体验服务地址", text: $trial.proxyBaseURL)
+                .textFieldStyle(.roundedBorder)
+            Text("这项一般不用改。只有我们通知你更换地址时才填写，例如 https://example.com/v1。翻译密钥放在服务端，不会写进 App。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !trial.statusMessage.isEmpty {
+                Text(trial.statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var testDisabled: Bool {
+        if case .running = testStatus { return true }
+        switch TranslationRoute.endpoint(TranslationSession.currentInput(sourceText: nil)) {
+        case .ownKey:
+            return store.validationMessage != nil
+        case .trial, .unavailable:
+            return false
+        }
     }
 
     @ViewBuilder
@@ -173,12 +246,20 @@ struct SettingsView: View {
     @MainActor
     private func runTest() async {
         testStatus = .running
-        let translator = OpenAICompatibleTranslator(config: store.providerConfig)
-        do {
-            let res = try await translator.translate(["Hello, world"], to: store.targetLanguage)
-            testStatus = .ok("译：\(res.first ?? "?")")
-        } catch {
-            testStatus = .fail(ServiceErrorMessage.describe(error))
+        switch TranslationSession.prepare(sourceText: "Hello, world") {
+        case .blocked(_, let message):
+            testStatus = .fail(message)
+        case .ready(let ready):
+            do {
+                let res = try await ready.translator.translate(
+                    ["Hello, world"],
+                    to: store.targetLanguage,
+                    context: nil
+                )
+                testStatus = .ok("译：\(res.first ?? "?")")
+            } catch {
+                testStatus = .fail(ServiceErrorMessage.describe(error))
+            }
         }
     }
 }

@@ -6,29 +6,17 @@ enum SelectionFlow {
     static func start(selection: SelectionFetcher.Selection, context: SelectionTriggerContext) {
         AppLog.debug("待译选区：\(selection.text.count) 字符")
 
-        // 2. 翻译配置（kick off 之前必须确保至少能发请求）
-        let config = SettingsStore.shared.providerConfig
-        guard config.isUsable else {
-            ToastCenter.shared.show(
-                title: "翻译服务配置需要检查",
-                message: config.validationMessage ?? "请打开设置检查 Base URL 和 Model。",
-                duration: 4
-            )
-            return
-        }
-
         let target = TargetLanguage.resolved(
             for: [selection.text],
             configured: SettingsStore.shared.targetLanguage
         )
+        let outcome = TranslationSession.prepare(sourceText: selection.text)
         let termProgress = TermExplanationProgress(
-            explainer: OpenAICompatibleTermExplainer(config: config),
             texts: [selection.text],
             language: .chinese,
-            context: selection.context
+            context: selection.context,
+            explainer: { TranslationSession.explainer(for: selection.text) }
         )
-
-        // 3. 立刻展示浮窗（loading 状态）
         let progress = TranslationProgress()
         let popover = FloatingTranslationPopover(
             original: selection.text,
@@ -40,13 +28,21 @@ enum SelectionFlow {
         )
         popover.show()
 
-        // 4. 异步流式翻译；progress 状态变化驱动浮窗 UI
-        let translator = OpenAICompatibleTranslator(config: config)
-        progress.startStreaming(
-            translator: translator,
-            original: selection.text,
-            target: target,
-            context: selection.context
-        )
+        switch outcome {
+        case .blocked(_, let message):
+            progress.startStreaming(
+                translator: FailingTranslator(message: message),
+                original: selection.text,
+                target: target,
+                context: selection.context
+            )
+        case .ready(let ready):
+            progress.startStreaming(
+                translator: ready.translator,
+                original: selection.text,
+                target: target,
+                context: selection.context
+            )
+        }
     }
 }

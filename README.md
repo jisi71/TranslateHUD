@@ -4,7 +4,7 @@
 
 一款 macOS 菜单栏翻译工具。选中文字或框选屏幕区域，按下快捷键，即可在浮窗中查看译文；支持流式输出、原文与译文朗读，以及按需生成中文术语解释。
 
-[v0.3.2 更新说明](docs/releases/v0.3.2.md) · 普通用户请安装官网提供的 Developer ID 公证包，步骤见下方「安装（普通用户）」
+[v0.4.0 更新说明](docs/releases/v0.4.0.md) · 普通用户请安装官网提供的 Developer ID 公证包，步骤见下方「安装（普通用户）」
 
 ## 界面预览
 
@@ -22,6 +22,13 @@
 <img src="docs/screenshots/permission-message.png" width="520" alt="屏幕录制权限说明，完整显示授权路径与重新启动软件的建议" />
 
 </details>
+
+## v0.4.0 更新
+
+- **手机号登录就能试**：设置里用中国大陆手机号收验证码并登录。第一次登录送 ¥2.00，同一个账号只送一次。设置、菜单栏和翻译浮窗底部都能看到剩余额度。
+- **没有自己的 API Key 也能翻译**：体验翻译走我们的服务，密钥放在服务端。单次最多 500 字，超出时提示「超出单次翻译上限」。大约每 10 个字扣 ¥0.01。
+- **额度用完后用自己的 Key**：提示去填写 API Key。填好以后，划词、截图、朗读和名词解释都走原来的直接接口，不再扣体验额度。本机模型也继续直接连接。
+- 体验服务的地址、密钥和部署步骤见 [backend/README.md](backend/README.md)。仓库里没有真实密钥。
 
 ## v0.3.2 更新
 
@@ -71,9 +78,9 @@
 
 ## 安装（普通用户）
 
-推荐安装 **Developer ID 公证包**。公证完成后，这个包会放在官网供下载。GitHub Release 目前仍是未公证的 v0.3.1，里面没有 v0.3.2 公证 zip。
+推荐安装 **Developer ID 公证包**。当前源码版本是 **0.4.0**（构建号 10）。公证和官网上传还没做，下面是公证完成后的安装方式。
 
-1. 从官网下载公证后的 `TranslateHUD-0.3.2-universal.zip`
+1. 从官网下载公证后的 `TranslateHUD-0.4.0-universal.zip`
 2. 解压，把 `TranslateHUD.app` 拖到 `/Applications/`
 3. 在「应用程序」里直接双击打开。Gatekeeper 应接受这个包
 4. 「辅助功能」和「屏幕录制」仍需手动授权，然后按 [首次使用](#首次使用) 完成配置
@@ -98,7 +105,9 @@ xcodegen generate
 ./scripts/install-local.sh
 ```
 
-也可以 `open TranslateHUD.xcodeproj` 在 Xcode 里 ⌘R 跑。
+`TranslateHUD.xcodeproj` 不入库，由 `xcodegen` 生成。改过 `project.yml` 里的 `CLOUDBASE_ENV_ID` 之后，必须再执行 `xcodegen generate`，或者直接跑 `./scripts/install-local.sh`（它会重新生成工程）。如果 yml 已经是新环境、工程文件还是上一次生成的，编出来的 App 仍会登录到旧环境，体验余额会对不上。
+
+也可以 `open TranslateHUD.xcodeproj` 在 Xcode 里 ⌘R 跑。请先确认工程是改完环境 ID 之后重新生成的。
 
 打本地 ad-hoc 包（仅供开发自用）：
 
@@ -113,11 +122,9 @@ bash scripts/build-release.sh
    - 启动后：菜单栏 📖 → 「检查权限…」
    - 系统设置 → 隐私与安全性：把 TranslateHUD 在「辅助功能」和「屏幕录制」里都打开。公证包通过 Gatekeeper 后，这两项仍要手动打开；从旧的 ad-hoc 安装换过来时，可能需要重新授权
    - 自己编译并通过 `scripts/install-local.sh` 固定安装时使用稳定本地签名，后续重编不会反复丢权限。本地 ad-hoc 包用 `scripts/build-release.sh`
-2. **配置 LLM**
-   - 菜单栏 📖 → 「打开设置…」
-   - 选预设服务商（自动填好 baseURL + 推荐 model）
-   - 填 **API Key**（存于 macOS Keychain）
-   - 点「发送测试翻译」验证
+2. **先试用，或配置自己的 LLM**
+   - 还没有 API Key：菜单栏 📖 → 「打开设置…」→ 体验登录。填好体验服务地址（见 [backend/README.md](backend/README.md)），用手机号登录。第一次送 ¥2.00
+   - 已经有 API Key：选预设服务商（自动填好 baseURL + 推荐 model），填写 **API Key**（存于 macOS Keychain），再点「发送测试翻译」
 3. **可选：自定义快捷键**
    - 设置 → 快捷键 section，点录入框直接按下你想要的组合即可
 4. **可选：下载高质量朗读声音**
@@ -145,6 +152,7 @@ bash scripts/build-release.sh
 - 高级/增强朗读 voice 由 macOS 单独下载，会占用额外磁盘空间；未下载时自动回退到基础 voice。
 - 选中文字的前后文仍取决于辅助功能能读到的文本。网页和部分套壳应用会再尝试读取；读不到时翻译照常进行，浮窗提示无法读取前后文。读到的前后文每侧最多 120 个字符，只作为翻译参考。
 - 个别 Electron 套壳应用在普通读取失败后，可能会打开系统的增强辅助功能开关。该开关在这个应用本次运行期间一直有效，有可能影响它的窗口动画或位置。浏览器不会走这一步。
+- 体验额度单次最多 500 字。译文如果没通过检查而自动再请求一次，会再扣一次费用。名词解释也会扣体验额度。填了自己的 API Key 之后不再走体验额度。
 
 ## 项目结构
 
@@ -156,11 +164,13 @@ TranslateHUD/
 │   ├── Screenshot/     # ScreenCaptureService / OCRService / FloatingScreenshotWindow / ScreenshotFlow
 │   └── Selection/      # SelectionFetcher (AX + Cmd+C) / FloatingTranslationPopover / SelectionFlow
 ├── Translation/        # ProviderConfig / OpenAICompatibleTranslator / SettingsStore / KeychainHelper
+├── Trial/              # 手机号登录、体验额度、走服务端代理还是自己的 Key
 ├── Speech/             # AVSpeechSynthesizer / voice 选择 / 中英混读
 ├── Settings/           # SettingsView / SettingsWindowController
 ├── Permissions/        # PermissionManager (AX trust + 跳系统设置)
 ├── Shared/             # TranslationPanel / AppLog / ToastCenter / WindowRegistry / DiagnosticsRunner
 └── Resources/          # Info.plist / Assets.xcassets
+backend/                # 体验额度账本和翻译代理，部署说明见 backend/README.md
 ```
 
 单元测试位于 `TranslateHUDTests/`，覆盖路由、选区抓取与上下文、翻译质量、错误分类与隐私、TLS 恢复与请求额度、取消与超时、名词解释、朗读分段和提示尺寸。
@@ -169,7 +179,7 @@ TranslateHUD/
 
 - **路由策略**：`HotkeyManager` 注册两个 `KeyboardShortcuts.Name`，共用同一组合时 handler 会双触发；`HotkeyManager` 用 100ms debounce 合并，再交给 `ModeRouter` 按 AX 选区状态判路由。
 - **稳定签名**：默认 ad-hoc 签名 (`-`) 每次重编 cdhash 变化，TCC 视为新 App，已授予的 AX/屏幕录制权限失效。`scripts/setup-signing.sh` 在 keychain 里建一份自签名 code-signing 证书，DR 改为 `cert leaf hash` 维度，重编不变。
-- **OpenAI 兼容协议唯一后端**：所有支持 `/chat/completions` 接口的服务都能接（含本地 Ollama）；没单独写 Anthropic / Gemini 协议族。
+- **OpenAI 兼容协议**：填了自己的 API Key，或地址指向本机时，直接请求这个接口（含本地 Ollama）。没填 Key 时，体验翻译改走 `backend/` 里的代理，由服务端拿着密钥去请求同一个协议。没单独写 Anthropic / Gemini 协议族。
 - **AX 优先 + Cmd+C 兜底**：`SelectionFetcher.fetch()` 先尝试 AX（无副作用），失败时模拟 Cmd+C 嗅探剪贴板，**用完会把原剪贴板内容还原**。
 - **同键模式三段降级 (AX → Cmd+C → 截图)**：AX 优先（无副作用、~10ms）；AX 漏掉再 Cmd+C 兜底（无选区时是 no-op，pasteboard 不会被污染；有选区时立刻还原原剪贴板）；都没拿到才走截图。
 

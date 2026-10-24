@@ -3,10 +3,16 @@ import Foundation
 struct OpenAICompatibleTranslator: Translator {
     let config: ProviderConfig
     let session: URLSession
+    let extraHTTPHeaders: [String: String]
 
-    init(config: ProviderConfig, session: URLSession = .shared) {
+    init(
+        config: ProviderConfig,
+        session: URLSession = .shared,
+        extraHTTPHeaders: [String: String] = [:]
+    ) {
         self.config = config
         self.session = session
+        self.extraHTTPHeaders = extraHTTPHeaders
     }
 
     private struct QualityRejected: Error {
@@ -133,14 +139,7 @@ struct OpenAICompatibleTranslator: Translator {
         applyVendorParams(into: &body)
         applyJSONResponseFormat(into: &body)
 
-        var req = URLRequest(url: endpoint)
-        req.httpMethod = "POST"
-        req.timeoutInterval = 60
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if !config.apiKey.isEmpty {
-            req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
-        }
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let req = try makeRequest(url: endpoint, timeout: 60, accept: nil, body: body)
 
         let (data, response) = try await session.data(for: req)
         try Task.checkCancellation()
@@ -339,15 +338,7 @@ struct OpenAICompatibleTranslator: Translator {
         ]
         applyVendorParams(into: &body)
 
-        var req = URLRequest(url: endpoint)
-        req.httpMethod = "POST"
-        req.timeoutInterval = 60
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        if !config.apiKey.isEmpty {
-            req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
-        }
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let req = try makeRequest(url: endpoint, timeout: 60, accept: "text/event-stream", body: body)
 
         var accumulated = ""
         do {
@@ -577,6 +568,22 @@ struct OpenAICompatibleTranslator: Translator {
     }
 
     // MARK: - 厂商专属参数
+
+    private func makeRequest(url: URL, timeout: TimeInterval, accept: String?, body: [String: Any]) throws -> URLRequest {
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = timeout
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let accept { req.setValue(accept, forHTTPHeaderField: "Accept") }
+        if !config.apiKey.isEmpty {
+            req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        for (field, value) in extraHTTPHeaders where !value.isEmpty {
+            req.setValue(value, forHTTPHeaderField: field)
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return req
+    }
 
     private func applyVendorParams(into body: inout [String: Any]) {
         let host = config.chatCompletionsURL?.host?.lowercased() ?? ""

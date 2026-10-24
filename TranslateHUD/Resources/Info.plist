@@ -28,5 +28,11 @@
 	<string>© 2026</string>
 	<key>NSScreenCaptureDescription</key>
 	<string>TranslateHUD 需要屏幕录制权限来截取你选定的区域并翻译图中的文字。</string>
+	<key>CloudBaseEnvId</key>
+	<string>$(CLOUDBASE_ENV_ID)</string>
+	<key>CloudBaseRegion</key>
+	<string>$(CLOUDBASE_REGION)</string>
+	<key>TrialProxyBaseURL</key>
+	<string>$(TRIAL_PROXY_BASE_URL)</string>
 </dict>
 </plist>

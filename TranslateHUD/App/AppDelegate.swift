@@ -4,6 +4,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppLog.info("TranslateHUD 启动")
         HotkeyManager.shared.registerAll()
+        TrialAccountStore.shared.restore()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

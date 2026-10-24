@@ -183,12 +183,20 @@ final class TranslationProgress: ObservableObject {
     /// 重跑：上次走流式则重跑流式，否则重跑批量。
     func retry(target: TargetLanguage? = nil) {
         guard !lastOriginals.isEmpty else { return }
-        let config = SettingsStore.shared.providerConfig
+        let source = lastOriginals.joined(separator: "\n")
         let target = target ?? targetLanguage ?? TargetLanguage.resolved(
             for: lastOriginals, configured: SettingsStore.shared.targetLanguage
         )
-        let translator = OpenAICompatibleTranslator(config: config)
-        if lastWasStreaming, let first = lastOriginals.first {
+        let translator: any Translator
+        switch TranslationSession.prepare(sourceText: source) {
+        case .blocked(_, let message):
+            state = .failed(message)
+            stopElapsedTimer()
+            return
+        case .ready(let ready):
+            translator = ready.translator
+        }
+        if lastWasStreaming, let first = lastOriginals.first, lastOriginals.count == 1 {
             startStreaming(translator: translator, original: first, target: target, context: lastContext)
         } else {
             start(translator: translator, originals: lastOriginals, target: target, context: lastContext)

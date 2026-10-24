@@ -59,3 +59,42 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.qi.TranslateHUDTests
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGNING_ALLOWED: NO
+
+  # Sandbox-only spike. Separate bundle id so it cannot share TCC or Keychain
+  # with the installed TranslateHUD app. Not part of the Developer ID scheme.
+  SelectionSpike:
+    type: application
+    platform: macOS
+    sources:
+      - path: SelectionSpike
+        excludes:
+          - "Info.plist"
+          - "SelectionSpike.entitlements"
+    info:
+      path: SelectionSpike/Info.plist
+      properties:
+        CFBundleDisplayName: SelectionSpike
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        LSUIElement: true
+        NSHumanReadableCopyright: "© 2026"
+    entitlements:
+      path: SelectionSpike/SelectionSpike.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.qi.TranslateHUD.spike
+        PRODUCT_NAME: SelectionSpike
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        MARKETING_VERSION: "0.0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        ENABLE_HARDENED_RUNTIME: NO
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "TranslateHUD Local Sign"
+        CODE_SIGNING_REQUIRED: YES
+        CODE_SIGNING_ALLOWED: YES
+        DEVELOPMENT_TEAM: ""
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: NO

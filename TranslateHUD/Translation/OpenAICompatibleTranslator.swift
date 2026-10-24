@@ -87,32 +87,19 @@ struct OpenAICompatibleTranslator: Translator {
             throw TranslationError.missingConfig(config.validationMessage ?? "请打开设置检查 Base URL 和 Model。")
         }
 
-        let example = batchExampleBlock(for: target)
+        let example = compactExample(for: target)
         let strictPrefix = strict ? """
-        ⚠️ CRITICAL: A previous attempt failed because most English identifiers were NOT translated. This is wrong. You MUST translate:
-        - Every JSON key (e.g. "text" → "文本", "confidence" → "置信度", "start_ms" → "开始毫秒", "final" → "最终")
-        - Every bare function name and variable name
-        - Every snake_case / camelCase identifier
-        even if they look like code field names. Only structural punctuation, numbers, and content already in \(target.promptName) stay unchanged.
-        For proper nouns, use an established localized name when one exists. If none exists, keep the original name and append a short \(target.promptName) category description in parentheses. Never return only the source name and never invent a transliteration.
+        CRITICAL: A previous attempt failed because most English identifiers were NOT translated. Translate every JSON key (text → 文本, confidence → 置信度, start_ms → 开始毫秒, final → 最终), bare function and variable names, and snake_case / camelCase, even when they look like code. Only punctuation, numbers, and text already in L stay unchanged.
 
         """ : ""
 
         let systemPrompt = """
-        \(strictPrefix)You are a translation engine. The input is a JSON array; for each item, translate its "text" into \(target.promptName).
-
-        TRANSLATE every non-\(target.promptName) lexical token, including:
-        - Plain words, phrases, sentences.
-        - snake_case / camelCase / kebab-case identifiers (e.g. "promise_to_pay").
-        - Function names, variable names, comments, code labels.
-
-        KEEP UNCHANGED:
-        - Numbers, dates (e.g. "2026-05-12"), version strings, URLs, file paths, ISO codes, hash strings.
-        - Structural punctuation: `{}`, `[]`, `()`, quotes, commas, colons, semicolons, equals.
-        - Any portion already in \(target.promptName).
-
-        DO NOT echo non-\(target.promptName) text back unchanged because it looks like code — translate it.
-        For proper nouns: use an established localized name. If no established name exists, keep the original and append a short \(target.promptName) category description in parentheses. Do not invent names or facts, and never return only the source proper noun.
+        Translate into \(target.promptName). Call that language L. Write for an L reader.
+        \(strictPrefix)The input is a JSON array. Translate each item's "text" into L.
+        Translate every token that is not already in L: words, phrases, sentences, snake_case / camelCase / kebab-case identifiers (e.g. "promise_to_pay"), function names, variable names, comments, and code labels.
+        Leave unchanged: numbers, dates (e.g. "2026-05-12"), version strings, URLs, file paths, ISO codes, hash strings, structural punctuation `{}`, `[]`, `()`, quotes, commas, colons, semicolons, equals, and any text already in L.
+        Do not echo non-L text because it looks like code.
+        Proper nouns: use an established L name. If none exists, keep the original and append a short L category in parentheses. Do not invent names, transliterations, or facts, and never return only the source proper noun.
         \(example)
         Output a strict JSON object: {"results":[{"i": <index>, "t": <translated>}]}. Include each input index exactly once. No explanations, no markdown code fences, just the JSON object.
         """
@@ -291,35 +278,20 @@ struct OpenAICompatibleTranslator: Translator {
         }
         AppLog.info(requestNote)
 
-        let example = exampleBlock(for: target)
+        let example = compactExample(for: target)
         let strictPrefix = strict ? """
-        ⚠️ CRITICAL: A previous attempt failed because the input was returned unchanged. You MUST produce a \(target.promptName) rendering for EVERY non-\(target.promptName) word — including:
-        - JSON keys, bare function names, variable names, snake_case/camelCase identifiers.
-        - Technical terms / loanwords commonly used as-is in \(target.promptName) (e.g. "sigmoid" → "S 形函数（sigmoid）", "softmax" → "归一化指数（softmax）", "transformer" → "变换器", "embedding" → "嵌入向量").
-        - Acronyms — provide a \(target.promptName) gloss in parentheses if the acronym is widely used (e.g. "API" → "API（应用程序接口）").
-        Only pure numbers, dates, version strings, URLs, and structural punctuation stay unchanged.
+        CRITICAL: A previous attempt failed because the input was returned unchanged. Translate EVERY non-L word, including JSON keys, bare names, snake_case/camelCase, loanwords (sigmoid → S 形函数（sigmoid）, softmax → 归一化指数（softmax）, transformer → 变换器, embedding → 嵌入向量), and acronyms (API → API（应用程序接口）). Only numbers, dates, versions, URLs, and punctuation stay unchanged.
 
         """ : ""
 
         let systemPrompt = """
-        \(strictPrefix)You are a translation engine. Translate the user's input into \(target.promptName), as if rendering it for a \(target.promptName) reader to understand.
-
-        TRANSLATE every non-\(target.promptName) lexical token, including:
-        - Plain words, phrases, sentences.
-        - JSON keys, code variable names, comments.
-        - snake_case / camelCase / kebab-case identifiers.
-        - Enum-style string values like "self_claimed", "none", "pending".
-
-        KEEP UNCHANGED:
-        - Numbers, dates (e.g. "2026-05-12"), version strings (e.g. "v1.2.0").
-        - URLs, file paths, email addresses, hash strings, ISO codes.
-        - Structural punctuation: `{}`, `[]`, `"`, `,`, `:`, `;`, `=`.
-        - All line breaks, indentation, whitespace.
-        - Any portion already in \(target.promptName).
-
+        Translate into \(target.promptName). Call that language L. Write for an L reader.
+        \(strictPrefix)Translate every token that is not already in L: words, phrases, sentences, JSON keys, comments, variable names, and snake_case / camelCase / kebab-case identifiers.
+        Also translate enum-style strings such as "self_claimed", "none", and "pending".
+        Leave unchanged: numbers, dates (e.g. "2026-05-12"), versions (e.g. "v1.2.0"), URLs, file paths, emails, hashes, ISO codes, structural punctuation `{}`, `[]`, `"`, `,`, `:`, `;`, `=`, all line breaks, indentation, and whitespace, and any text already in L.
         Preserve the exact number of input lines. Do NOT add missing code lines, closing parentheses, braces, summaries, or context that is not present in the input.
-        DO NOT echo non-\(target.promptName) text back unchanged because it looks like "code" — translate it. Output length should generally NOT equal input length.
-        For proper nouns: use an established localized name. If no established name exists, keep the original and append a short \(target.promptName) category description in parentheses. Do not invent names, transliterations, or facts, and never return only the source proper noun.
+        Do not echo non-L text because it looks like code. Output length should generally NOT equal input length.
+        Proper nouns: use an established L name. If none exists, keep the original and append a short L category in parentheses. Do not invent names, transliterations, or facts, and never return only the source proper noun.
         \(example)
         Output ONLY the translated text. No quotes wrapping the whole output, no explanations, no preamble. Preserve markdown fences only when they already exist in the input; never add them.
         """
@@ -485,85 +457,14 @@ struct OpenAICompatibleTranslator: Translator {
 
     // MARK: - Few-shot 示例
 
-    private func batchExampleBlock(for target: TargetLanguage) -> String {
+    private func compactExample(for target: TargetLanguage) -> String {
         switch target {
         case .chinese:
-            return """
-
-            EXAMPLE — translate ALL English tokens including bare function/variable names:
-            Input:
-            [{"i":0,"text":"def step():"},
-             {"i":1,"text":"    signals = {"},
-             {"i":2,"text":"        \\"identity_confirm\\": detect_identity_confirm(txt),"},
-             {"i":3,"text":"        \\"anger\\": anger_count,"},
-             {"i":4,"text":"# user already promised to pay"}]
-
-            Output:
-            {"results":[{"i":0,"t":"def 步骤():"},
-             {"i":1,"t":"    信号 = {"},
-             {"i":2,"t":"        \\"身份确认\\": 检测身份确认(文本),"},
-             {"i":3,"t":"        \\"愤怒\\": 愤怒计数,"},
-             {"i":4,"t":"# 用户已承诺还款"}]}
-
-            Notice: `signals`, `detect_identity_confirm`, `txt`, `anger_count` are bare identifiers (not in quotes) — they MUST also be translated. Only `def` (Python keyword) and structural punctuation stay.
-
-            """
+            return "Example: `def step(): signals = detect_identity_confirm(txt)` → `def 步骤(): 信号 = 检测身份确认(文本)`. Translate bare names. Keep `def` and punctuation."
         case .english:
-            return """
-
-            EXAMPLE
-            Input:
-            [{"i":0,"text":"def 步骤():"},
-             {"i":1,"text":"    信号 = 检测身份确认(文本)"}]
-
-            Output:
-            {"results":[{"i":0,"t":"def step():"},
-             {"i":1,"t":"    signals = detect_identity_confirm(txt)"}]}
-
-            """
+            return "Example: `def 步骤(): 信号 = 检测身份确认(文本)` → `def step(): signals = detect_identity_confirm(txt)`. Translate bare names. Keep `def` and punctuation."
         default:
-            return ""
-        }
-    }
-
-    private func exampleBlock(for target: TargetLanguage) -> String {
-        switch target {
-        case .chinese:
-            return """
-
-            EXAMPLE — translate ALL English tokens including bare function/variable names:
-            Input:
-            def step():
-                signals = {
-                    "identity_confirm": detect_identity_confirm(txt),
-                    "anger": anger_count,
-                }
-
-            Output:
-            def 步骤():
-                信号 = {
-                    "身份确认": 检测身份确认(文本),
-                    "愤怒": 愤怒计数,
-                }
-
-            Notice: bare identifiers `signals`, `detect_identity_confirm`, `txt`, `anger_count` are NOT in quotes but MUST still be translated. Only `def` (Python keyword) and structural punctuation stay.
-
-            """
-        case .english:
-            return """
-
-            EXAMPLE
-            Input:
-            def 步骤():
-                信号 = 检测身份确认(文本)
-
-            Output:
-            def step():
-                signals = detect_identity_confirm(txt)
-
-            """
-        default:
-            return ""
+            return "Example: translate bare identifiers such as signals and detect_identity_confirm. Keep keywords like def and punctuation."
         }
     }
 

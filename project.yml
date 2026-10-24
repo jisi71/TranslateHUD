@@ -42,7 +42,8 @@ targets:
         # TranslateHUD.xcodeproj 不入库，旧工程会继续把上一次的环境写进 App。
         CLOUDBASE_ENV_ID: translatehud-d4gl951eo8bef4702
         CLOUDBASE_REGION: ap-shanghai
-        TRIAL_PROXY_BASE_URL: ""
+        # 官方体验服务。设置里的地址留空时用这个。和 TrialConfig.defaultProxyBaseURL 保持同一串。
+        TRIAL_PROXY_BASE_URL: "https://translatehud-d4gl951eo8bef4702-1445578102.ap-shanghai.app.tcloudbase.com/v1"
         ENABLE_HARDENED_RUNTIME: NO   # 自签名 + AX 兜底用 CGEvent 时关掉硬化运行时更省心
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "TranslateHUD Local Sign"

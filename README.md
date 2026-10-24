@@ -123,7 +123,7 @@ bash scripts/build-release.sh
    - 系统设置 → 隐私与安全性：把 TranslateHUD 在「辅助功能」和「屏幕录制」里都打开。公证包通过 Gatekeeper 后，这两项仍要手动打开；从旧的 ad-hoc 安装换过来时，可能需要重新授权
    - 自己编译并通过 `scripts/install-local.sh` 固定安装时使用稳定本地签名，后续重编不会反复丢权限。本地 ad-hoc 包用 `scripts/build-release.sh`
 2. **先试用，或配置自己的 LLM**
-   - 还没有 API Key：菜单栏 📖 → 「打开设置…」→ 体验登录。填好体验服务地址（见 [backend/README.md](backend/README.md)），用手机号登录。第一次送 ¥2.00
+   - 还没有 API Key：菜单栏 📖 → 「打开设置…」→ 体验登录。官方服务地址已经写在 App 里，用手机号登录即可。第一次送 ¥2.00
    - 已经有 API Key：选预设服务商（自动填好 baseURL + 推荐 model），填写 **API Key**（存于 macOS Keychain），再点「发送测试翻译」
 3. **可选：自定义快捷键**
    - 设置 → 快捷键 section，点录入框直接按下你想要的组合即可

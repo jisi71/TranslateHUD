@@ -2,6 +2,7 @@
 
 const { Readable } = require('stream')
 const { MESSAGES } = require('./trialPolicy')
+const { bindUpstreamMessages } = require('./trialMessages')
 
 const JSON_RESPONSE_HOSTS = new Set([
   'api.openai.com',
@@ -47,10 +48,10 @@ function readUpstreamConfig(env) {
   return { ok: true, apiKey, model, endpoint }
 }
 
-function prepareUpstreamPayload(rawBody, config) {
-  let payload
+function prepareUpstreamPayload(rawBody, config, sourceText) {
+  let body
   try {
-    payload = JSON.parse(rawBody || '{}')
+    body = JSON.parse(rawBody || '{}')
   } catch {
     const error = new Error('bad json')
     error.status = 400
@@ -58,15 +59,22 @@ function prepareUpstreamPayload(rawBody, config) {
     error.publicMessage = MESSAGES.body
     throw error
   }
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
     const error = new Error('bad body')
     error.status = 400
     error.code = 'trial_body'
     error.publicMessage = MESSAGES.body
     throw error
   }
-  const stream = payload.stream === true
-  payload.model = config.model
+  // Rebuild messages from the billed source. Client instructions are not forwarded.
+  const bound = bindUpstreamMessages(body, sourceText)
+  const payload = {
+    model: config.model,
+    messages: bound.messages,
+    temperature: bound.temperature
+  }
+  const stream = bound.stream
+  if (stream) payload.stream = true
   let host = ''
   try {
     host = new URL(config.endpoint).hostname.toLowerCase()
@@ -74,7 +82,7 @@ function prepareUpstreamPayload(rawBody, config) {
     host = ''
   }
   if (host === 'api.deepseek.com') payload.thinking = { type: 'disabled' }
-  if (!stream && JSON_RESPONSE_HOSTS.has(host) && !payload.response_format) {
+  if (!stream && JSON_RESPONSE_HOSTS.has(host)) {
     payload.response_format = { type: 'json_object' }
   }
   return { payload, stream }

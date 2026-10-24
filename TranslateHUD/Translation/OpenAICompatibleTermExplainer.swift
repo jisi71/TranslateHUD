@@ -51,14 +51,13 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
         context: SelectionFetcher.TextContext?
     ) async throws -> [TermExplanation] {
         let strictInstruction = strict
-            ? "CRITICAL: The previous response used English explanations. Every explanation MUST contain Simplified Chinese characters."
+            ? "CRITICAL: The previous response used English explanations. Every explanation MUST contain Simplified Chinese characters.\n"
             : ""
 
         let systemPrompt = """
-        \(strictInstruction)
-        Analyze the supplied text and identify at most 5 proper nouns, abbreviations, acronyms, or domain-specific technical terms that would benefit from explanation.
-        The value of every "explanation" field MUST be written in concise Simplified Chinese, using one or two sentences. The "term" field may retain its original spelling. Do not include ordinary words. Do not invent facts or infer specifics not supported by the term and supplied context.
-        If there are no qualifying terms, return {"terms":[]}.
+        \(strictInstruction)Identify at most 5 proper nouns, abbreviations, acronyms, or domain-specific technical terms that need explanation.
+        Every "explanation" must be concise Simplified Chinese, one or two sentences. "term" may keep its original spelling. Skip ordinary words. Do not invent facts or infer specifics not supported by the term and supplied context.
+        If none qualify, return {"terms":[]}.
         Return strict JSON only: {"terms":[{"term":"...","explanation":"..."}]}. No markdown or additional keys.
         """
         let framed = TranslationContextPrompt.frame(

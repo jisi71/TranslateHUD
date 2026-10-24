@@ -2,6 +2,10 @@ import Foundation
 
 enum TrialConfig {
     static let defaultEnvId = "translatehud-d4gl951eo8bef4702"
+    /// 官方体验服务。设置里的地址留空时用这个。
+    /// Info.plist 里如果已经写了另一串 TrialProxyBaseURL，以那一串为准，方便本地临时改地址。
+    /// 要和 project.yml 里的 TRIAL_PROXY_BASE_URL 保持同一串。
+    static let defaultProxyBaseURL = "https://translatehud-d4gl951eo8bef4702-1445578102.ap-shanghai.app.tcloudbase.com/v1"
     static let proxyOverrideKey = "trial.proxyBaseURL"
     static let deviceIdKey = "trial.deviceId"
 
@@ -22,7 +26,8 @@ enum TrialConfig {
     }
 
     static var plistProxy: String {
-        sanitized(Bundle.main.object(forInfoDictionaryKey: "TrialProxyBaseURL") as? String)
+        let bundled = sanitized(Bundle.main.object(forInfoDictionaryKey: "TrialProxyBaseURL") as? String)
+        return bundled.isEmpty ? defaultProxyBaseURL : bundled
     }
 
     static var proxyOverride: String {

@@ -199,7 +199,7 @@ struct SettingsView: View {
 
             TextField("体验服务地址", text: $trial.proxyBaseURL)
                 .textFieldStyle(.roundedBorder)
-            Text("这项一般不用改。只有我们通知你更换地址时才填写，例如 https://example.com/v1。翻译密钥放在服务端，不会写进 App。")
+            Text("官方体验服务地址已经写进 App。这里留空就会用它。地址如果不能用，向我们索取新的再填写。翻译密钥放在服务端，不会写进 App。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

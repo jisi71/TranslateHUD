@@ -48,9 +48,9 @@ TranslateHUD 0.4.0 让没有自己 API Key 的人先用手机号试翻译。这�
 | `TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION` | 服务端 | 输出每 100 万 token 多少元。默认 `8` |
 | `TENCENT_SECRET_ID` / `TENCENT_SECRET_KEY` | 服务端，用云数据库时 | 腾讯云 API 密钥。云函数里可以不填，函数自带环境身份 |
 | `CLOUDBASE_ENV_ID` | 可以公开 | 已经是 `translatehud-d4gl951eo8bef4702` |
-| `TRIAL_PROXY_BASE_URL` | App 设置或编译配置 | 体验服务地址，以 `/v1` 结尾 |
+| `TRIAL_PROXY_BASE_URL` | App 编译配置 | 体验服务地址，以 `/v1` 结尾。写在 `project.yml`，编进 App。设置里没有这一栏 |
 
-App 的编译默认值在 `project.yml`。也可以复制 `Config/Secrets.xcconfig.example` 里的说明。平常在 App 设置的「体验服务地址」里粘贴即可，不用重新编译。
+App 的编译默认值在 `project.yml`。临时改到别的服务时，按 `Config/Secrets.xcconfig.example` 改 `TRIAL_PROXY_BASE_URL`，再重新生成工程。
 
 ## 本地先跑起来
 
@@ -70,7 +70,7 @@ node --env-file=.env server.js
 
 健康检查：`GET http://127.0.0.1:8787/healthz`
 
-App 里的体验服务地址填：`http://127.0.0.1:8787/v1`
+要对着本机服务试 App，把 `project.yml` 里的 `TRIAL_PROXY_BASE_URL` 改成 `http://127.0.0.1:8787/v1`，再重新生成工程。
 
 ## 正式部署（推荐云托管，可以边出字）
 
@@ -90,7 +90,7 @@ TENCENT_SECRET_KEY=（腾讯云密钥）
 PORT=8080
 ```
 
-服务起来之后，把外网地址加上 `/v1`，填进 App 的「体验服务地址」。例如 `https://你的服务域名/v1`。
+服务起来之后，把外网地址加上 `/v1`，写进 `project.yml` 的 `TRIAL_PROXY_BASE_URL`，再重新生成工程。例如 `https://你的服务域名/v1`。
 
 云托管需要能访问这个环境的云数据库（文档型）。镜像里会安装 `@cloudbase/node-sdk`。第一次读余额时，服务会调用 `createCollection('trial_accounts')`。集合已经存在就跳过。文档 ID 就是用户 ID。不需要先在控制台建集合，也不要改成 PostgreSQL。
 
@@ -140,7 +140,7 @@ npx --yes @cloudbase/cli functions:deploy trial --config cloudbaserc.json
 
 ## App 怎么连
 
-1. 设置 → 体验登录 → 填写体验服务地址。
+1. 设置 → 体验登录。体验服务地址已经编进 App，不用填写。
 2. 输入手机号 → 获取验证码 → 登录。
 3. 第一次成功会看到余额 ¥2.00，以及一串账号 ID。退出再登录，余额不变。
 4. 没填自己的 API Key 时，划词和截图翻译走这个服务。填了 Key，或者 Base URL 指向本机，就走原来的直接接口，不扣体验额度。

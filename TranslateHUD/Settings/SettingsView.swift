@@ -49,9 +49,6 @@ struct SettingsView: View {
                     Button(showApiKey ? "隐藏" : "显示") { showApiKey.toggle() }
                         .buttonStyle(.bordered)
                 }
-                Text("API Key 存在这台 Mac 的钥匙串里。填了 Key，或地址指向本机时，翻译直接走你的接口，不扣体验额度。没填 Key 时用上面的体验额度。本机模型可以不填 Key。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section("目标语言") {
@@ -110,10 +107,6 @@ struct SettingsView: View {
                         SpeechController.openSystemVoiceSettings()
                     }
                 }
-                Text("“增强”或“高级”声音需要先在 macOS 系统设置中下载；下载完成后点击刷新。自动模式始终优先选择质量最高的已安装声音。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("测试连接") {
@@ -139,10 +132,6 @@ struct SettingsView: View {
                 LabeledContent("翻译选中") {
                     KeyboardShortcuts.Recorder(for: .triggerSelection)
                 }
-                Text("两个快捷键可以设为同一个 — 检测到选中文字时翻译选区；在等待选区读取后仍未发现文字时进入截图。\n点输入框 → 按下你想要的组合键即可录入。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
@@ -155,11 +144,6 @@ struct SettingsView: View {
     @ViewBuilder
     private var trialSection: some View {
         Section("体验登录") {
-            Text("还没有自己的 API Key 时，用手机号登录就能试翻译。第一次登录送 ¥2.00，同一个账号只送一次。单次最多 500 字。费用按这次模型实际消耗的 token 计算。界面只显示体验余额，金额显示到分，四舍五入，不满半分会显示 ¥0.00。账本按更小的单位记账，所以很短的一次仍会扣额度。额度真正用完后，在下面填写你自己的 API Key。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
             if trial.isLoggedIn {
                 LabeledContent("手机号", value: trial.maskedPhone.isEmpty ? "已登录" : trial.maskedPhone)
                 LabeledContent("体验余额") {
@@ -196,13 +180,6 @@ struct SettingsView: View {
                     .disabled(trial.isBusy || trial.code.filter(\.isNumber).count != 6)
                 }
             }
-
-            TextField("体验服务地址", text: $trial.proxyBaseURL)
-                .textFieldStyle(.roundedBorder)
-            Text("官方体验服务地址已经写进 App。这里留空就会用它。地址如果不能用，向我们索取新的再填写。翻译密钥放在服务端，不会写进 App。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
 
             if !trial.statusMessage.isEmpty {
                 Text(trial.statusMessage)

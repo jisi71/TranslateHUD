@@ -2,11 +2,9 @@ import Foundation
 
 enum TrialConfig {
     static let defaultEnvId = "translatehud-d4gl951eo8bef4702"
-    /// 官方体验服务。设置里的地址留空时用这个。
-    /// Info.plist 里如果已经写了另一串 TrialProxyBaseURL，以那一串为准，方便本地临时改地址。
-    /// 要和 project.yml 里的 TRIAL_PROXY_BASE_URL 保持同一串。
+    /// Official trial service, compiled in from project.yml `TRIAL_PROXY_BASE_URL`.
+    /// Info.plist `TrialProxyBaseURL` wins when a local build sets another address.
     static let defaultProxyBaseURL = "https://translatehud-d4gl951eo8bef4702-1445578102.ap-shanghai.app.tcloudbase.com/v1"
-    static let proxyOverrideKey = "trial.proxyBaseURL"
     static let deviceIdKey = "trial.deviceId"
 
     static func sanitized(_ value: String?) -> String {
@@ -28,23 +26,6 @@ enum TrialConfig {
     static var plistProxy: String {
         let bundled = sanitized(Bundle.main.object(forInfoDictionaryKey: "TrialProxyBaseURL") as? String)
         return bundled.isEmpty ? defaultProxyBaseURL : bundled
-    }
-
-    static var proxyOverride: String {
-        get { sanitized(UserDefaults.standard.string(forKey: proxyOverrideKey)) }
-        set {
-            let clean = sanitized(newValue)
-            if clean.isEmpty {
-                UserDefaults.standard.removeObject(forKey: proxyOverrideKey)
-            } else {
-                UserDefaults.standard.set(clean, forKey: proxyOverrideKey)
-            }
-        }
-    }
-
-    static func effectiveProxy(typed: String) -> String {
-        let clean = sanitized(typed)
-        return clean.isEmpty ? plistProxy : clean
     }
 
     static var deviceId: String {

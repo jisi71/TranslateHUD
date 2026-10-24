@@ -48,15 +48,9 @@ final class TrialAccountStore: ObservableObject {
         default: return "体验账号已登录"
         }
     }
-    @Published var proxyBaseURL: String {
-        didSet {
-            guard !suppressPersist else { return }
-            TrialConfig.proxyOverride = proxyBaseURL
-        }
-    }
 
     var effectiveProxyBaseURL: String {
-        TrialConfig.effectiveProxy(typed: proxyBaseURL)
+        TrialConfig.plistProxy
     }
 
     private enum Key {
@@ -73,7 +67,6 @@ final class TrialAccountStore: ObservableObject {
     private var accessToken = ""
     private var refreshToken = ""
     private var expiresAt = Date.distantPast
-    private var suppressPersist = false
     private var cooldownTask: Task<Void, Never>?
 
     private var auth: CloudBaseAuthAPI {
@@ -84,11 +77,7 @@ final class TrialAccountStore: ObservableObject {
         )
     }
 
-    private init() {
-        suppressPersist = true
-        proxyBaseURL = TrialConfig.proxyOverride
-        suppressPersist = false
-    }
+    private init() {}
 
     func restore() {
         accessToken = KeychainHelper.get(Key.access) ?? ""

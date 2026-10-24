@@ -187,16 +187,12 @@ final class TrialPolicyTests: XCTestCase {
         let bundled = TrialConfig.sanitized(
             Bundle.main.object(forInfoDictionaryKey: "TrialProxyBaseURL") as? String
         )
-        let resolved = TrialConfig.effectiveProxy(typed: "  ")
+        let resolved = TrialConfig.plistProxy
         if bundled.isEmpty {
             XCTAssertEqual(resolved, official)
         } else {
             XCTAssertEqual(resolved, bundled)
         }
-        XCTAssertEqual(
-            TrialConfig.effectiveProxy(typed: "https://other.example/v1"),
-            "https://other.example/v1"
-        )
 
         let input = TranslationRouteInput(
             hasOwnAPIKey: false,

@@ -1,9 +1,11 @@
 'use strict'
 
-// Keep these rules in sync with TranslateHUD/Trial/TrialPricing.swift.
+// Length rules stay in sync with TranslateHUD/Trial/TrialPricing.swift.
 // Length is Unicode extended grapheme clusters (Intl.Segmenter), same as Swift String.count.
 // Chinese characters are one grapheme each. A base letter plus a combining mark is one.
 // Newlines count. The cap is the source text only, not the prompt around it.
+// Grapheme length gates the request. It is not the price. Successful calls settle
+// from upstream token usage in usageBilling.js.
 
 const GIFT_FEN = 200
 const MAX_GRAPHEMES = 500
@@ -11,10 +13,11 @@ const MAX_GRAPHEMES = 500
 const MESSAGES = {
   length: '超出单次翻译上限（体验额度单次最多 500 字）',
   exhausted: '体验额度已用完。请在设置里填写你自己的 API Key，之后会直接使用你的接口。',
-  insufficient: '体验额度不够支付这次翻译。请缩短原文，或在设置里填写你自己的 API Key。',
+  insufficient: '体验额度不够支付这次翻译。请在设置里填写你自己的 API Key。',
   auth: '体验登录已失效，请在设置里重新登录。',
   notConfigured: '体验翻译服务还没配置好。请稍后再试，或在设置里填写你自己的 API Key。',
-  upstream: '体验翻译暂时没有完成，额度已退回。请稍后再试。',
+  upstream: '体验翻译暂时没有完成，这次没有扣体验额度。请稍后再试。',
+  usageMissing: '这次翻译没有返回用量，没有扣体验额度。请稍后再试。',
   empty: '没有可翻译的文字，请重新选中文字或框选包含文字的区域。',
   body: '这次请求太长了，请缩短原文后再试。',
   source: '体验翻译需要原文。请更新到最新版 TranslateHUD。',
@@ -40,14 +43,6 @@ function graphemeLength(text) {
   return count
 }
 
-// ¥0.001 per grapheme = 0.1 fen, rounded up to a whole fen, at least 1 fen.
-// 10 graphemes → ¥0.01, 500 graphemes → ¥0.50, the ¥2.00 gift covers 2000 graphemes.
-function costFen(graphemes) {
-  const count = Number(graphemes) || 0
-  if (count <= 0) return 0
-  return Math.max(1, Math.ceil(count / 10))
-}
-
 function quoteSource(text) {
   const graphemes = graphemeLength(text)
   if (graphemes > MAX_GRAPHEMES) {
@@ -56,7 +51,40 @@ function quoteSource(text) {
   if (graphemes <= 0) {
     return { ok: false, status: 400, code: 'trial_empty', message: MESSAGES.empty, graphemes }
   }
-  return { ok: true, graphemes, costFen: costFen(graphemes) }
+  return { ok: true, graphemes }
+}
+
+// Post-success settlement. The balance never goes negative: a last request that
+// costs more than the gift has left is charged down to zero, and the unpaid
+// remainder stays with the operator. A later request sees an empty balance.
+function settleCharge(record, costFenValue) {
+  const current = record ? normalizeRecord(record) : null
+  const raw = Number(costFenValue)
+  const cost = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0
+  if (!current) {
+    return {
+      ok: true,
+      costFen: cost,
+      chargedFen: 0,
+      balanceFen: 0,
+      clamped: cost > 0,
+      record: null
+    }
+  }
+  const charged = Math.min(current.balanceFen, cost)
+  const next = {
+    balanceFen: current.balanceFen - charged,
+    giftGranted: current.giftGranted,
+    createdAt: current.createdAt
+  }
+  return {
+    ok: true,
+    costFen: cost,
+    chargedFen: charged,
+    balanceFen: next.balanceFen,
+    clamped: charged < cost,
+    record: next
+  }
 }
 
 function openAccount(existing, now) {
@@ -136,10 +164,10 @@ module.exports = {
   MAX_GRAPHEMES,
   MESSAGES,
   graphemeLength,
-  costFen,
   quoteSource,
   openAccount,
   applyCharge,
+  settleCharge,
   normalizeRecord,
   decodeSourceHeader
 }

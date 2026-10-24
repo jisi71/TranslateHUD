@@ -7,10 +7,10 @@ const {
   MAX_GRAPHEMES,
   MESSAGES,
   applyCharge,
-  costFen,
   graphemeLength,
   openAccount,
-  quoteSource
+  quoteSource,
+  settleCharge
 } = require('../src/trialPolicy')
 
 test('graphemes match extended clusters, including combining marks and emoji', () => {
@@ -21,18 +21,11 @@ test('graphemes match extended clusters, including combining marks and emoji', (
   assert.equal(graphemeLength('字\n字'), 3)
 })
 
-test('cost rounds up to fen with a one-fen minimum', () => {
-  assert.equal(costFen(0), 0)
-  assert.equal(costFen(1), 1)
-  assert.equal(costFen(10), 1)
-  assert.equal(costFen(11), 2)
-  assert.equal(costFen(500), 50)
-})
-
 test('500 graphemes are allowed and 501 are rejected with the product message', () => {
   const allowed = quoteSource('字'.repeat(MAX_GRAPHEMES))
   assert.equal(allowed.ok, true)
-  assert.equal(allowed.costFen, 50)
+  assert.equal(allowed.graphemes, 500)
+  assert.equal(Object.hasOwn(allowed, 'costFen'), false)
   const rejected = quoteSource('字'.repeat(MAX_GRAPHEMES + 1))
   assert.equal(rejected.ok, false)
   assert.equal(rejected.code, 'trial_length_limit')
@@ -73,4 +66,25 @@ test('balance gate rejects an empty wallet and a short wallet without changing t
   const missing = applyCharge(null, 1)
   assert.equal(missing.ok, false)
   assert.equal(missing.code, 'trial_balance_exhausted')
+})
+
+test('settlement spends the token cost and stops at zero', () => {
+  const paid = settleCharge({ balanceFen: 200, giftGranted: true, createdAt: 1 }, 6)
+  assert.equal(paid.ok, true)
+  assert.equal(paid.costFen, 6)
+  assert.equal(paid.chargedFen, 6)
+  assert.equal(paid.balanceFen, 194)
+  assert.equal(paid.clamped, false)
+
+  const last = settleCharge({ balanceFen: 1, giftGranted: true, createdAt: 1 }, 6)
+  assert.equal(last.chargedFen, 1)
+  assert.equal(last.balanceFen, 0)
+  assert.equal(last.costFen, 6)
+  assert.equal(last.clamped, true)
+  assert.equal(last.record.balanceFen, 0)
+
+  const empty = settleCharge({ balanceFen: 0, giftGranted: true, createdAt: 1 }, 6)
+  assert.equal(empty.chargedFen, 0)
+  assert.equal(empty.balanceFen, 0)
+  assert.equal(empty.clamped, true)
 })

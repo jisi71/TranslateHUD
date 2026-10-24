@@ -13,6 +13,13 @@ function sourceHeader(text) {
   return Buffer.from(text, 'utf8').toString('base64')
 }
 
+function modelJSON(content, usage = { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }) {
+  return JSON.stringify({
+    choices: [{ message: { content }, finish_reason: 'stop' }],
+    usage
+  })
+}
+
 function listen(store, options = {}) {
   const calls = []
   const env = {
@@ -27,16 +34,19 @@ function listen(store, options = {}) {
     if (token !== 'good-token') throw new Error('nope')
     return { uid: 'uid-1' }
   })
-  const forward = options.forward || (async ({ endpoint, apiKey, payload, signal }) => {
+  const inner = options.forward || (async ({ signal }) => {
     if (signal && signal.aborted) {
       throw new Error('request body completion aborted the upstream call')
     }
-    calls.push({ endpoint, apiKey, payload })
     return {
       status: 200,
-      text: JSON.stringify({ choices: [{ message: { content: '你好' } }] })
+      text: modelJSON('你好')
     }
   })
+  const forward = async (args) => {
+    calls.push({ endpoint: args.endpoint, apiKey: args.apiKey, payload: args.payload })
+    return inner(args)
+  }
   const server = http.createServer(createRequestListener({
     store,
     env,
@@ -110,7 +120,12 @@ test('trial translation bills the source, hides the server key, and lowers the b
       }
     })
     assert.equal(result.status, 200)
+    assert.equal(result.headers.get('x-trial-cost-fen'), '1')
+    assert.equal(result.headers.get('x-trial-charged-fen'), '1')
     assert.equal(result.headers.get('x-trial-balance-fen'), String(GIFT_FEN - 1))
+    assert.equal(result.json.translatehud_trial.costFen, 1)
+    assert.equal(result.json.translatehud_trial.balanceFen, GIFT_FEN - 1)
+    assert.equal(calls[0].payload.stream_options, undefined)
     assert.equal(calls.length, 1)
     assert.equal(calls[0].apiKey, 'server-secret-key')
     assert.equal(calls[0].payload.model, 'server-model')
@@ -172,11 +187,20 @@ test('a zero balance does not call the upstream', async () => {
   }
 })
 
-test('a short balance does not call the upstream', async () => {
+test('a short balance still calls the upstream and settlement stops at zero', async () => {
   const store = new MemoryAccountStore()
   await store.ensure('uid-1', 1)
   await store.charge('uid-1', GIFT_FEN - 1)
-  const { server, base, calls } = await listen(store)
+  const { server, base, calls } = await listen(store, {
+    forward: async () => ({
+      status: 200,
+      text: modelJSON('你好', {
+        prompt_tokens: 1_000_000,
+        completion_tokens: 0,
+        total_tokens: 1_000_000
+      })
+    })
+  })
   try {
     const source = '字'.repeat(20)
     const result = await request(base, '/v1/chat/completions', {
@@ -184,17 +208,65 @@ test('a short balance does not call the upstream', async () => {
       source,
       body: { model: 'm', messages: [{ role: 'user', content: source }] }
     })
-    assert.equal(result.status, 402)
-    assert.equal(result.json.error.code, 'trial_balance_insufficient')
-    assert.equal(calls.length, 0)
+    assert.equal(result.status, 200)
+    assert.equal(calls.length, 1)
+    assert.equal(result.headers.get('x-trial-cost-fen'), '200')
+    assert.equal(result.headers.get('x-trial-charged-fen'), '1')
+    assert.equal(result.headers.get('x-trial-balance-fen'), '0')
+    assert.equal(result.json.translatehud_trial.clamped, undefined)
     const saved = await store.ensure('uid-1')
-    assert.equal(saved.record.balanceFen, 1)
+    assert.equal(saved.record.balanceFen, 0)
   } finally {
     server.close()
   }
 })
 
-test('upstream failure refunds the charge', async () => {
+test('a finished response without usage is not billed', async () => {
+  const store = new MemoryAccountStore()
+  const { server, base, calls } = await listen(store, {
+    forward: async () => ({
+      status: 200,
+      text: JSON.stringify({ choices: [{ message: { content: '你好' } }] })
+    })
+  })
+  try {
+    const result = await request(base, '/v1/chat/completions', {
+      token: 'good-token',
+      source: '你好',
+      body: { model: 'm', messages: [{ role: 'user', content: '你好' }] }
+    })
+    assert.equal(result.status, 502)
+    assert.equal(result.json.error.code, 'trial_usage_missing')
+    assert.equal(result.json.error.message, MESSAGES.usageMissing)
+    assert.equal(calls.length, 1)
+    const saved = await store.ensure('uid-1')
+    assert.equal(saved.record.balanceFen, GIFT_FEN)
+  } finally {
+    server.close()
+  }
+})
+
+test('a bad token price refuses before the upstream call and does not gift', async () => {
+  const store = new MemoryAccountStore()
+  const { server, base, calls } = await listen(store, {
+    env: { TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION: 'nope' }
+  })
+  try {
+    const result = await request(base, '/v1/chat/completions', {
+      token: 'good-token',
+      source: '你好',
+      body: { model: 'm', messages: [{ role: 'user', content: '你好' }] }
+    })
+    assert.equal(result.status, 503)
+    assert.equal(result.json.error.code, 'trial_not_configured')
+    assert.equal(calls.length, 0)
+    assert.equal(store.users.has('uid-1'), false)
+  } finally {
+    server.close()
+  }
+})
+
+test('upstream failure does not charge', async () => {
   const store = new MemoryAccountStore()
   const { server, base } = await listen(store, {
     forward: async () => ({ status: 500, text: '{"error":{"message":"secret upstream"}}' })
@@ -224,7 +296,7 @@ test('reading the request body does not cancel the upstream call', async () => {
       abortedDuringCall = Boolean(signal && signal.aborted)
       return {
         status: 200,
-        text: JSON.stringify({ choices: [{ message: { content: 'ok' } }] })
+        text: modelJSON('ok')
       }
     }
   })
@@ -243,7 +315,7 @@ test('reading the request body does not cancel the upstream call', async () => {
   }
 })
 
-test('closing the client after streaming starts does not refund the charge', async () => {
+test('closing the client before usage arrives does not charge', async () => {
   const store = new MemoryAccountStore()
   const stream = new PassThrough()
   const { server, base } = await listen(store, {
@@ -280,7 +352,7 @@ test('closing the client after streaming starts does not refund the charge', asy
     stream.destroy(new Error('upstream reset after the client left'))
     await new Promise((resolve) => setTimeout(resolve, 40))
     const saved = await store.ensure('uid-1')
-    assert.equal(saved.record.balanceFen, GIFT_FEN - 1)
+    assert.equal(saved.record.balanceFen, GIFT_FEN)
   } finally {
     controller.abort()
     server.close()
@@ -295,12 +367,14 @@ test('streaming proxy lets the client read the first chunk before the upstream f
   const { server, base } = await listen(store, {
     forward: async ({ payload, apiKey }) => {
       assert.equal(payload.stream, true)
+      assert.deepEqual(payload.stream_options, { include_usage: true })
       assert.equal(apiKey, 'server-secret-key')
       assert.equal(payload.messages.find((message) => message.role === 'user').content, 'Hi')
       setTimeout(() => {
         stream.write('data: {"choices":[{"delta":{"content":"你"}}]}\n\n')
       }, 10)
       gate.then(() => {
+        stream.write('data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n')
         stream.write('data: [DONE]\n\n')
         stream.end()
       })
@@ -341,10 +415,43 @@ test('streaming proxy lets the client read the first chunk before the upstream f
       seen += decoder.decode(chunk.value)
     }
     assert.match(seen, /\[DONE\]/)
+    assert.match(seen, /translatehud_trial/)
+    assert.ok(seen.indexOf('translatehud_trial') < seen.lastIndexOf('[DONE]'))
     const saved = await store.ensure('uid-1')
     assert.equal(saved.record.balanceFen, GIFT_FEN - 1)
   } finally {
     release()
+    server.close()
+  }
+})
+
+test('a finished stream without usage does not charge', async () => {
+  const store = new MemoryAccountStore()
+  const stream = new PassThrough()
+  const { server, base } = await listen(store, {
+    forward: async () => {
+      stream.end('data: {"choices":[{"delta":{"content":"你"},"finish_reason":"stop"}]}\n\n')
+      return { status: 200, stream }
+    }
+  })
+  try {
+    const response = await fetch(`${base}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer good-token',
+        'Content-Type': 'application/json',
+        'X-TranslateHUD-Source': sourceHeader('Hi')
+      },
+      body: JSON.stringify({ model: 'client', stream: true, messages: [{ role: 'user', content: 'Hi' }] })
+    })
+    assert.equal(response.status, 200)
+    const text = await response.text()
+    assert.match(text, /你/)
+    assert.match(text, /trial_usage_missing/)
+    assert.equal(text.includes('[DONE]'), false)
+    const saved = await store.ensure('uid-1')
+    assert.equal(saved.record.balanceFen, GIFT_FEN)
+  } finally {
     server.close()
   }
 })

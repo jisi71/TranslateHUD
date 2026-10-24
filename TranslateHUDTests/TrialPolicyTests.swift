@@ -6,11 +6,6 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(TrialPricing.graphemeCount("你好"), 2)
         XCTAssertEqual(TrialPricing.graphemeCount("a\u{0301}"), 1)
         XCTAssertEqual(TrialPricing.graphemeCount("👨‍👩‍👧‍👦"), 1)
-        XCTAssertEqual(TrialPricing.costFen(graphemes: 0), 0)
-        XCTAssertEqual(TrialPricing.costFen(graphemes: 1), 1)
-        XCTAssertEqual(TrialPricing.costFen(graphemes: 10), 1)
-        XCTAssertEqual(TrialPricing.costFen(graphemes: 11), 2)
-        XCTAssertEqual(TrialPricing.costFen(graphemes: 500), 50)
         XCTAssertEqual(TrialPricing.yuanString(fen: 200), "¥2.00")
         XCTAssertEqual(TrialPricing.yuanString(fen: 199), "¥1.99")
         XCTAssertEqual(TrialPricing.yuanString(fen: 1), "¥0.01")
@@ -77,12 +72,28 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(TranslationRoute.gate(allowed), .allowTrial)
     }
 
-    func testShortBalanceDoesNotStartARequestThatCannotBePaid() {
+    func testASmallBalanceCanStartBecauseTokenCostIsUnknown() {
         let input = sampleTrial(balanceFen: 1, source: String(repeating: "字", count: 20))
-        guard case .block(_, let message) = TranslationRoute.gate(input) else {
-            return XCTFail("expected a block")
-        }
-        XCTAssertEqual(message, "体验额度不够支付这次翻译。请缩短原文，或在设置里填写你自己的 API Key。")
+        XCTAssertEqual(TranslationRoute.gate(input), .allowTrial)
+    }
+
+    func testTrialReceiptParsesTheProxyFields() {
+        let json: [String: Any] = [
+            "choices": [],
+            "translatehud_trial": [
+                "costFen": 6,
+                "chargedFen": 1,
+                "balanceFen": 0,
+                "promptTokens": 1000,
+                "completionTokens": 20
+            ]
+        ]
+        let settlement = TrialSettlement.parse(json: json)
+        XCTAssertEqual(settlement?.costFen, 6)
+        XCTAssertEqual(settlement?.chargedFen, 1)
+        XCTAssertEqual(settlement?.balanceFen, 0)
+        XCTAssertEqual(settlement?.promptTokens, 1000)
+        XCTAssertNil(TrialSettlement.parse(json: ["choices": []]))
     }
 
     func testScreenshotGateCanRunBeforeTheTextIsKnown() {

@@ -4,7 +4,7 @@ TranslateHUD 0.4.0 让没有自己 API Key 的人先用手机号试翻译。这�
 
 1. 确认是哪一个云开发账号（每个手机号对应一个用户 ID）。
 2. 这个账号第一次来的时候送 **¥2.00**，以后再登录不再送。
-3. 用服务端保存的翻译密钥去请求模型，按字数扣体验额度，再把结果交回 App。App 已经会边出字边显示，所以这里把模型的流式结果原样转回去。
+3. 用服务端保存的翻译密钥去请求模型，按上游实际 token 费用扣体验额度，再把结果交回 App。App 已经会边出字边显示，所以这里把模型的流式结果转回去，并在末尾补上这次扣了多少。
 
 短信登录走腾讯云开发，不经过这层服务。云开发环境：
 
@@ -20,15 +20,17 @@ TranslateHUD 0.4.0 让没有自己 API Key 的人先用手机号试翻译。这�
 - 用户 ID 用云开发登录返回的 `sub`。同一个 `sub` 只送一次 ¥2.00。手机号是否重复，交给云开发的短信登录。
 - 额度用「分」记账。200 分 = ¥2.00。
 - 字数按 Unicode 字素算，和 App 里 `String` 的字符数一致。一个汉字算 1。字母加上它的变音符号算 1。换行也算 1。
-- 单次原文最多 **500** 个字素。超过时接口返回：`超出单次翻译上限（体验额度单次最多 500 字）`。不会去调用翻译接口，也不会扣费。
-- 计费：每个字素 ¥0.001，向上取整到分，最少扣 ¥0.01。
-  - 1 到 10 个字素：¥0.01
-  - 500 个字素：¥0.50
-  - ¥2.00 大约够 2000 个字素
+- 单次原文最多 **500** 个字素。超过时接口返回：`超出单次翻译上限（体验额度单次最多 500 字）`。不会去调用翻译接口，也不会扣费。字数只做这个上限和空文本检查，**不**再决定扣多少钱。
+- 计费：一次调用成功，并且上游返回了 `usage.prompt_tokens` 和 `usage.completion_tokens` 之后，按配置的单价换成「分」再扣。单价是**每 100 万 token 多少元**，输入和输出分开。不满 1 分的零头向上进位。只要用量大于 0，至少扣 1 分（¥0.01）。余额不会扣成负数：最后一笔如果比剩余额度贵，扣到 0 为止，多出来的部分这次由服务承担，下一笔会被拒绝。
+- 默认单价是 2026-10 的 DeepSeek Flash **高峰**价（比空闲贵，避免工作日下午少扣）：输入未命中缓存 ¥2 / 百万 token，输入命中缓存 ¥0.04 / 百万 token，输出 ¥8 / 百万 token。空闲大约是一半。模型或官方价格变了，要改下面的环境变量，改完才跟账单一致。
+- 只有响应里明确带了 `prompt_cache_hit_tokens`（或 OpenAI 的 `prompt_tokens_details.cached_tokens`）时，命中的部分才按缓存价。没有这个字段时，全部输入按未命中价计，避免少扣。`total_tokens` 比输入加输出还多出来的部分，按三者里更高的单价计。
+- 流式请求会带上 `stream_options.include_usage = true`，这样兼容接口才会在最后一个分片里给出 usage。用量出现后才扣费，并在 `[DONE]` 之前追加一条 `translatehud_trial`（`choices` 为空，旧版 App 会跳过）。非流式把同样的数字放进响应头 `X-Trial-Cost-Fen`、`X-Trial-Charged-Fen`、`X-Trial-Balance-Fen`，以及 JSON 里的 `translatehud_trial`。
+- 开始前不知道具体 token 数。余额大于 0 才允许调用；余额已经是 0 则直接拒绝，不会白跑。两条请求同时用掉最后一点余额时，结算按先写进账本的为准，后一笔扣到 0 为止。
+- 上游报错、响应里没有可用 usage、或者流在 usage 到达前断开：这次不扣费，也不退回按字数估算。非流式返回 `trial_usage_missing`。流式如果字已经开始往外走，会在后面补一条同样的错误，App 不把这次当成成功。用户中途关掉浮窗也是这一类：没有 usage 就不扣。译文不合格导致 App 再请求一次时，两次成功会各扣一次。
 - 余额是 0：`体验额度已用完。请在设置里填写你自己的 API Key，之后会直接使用你的接口。`
-- 余额不够这次：`体验额度不够支付这次翻译。请缩短原文，或在设置里填写你自己的 API Key。`
-- 翻译接口报错时，这次扣掉的额度会退回。用户已经开始看到译文之后关掉浮窗，这次不退回。
-- 原文放在请求头 `X-TranslateHUD-Source`（UTF-8 的 Base64）。服务端按这份原文计费，并且只把这份原文（加上 App 附带的一小段前后文）发给模型。请求里如果还有别的、对不上的长文本，直接拒绝，不扣额度，也不会去调用模型。提示词里的前后文不计入这 500 字。App 如果因为译文不合格再请求一次，会再扣一次。
+- 没有用量：`这次翻译没有返回用量，没有扣体验额度。请稍后再试。`
+- 翻译接口报错：`体验翻译暂时没有完成，这次没有扣体验额度。请稍后再试。`
+- 原文放在请求头 `X-TranslateHUD-Source`（UTF-8 的 Base64）。服务端只把这份原文（加上 App 附带的一小段前后文）发给模型，不转发客户端自己写的长提示。请求里如果还有别的、对不上的长文本，直接拒绝，不扣额度，也不会去调用模型。提示词里的前后文不计入这 500 字。扣费看的是上游 token，不是这 500 字。App 如果因为译文不合格再请求一次，成功的那次会再扣一次。
 - 名词解释走同一个接口，同样扣费，同样有 500 字上限。朗读不走网络。
 
 ## 你要填的秘密
@@ -39,7 +41,10 @@ TranslateHUD 0.4.0 让没有自己 API Key 的人先用手机号试翻译。这�
 |---|---|---|
 | `TRANSLATION_API_KEY` | 只在服务端 | 翻译接口的密钥。App 里看不到 |
 | `TRANSLATION_BASE_URL` | 服务端 | 例如 `https://api.deepseek.com/v1` |
-| `TRANSLATION_MODEL` | 服务端 | 例如 `deepseek-v4-flash` |
+| `TRANSLATION_MODEL` | 服务端 | 例如 `deepseek-v4-flash`。换模型时把下面三个单价一起改成该模型的账单价格 |
+| `TRIAL_PRICE_INPUT_YUAN_PER_MILLION` | 服务端 | 输入（缓存未命中）每 100 万 token 多少元。默认 `2` |
+| `TRIAL_PRICE_CACHE_HIT_YUAN_PER_MILLION` | 服务端 | 输入缓存命中每 100 万 token 多少元。默认 `0.04`。不想区分缓存时，设成和输入价一样 |
+| `TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION` | 服务端 | 输出每 100 万 token 多少元。默认 `8` |
 | `TENCENT_SECRET_ID` / `TENCENT_SECRET_KEY` | 服务端，用云数据库时 | 腾讯云 API 密钥。云函数里可以不填，函数自带环境身份 |
 | `CLOUDBASE_ENV_ID` | 可以公开 | 已经是 `translatehud-d4gl951eo8bef4702` |
 | `TRIAL_PROXY_BASE_URL` | App 设置或编译配置 | 体验服务地址，以 `/v1` 结尾 |
@@ -76,6 +81,9 @@ CLOUDBASE_ENV_ID=translatehud-d4gl951eo8bef4702
 TRANSLATION_API_KEY=（你的密钥）
 TRANSLATION_BASE_URL=https://api.deepseek.com/v1
 TRANSLATION_MODEL=（你的模型）
+TRIAL_PRICE_INPUT_YUAN_PER_MILLION=2
+TRIAL_PRICE_CACHE_HIT_YUAN_PER_MILLION=0.04
+TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION=8
 TENCENT_SECRET_ID=（腾讯云密钥）
 TENCENT_SECRET_KEY=（腾讯云密钥）
 PORT=8080

@@ -74,14 +74,8 @@ enum TranslationRoute {
             if count <= 0 {
                 return .block(title: "没有可翻译的文字", message: TrialCopy.empty)
             }
-            if let balance = input.balanceFen {
-                if balance <= 0 {
-                    return .block(title: "体验额度已用完", message: TrialCopy.balanceExhausted)
-                }
-                let cost = TrialPricing.costFen(graphemes: count)
-                if balance < cost {
-                    return .block(title: "体验额度不足", message: TrialCopy.balanceInsufficient)
-                }
+            if let balance = input.balanceFen, balance <= 0 {
+                return .block(title: "体验额度已用完", message: TrialCopy.balanceExhausted)
             }
         } else if let balance = input.balanceFen, balance <= 0 {
             return .block(title: "体验额度已用完", message: TrialCopy.balanceExhausted)

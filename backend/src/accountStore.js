@@ -2,7 +2,7 @@
 
 const fs = require('fs')
 const path = require('path')
-const { applyCharge, normalizeRecord, openAccount } = require('./trialPolicy')
+const { applyCharge, normalizeRecord, openAccount, settleCharge } = require('./trialPolicy')
 
 function clone(record) {
   const normalized = normalizeRecord(record)
@@ -36,6 +36,15 @@ class MemoryAccountStore {
       const existing = this.users.get(uid)
       const decision = applyCharge(existing ? clone(existing) : null, costFen)
       if (decision.ok) this.users.set(uid, clone(decision.record))
+      return decision
+    })
+  }
+
+  async settle(uid, costFen) {
+    return this.lock(uid, async () => {
+      const existing = this.users.get(uid)
+      const decision = settleCharge(existing ? clone(existing) : null, costFen)
+      if (decision.record) this.users.set(uid, clone(decision.record))
       return decision
     })
   }
@@ -121,6 +130,17 @@ class FileAccountStore {
     })
   }
 
+  async settle(uid, costFen) {
+    return this.lock(async () => {
+      const decision = settleCharge(this.users.has(uid) ? clone(this.users.get(uid)) : null, costFen)
+      if (decision.record) {
+        this.users.set(uid, clone(decision.record))
+        await this.persist()
+      }
+      return decision
+    })
+  }
+
   async refund(uid, fen) {
     const amount = Math.floor(Number(fen) || 0)
     if (amount <= 0) return null
@@ -175,6 +195,22 @@ class TransactionalAccountStore {
         const existing = await tx.get(uid)
         const decision = applyCharge(existing, costFen)
         if (decision.ok && decision.record !== existing) await tx.save(uid, decision.record)
+        await tx.commit()
+        return decision
+      } catch (error) {
+        await tx.rollback().catch(() => {})
+        throw error
+      }
+    })
+  }
+
+  async settle(uid, costFen) {
+    return this.withRetry(async () => {
+      const tx = await this.begin()
+      try {
+        const existing = await tx.get(uid)
+        const decision = settleCharge(existing, costFen)
+        if (decision.record) await tx.save(uid, decision.record)
         await tx.commit()
         return decision
       } catch (error) {

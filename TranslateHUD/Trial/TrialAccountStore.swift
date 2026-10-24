@@ -14,6 +14,8 @@ final class TrialAccountStore: ObservableObject {
     @Published private(set) var maskedPhone = ""
     @Published private(set) var userId = ""
     @Published private(set) var balanceFen: Int?
+    @Published private(set) var lastCostFen: Int?
+    @Published private(set) var lastChargedFen: Int?
     @Published private(set) var balanceState: BalanceState = .idle
 
     enum BalanceState: Equatable {
@@ -33,8 +35,23 @@ final class TrialAccountStore: ObservableObject {
         }
     }
 
+    /// Plain-language cost of the latest settled trial call, when this session has one.
+    var lastSpendText: String? {
+        guard let lastCostFen else { return nil }
+        let cost = TrialPricing.yuanString(fen: lastCostFen)
+        if let lastChargedFen, lastChargedFen < lastCostFen {
+            return "\(cost)（剩余额度只扣了 \(TrialPricing.yuanString(fen: lastChargedFen))）"
+        }
+        return cost
+    }
+
     var balanceTitle: String {
-        if let balanceFen { return "体验余额 \(TrialPricing.yuanString(fen: balanceFen))" }
+        if let balanceFen {
+            if let lastSpendText {
+                return "本次花费 \(lastSpendText) · 体验余额 \(TrialPricing.yuanString(fen: balanceFen))"
+            }
+            return "体验余额 \(TrialPricing.yuanString(fen: balanceFen))"
+        }
         switch balanceState {
         case .loading: return "正在读取体验余额"
         case .failed: return "体验余额读取失败"
@@ -183,6 +200,13 @@ final class TrialAccountStore: ObservableObject {
         }
     }
 
+    func applySettlement(_ settlement: TrialSettlement) {
+        balanceFen = settlement.balanceFen
+        lastCostFen = settlement.costFen
+        lastChargedFen = settlement.chargedFen
+        balanceState = .loaded
+    }
+
     func refreshFromServer(announceGift: Bool = false) async {
         guard isLoggedIn else { return }
         if TrialToken.disagrees(accessToken: accessToken, refreshToken: refreshToken, envId: TrialConfig.envId) {
@@ -243,6 +267,8 @@ final class TrialAccountStore: ObservableObject {
         maskedPhone = ""
         expiresAt = .distantPast
         balanceFen = nil
+        lastCostFen = nil
+        lastChargedFen = nil
         balanceState = .idle
         isLoggedIn = false
         verificationId = nil

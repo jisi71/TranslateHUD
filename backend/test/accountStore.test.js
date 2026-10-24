@@ -36,6 +36,21 @@ test('memory store lets only one of two overlapping charges spend the same fen',
   assert.equal(saved.giftedNow, false)
 })
 
+test('settle deducts the given fen and a second settle cannot go negative', async () => {
+  const store = new MemoryAccountStore()
+  await store.ensure('user-3', 1)
+  const first = await store.settle('user-3', 50)
+  assert.equal(first.chargedFen, 50)
+  assert.equal(first.balanceFen, GIFT_FEN - 50)
+  const second = await store.settle('user-3', GIFT_FEN)
+  assert.equal(second.costFen, GIFT_FEN)
+  assert.equal(second.chargedFen, GIFT_FEN - 50)
+  assert.equal(second.balanceFen, 0)
+  assert.equal(second.clamped, true)
+  const saved = await store.ensure('user-3', 2)
+  assert.equal(saved.record.balanceFen, 0)
+})
+
 test('file store keeps the gift across a new process object', async () => {
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'translatehud-trial-'))
   const file = path.join(dir, 'accounts.json')

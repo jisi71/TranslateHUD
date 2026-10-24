@@ -57,10 +57,9 @@ struct SettingsView: View {
                         Text(lang.displayName).tag(lang)
                     }
                 }
-                Text("已经是目标语言的文本会原样返回。\n特例：当目标 = 简体中文 且输入主体也是中文时，自动反向翻译为英语，避免「中文 → 中文」无操作。")
+                Text("中文和英文会自动对调。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("朗读") {

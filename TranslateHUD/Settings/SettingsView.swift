@@ -155,7 +155,7 @@ struct SettingsView: View {
     @ViewBuilder
     private var trialSection: some View {
         Section("体验登录") {
-            Text("还没有自己的 API Key 时，用手机号登录就能试翻译。第一次登录送 ¥2.00，同一个账号只送一次。单次最多 500 字。费用按这次模型实际消耗的 token 计算。界面上的金额显示到分，四舍五入，不满半分会显示 ¥0.00；账本按更小的单位记账，所以很短的一次仍会扣额度。额度真正用完后，在下面填写你自己的 API Key。")
+            Text("还没有自己的 API Key 时，用手机号登录就能试翻译。第一次登录送 ¥2.00，同一个账号只送一次。单次最多 500 字。费用按这次模型实际消耗的 token 计算。界面只显示体验余额，金额显示到分，四舍五入，不满半分会显示 ¥0.00。账本按更小的单位记账，所以很短的一次仍会扣额度。额度真正用完后，在下面填写你自己的 API Key。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -164,11 +164,6 @@ struct SettingsView: View {
                 LabeledContent("手机号", value: trial.maskedPhone.isEmpty ? "已登录" : trial.maskedPhone)
                 LabeledContent("体验余额") {
                     Text(trial.balanceValueText)
-                }
-                if let spend = trial.lastSpendText {
-                    LabeledContent("本次花费") {
-                        Text(spend)
-                    }
                 }
                 if !trial.userId.isEmpty {
                     LabeledContent("账号") {

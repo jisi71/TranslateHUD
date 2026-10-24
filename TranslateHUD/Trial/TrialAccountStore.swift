@@ -18,8 +18,6 @@ final class TrialAccountStore: ObservableObject {
     var balanceFen: Int? {
         balanceMicroYuan.map { TrialPricing.displayFen(microYuan: $0) }
     }
-    @Published private(set) var lastCostFen: Int?
-    @Published private(set) var lastChargedFen: Int?
     @Published private(set) var balanceState: BalanceState = .idle
 
     enum BalanceState: Equatable {
@@ -39,21 +37,9 @@ final class TrialAccountStore: ObservableObject {
         }
     }
 
-    /// Plain-language cost of the latest settled trial call, when this session has one.
-    var lastSpendText: String? {
-        guard let lastCostFen else { return nil }
-        let cost = TrialPricing.yuanString(fen: lastCostFen)
-        if let lastChargedFen, lastChargedFen < lastCostFen {
-            return "\(cost)（剩余额度只扣了 \(TrialPricing.yuanString(fen: lastChargedFen))）"
-        }
-        return cost
-    }
-
+    /// Menu bar and panel footer. The per-request cost is not shown.
     var balanceTitle: String {
         if let balanceFen {
-            if let lastSpendText {
-                return "本次花费 \(lastSpendText) · 体验余额 \(TrialPricing.yuanString(fen: balanceFen))"
-            }
             return "体验余额 \(TrialPricing.yuanString(fen: balanceFen))"
         }
         switch balanceState {
@@ -206,8 +192,6 @@ final class TrialAccountStore: ObservableObject {
 
     func applySettlement(_ settlement: TrialSettlement) {
         balanceMicroYuan = settlement.balanceMicroYuan
-        lastCostFen = settlement.costFen
-        lastChargedFen = settlement.chargedFen
         balanceState = .loaded
     }
 
@@ -271,8 +255,6 @@ final class TrialAccountStore: ObservableObject {
         maskedPhone = ""
         expiresAt = .distantPast
         balanceMicroYuan = nil
-        lastCostFen = nil
-        lastChargedFen = nil
         balanceState = .idle
         isLoggedIn = false
         verificationId = nil

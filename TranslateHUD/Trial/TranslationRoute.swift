@@ -6,6 +6,8 @@ struct TranslationRouteInput: Equatable {
     var isLoggedIn: Bool
     var proxyBaseURL: String
     var balanceFen: Int?
+    /// Precise ledger. When present, exhaustion uses this rather than the fen shown on screen.
+    var balanceMicroYuan: Int? = nil
     /// Nil when the text is not known yet, for example before a screenshot is recognized.
     var sourceText: String?
 }
@@ -74,18 +76,20 @@ enum TranslationRoute {
             if count <= 0 {
                 return .block(title: "没有可翻译的文字", message: TrialCopy.empty)
             }
-            if let balance = input.balanceFen {
-                if balance <= 0 {
-                    return .block(title: "体验额度已用完", message: TrialCopy.balanceExhausted)
-                }
-                let cost = TrialPricing.costFen(graphemes: count)
-                if balance < cost {
-                    return .block(title: "体验额度不足", message: TrialCopy.balanceInsufficient)
-                }
+            if trialBalanceIsEmpty(input) {
+                return .block(title: "体验额度已用完", message: TrialCopy.balanceExhausted)
             }
-        } else if let balance = input.balanceFen, balance <= 0 {
+        } else if trialBalanceIsEmpty(input) {
             return .block(title: "体验额度已用完", message: TrialCopy.balanceExhausted)
         }
         return .allowTrial
+    }
+
+    /// A displayed ¥0.00 can still be a sub-fen remainder. Only a precise balance
+    /// of zero, or a legacy fen balance of zero, blocks the call.
+    private static func trialBalanceIsEmpty(_ input: TranslationRouteInput) -> Bool {
+        if let micro = input.balanceMicroYuan { return micro <= 0 }
+        if let fen = input.balanceFen { return fen <= 0 }
+        return false
     }
 }

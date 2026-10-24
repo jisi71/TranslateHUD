@@ -148,8 +148,9 @@ function createCloudBaseStore(db) {
 
   return {
     ensure: (uid, now) => run('ensure', [uid, now]),
-    charge: (uid, costFen) => run('charge', [uid, costFen]),
-    refund: (uid, fen) => run('refund', [uid, fen])
+    charge: (uid, costMicroYuan) => run('charge', [uid, costMicroYuan]),
+    settle: (uid, costMicroYuan) => run('settle', [uid, costMicroYuan]),
+    refund: (uid, microYuan) => run('refund', [uid, microYuan])
   }
 }
 

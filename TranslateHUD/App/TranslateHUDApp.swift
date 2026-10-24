@@ -30,9 +30,6 @@ private struct MenuBarMenu: View {
         Button("检查权限…") {
             PermissionManager.shared.openSystemPanels()
         }
-        Button("诊断（AX / 选区状态）") {
-            DiagnosticsRunner.run()
-        }
         Divider()
         Button("退出 TranslateHUD") {
             NSApplication.shared.terminate(nil)
@@ -47,6 +44,7 @@ private struct MenuBarMenu: View {
             isLoggedIn: trial.isLoggedIn,
             proxyBaseURL: trial.effectiveProxyBaseURL,
             balanceFen: trial.balanceFen,
+            balanceMicroYuan: trial.balanceMicroYuan,
             sourceText: nil
         )
         switch TranslationRoute.endpoint(input) {

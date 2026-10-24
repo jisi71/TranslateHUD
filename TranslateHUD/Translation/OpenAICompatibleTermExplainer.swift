@@ -4,15 +4,18 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
     let config: ProviderConfig
     let session: URLSession
     let extraHTTPHeaders: [String: String]
+    let onTrialSettlement: (@Sendable (TrialSettlement) async -> Void)?
 
     init(
         config: ProviderConfig,
         session: URLSession = .shared,
-        extraHTTPHeaders: [String: String] = [:]
+        extraHTTPHeaders: [String: String] = [:],
+        onTrialSettlement: (@Sendable (TrialSettlement) async -> Void)? = nil
     ) {
         self.config = config
         self.session = session
         self.extraHTTPHeaders = extraHTTPHeaders
+        self.onTrialSettlement = onTrialSettlement
     }
 
     func explain(
@@ -114,6 +117,11 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
             throw TermExplanationError.invalidResponse("服务响应格式无法读取，请确认接口兼容性或更换服务后重试。")
         }
         if let error = root["error"], !(error is NSNull) { throw TermExplanationError.service(ServiceErrorMessage.stream(error)) }
+        if let settlement = TrialSettlement.parse(json: root) {
+            await onTrialSettlement?(settlement)
+        } else if let http = response as? HTTPURLResponse, let settlement = TrialSettlement.parse(response: http) {
+            await onTrialSettlement?(settlement)
+        }
         guard
             let choices = root["choices"] as? [[String: Any]],
             let message = choices.first?["message"] as? [String: Any],

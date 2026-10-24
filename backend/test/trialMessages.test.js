@@ -57,6 +57,7 @@ test('streaming forwards the billed source and drops client instructions', () =>
   assert.match(systemContent(prepared), /CRITICAL/)
   assert.equal(systemContent(prepared).includes('SENTINEL'), false)
   assert.equal(prepared.payload.response_format, undefined)
+  assert.deepEqual(prepared.payload.stream_options, { include_usage: true })
 })
 
 test('a batch of lines is preserved and an extra line is rejected', () => {

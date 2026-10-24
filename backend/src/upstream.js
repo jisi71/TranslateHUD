@@ -74,7 +74,12 @@ function prepareUpstreamPayload(rawBody, config, sourceText) {
     temperature: bound.temperature
   }
   const stream = bound.stream
-  if (stream) payload.stream = true
+  if (stream) {
+    payload.stream = true
+    // OpenAI-compatible providers omit usage on a stream unless this is set.
+    // DeepSeek follows the same flag. Without a usage object the call is not billed.
+    payload.stream_options = { include_usage: true }
+  }
   let host = ''
   try {
     host = new URL(config.endpoint).hostname.toLowerCase()

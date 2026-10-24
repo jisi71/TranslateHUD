@@ -80,14 +80,10 @@ function createRequestListener(deps = {}) {
       if (result.aborted || res.writableEnded) return
       res.writeHead(result.status, result.headers || { 'Content-Type': 'application/json; charset=utf-8' })
       if (result.stream) {
-        result.stream.on('error', async () => {
-          // Headers are already on the wire. A client disconnect is not a
-          // failed translation, so the charge stays. An upstream break before
-          // the client leaves is refunded.
-          const clientLeft = abort.signal.aborted && res.headersSent
-          if (!clientLeft && typeof result.refund === 'function') {
-            await result.refund().catch(() => {})
-          }
+        result.stream.on('error', () => {
+          // Settlement runs only after the upstream stream ends with usage.
+          // An error here means that settlement did not commit, so there is
+          // nothing to refund and no grapheme price to fall back to.
           if (!res.writableEnded) res.destroy()
         })
         result.stream.pipe(res)

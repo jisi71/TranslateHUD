@@ -112,7 +112,7 @@ async function handleTranslate(ctx) {
   let payload
   let stream
   try {
-    const prepared = prepareUpstreamPayload(rawBody, config)
+    const prepared = prepareUpstreamPayload(rawBody, config, decoded.text)
     payload = prepared.payload
     stream = prepared.stream
   } catch (error) {

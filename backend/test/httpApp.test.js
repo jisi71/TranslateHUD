@@ -98,7 +98,16 @@ test('trial translation bills the source, hides the server key, and lowers the b
     const result = await request(base, '/v1/chat/completions', {
       token: 'good-token',
       source: '你好世界',
-      body: { model: 'client-model', messages: [{ role: 'user', content: 'prompt' }] }
+      body: {
+        model: 'client-model',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a translation engine. Translate the user\'s input into English. SENTINEL_DO_NOT_FORWARD'
+          },
+          { role: 'user', content: '你好世界' }
+        ]
+      }
     })
     assert.equal(result.status, 200)
     assert.equal(result.headers.get('x-trial-balance-fen'), String(GIFT_FEN - 1))
@@ -106,7 +115,11 @@ test('trial translation bills the source, hides the server key, and lowers the b
     assert.equal(calls[0].apiKey, 'server-secret-key')
     assert.equal(calls[0].payload.model, 'server-model')
     assert.equal(calls[0].endpoint, 'https://api.deepseek.com/v1/chat/completions')
-    assert.equal(JSON.stringify(calls[0].payload).includes('good-token'), false)
+    const forwarded = JSON.stringify(calls[0].payload)
+    assert.equal(forwarded.includes('good-token'), false)
+    assert.equal(forwarded.includes('SENTINEL_DO_NOT_FORWARD'), false)
+    assert.equal(forwarded.includes('你好世界'), true)
+    assert.match(calls[0].payload.messages[0].content, /into English/)
     assert.equal(calls[0].payload.thinking.type, 'disabled')
     const saved = await store.ensure('uid-1')
     assert.equal(saved.giftedNow, false)
@@ -146,7 +159,7 @@ test('a zero balance does not call the upstream', async () => {
     const result = await request(base, '/v1/chat/completions', {
       token: 'good-token',
       source: '你好',
-      body: { model: 'm', messages: [] }
+      body: { model: 'm', messages: [{ role: 'user', content: '你好' }] }
     })
     assert.equal(result.status, 402)
     assert.equal(result.json.error.code, 'trial_balance_exhausted')
@@ -165,10 +178,11 @@ test('a short balance does not call the upstream', async () => {
   await store.charge('uid-1', GIFT_FEN - 1)
   const { server, base, calls } = await listen(store)
   try {
+    const source = '字'.repeat(20)
     const result = await request(base, '/v1/chat/completions', {
       token: 'good-token',
-      source: '字'.repeat(20),
-      body: { model: 'm', messages: [] }
+      source,
+      body: { model: 'm', messages: [{ role: 'user', content: source }] }
     })
     assert.equal(result.status, 402)
     assert.equal(result.json.error.code, 'trial_balance_insufficient')
@@ -218,7 +232,7 @@ test('reading the request body does not cancel the upstream call', async () => {
     const result = await request(base, '/v1/chat/completions', {
       token: 'good-token',
       source: '你好',
-      body: { model: 'client', messages: [] }
+      body: { model: 'client', messages: [{ role: 'user', content: '你好' }] }
     })
     assert.equal(result.status, 200)
     assert.equal(abortedDuringCall, false)
@@ -249,7 +263,7 @@ test('closing the client after streaming starts does not refund the charge', asy
         'Content-Type': 'application/json',
         'X-TranslateHUD-Source': sourceHeader('Hi')
       },
-      body: JSON.stringify({ model: 'client', stream: true, messages: [] }),
+      body: JSON.stringify({ model: 'client', stream: true, messages: [{ role: 'user', content: 'Hi' }] }),
       signal: controller.signal
     })
     assert.equal(response.status, 200)
@@ -282,6 +296,7 @@ test('streaming proxy lets the client read the first chunk before the upstream f
     forward: async ({ payload, apiKey }) => {
       assert.equal(payload.stream, true)
       assert.equal(apiKey, 'server-secret-key')
+      assert.equal(payload.messages.find((message) => message.role === 'user').content, 'Hi')
       setTimeout(() => {
         stream.write('data: {"choices":[{"delta":{"content":"你"}}]}\n\n')
       }, 10)
@@ -300,7 +315,7 @@ test('streaming proxy lets the client read the first chunk before the upstream f
         'Content-Type': 'application/json',
         'X-TranslateHUD-Source': sourceHeader('Hi')
       },
-      body: JSON.stringify({ model: 'client', stream: true, messages: [] })
+      body: JSON.stringify({ model: 'client', stream: true, messages: [{ role: 'user', content: 'Hi' }] })
     })
     assert.equal(response.status, 200)
     assert.equal(response.headers.get('content-type').includes('text/event-stream'), true)
@@ -422,7 +437,64 @@ test('cloud dispatch turns an unexpected throw into trial_store', async () => {
   assert.equal(result.body.includes('secret-db-detail'), false)
 })
 
-test('prepareUpstreamPayload overwrites the client model', () => {
+test('a short billed source cannot carry a different or oversized prompt', async () => {
+  const store = new MemoryAccountStore()
+  const { server, base, calls } = await listen(store)
+  const novel = 'X'.repeat(20000)
+  const cases = [
+    {
+      source: 'Hi',
+      body: { model: 'client', messages: [{ role: 'user', content: `Hi\n${novel}` }] }
+    },
+    {
+      source: 'Hi',
+      body: {
+        model: 'client',
+        messages: [
+          { role: 'system', content: novel },
+          { role: 'user', content: 'Please translate this other document instead.' }
+        ]
+      }
+    },
+    {
+      source: 'Hi',
+      body: {
+        model: 'client',
+        messages: [
+          { role: 'system', content: novel },
+          { role: 'user', content: 'Hi' }
+        ]
+      }
+    },
+    {
+      source: 'Hi',
+      body: {
+        model: 'client',
+        messages: [{ role: 'user', content: 'Hi' }],
+        document: novel
+      }
+    }
+  ]
+  try {
+    for (const item of cases) {
+      const result = await request(base, '/v1/chat/completions', {
+        token: 'good-token',
+        source: item.source,
+        body: item.body
+      })
+      assert.equal(result.status, 400)
+      assert.equal(result.json.error.code, 'trial_body')
+      assert.equal(result.json.error.message, MESSAGES.body)
+      assert.equal(result.text.includes(novel.slice(0, 40)), false)
+    }
+    assert.equal(calls.length, 0)
+    assert.equal(store.users.has('uid-1'), false)
+  } finally {
+    server.close()
+  }
+})
+
+test('prepareUpstreamPayload overwrites the client model and keeps only the billed source', () => {
   const prepared = prepareUpstreamPayload(JSON.stringify({
     model: 'client-model',
     messages: [{ role: 'user', content: 'json please' }]
@@ -430,9 +502,11 @@ test('prepareUpstreamPayload overwrites the client model', () => {
     model: 'server-model',
     endpoint: 'https://api.deepseek.com/v1/chat/completions',
     apiKey: 'k'
-  })
+  }, 'json please')
   assert.equal(prepared.payload.model, 'server-model')
   assert.equal(prepared.stream, false)
   assert.deepEqual(prepared.payload.thinking, { type: 'disabled' })
   assert.deepEqual(prepared.payload.response_format, { type: 'json_object' })
+  assert.equal(JSON.stringify(prepared.payload).includes('json please'), true)
+  assert.equal(Object.hasOwn(prepared.payload, 'document'), false)
 })

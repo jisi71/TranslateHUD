@@ -20,7 +20,7 @@ function isMissingDocument(error) {
 
 function initApp() {
   const tcb = require('@cloudbase/node-sdk')
-  const envId = process.env.CLOUDBASE_ENV_ID || 'liusheng-d0g430h1f486532bd'
+  const envId = process.env.CLOUDBASE_ENV_ID || 'translatehud-d4gl951eo8bef4702'
   if (process.env.TENCENT_SECRET_ID && process.env.TENCENT_SECRET_KEY) {
     return tcb.init({
       env: envId,

@@ -228,7 +228,7 @@ final class CloudBaseLoginTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CloudBaseHTTPStub.self]
         return CloudBaseAuthAPI(
-            gateway: URL(string: "https://liusheng-d0g430h1f486532bd.api.tcloudbasegateway.com")!,
+            gateway: URL(string: "https://translatehud-d4gl951eo8bef4702.api.tcloudbasegateway.com")!,
             session: URLSession(configuration: configuration),
             deviceId: "test-device"
         )

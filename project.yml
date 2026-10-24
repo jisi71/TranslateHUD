@@ -38,7 +38,7 @@ targets:
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         MARKETING_VERSION: "0.4.0"
         CURRENT_PROJECT_VERSION: "10"
-        CLOUDBASE_ENV_ID: liusheng-d0g430h1f486532bd
+        CLOUDBASE_ENV_ID: translatehud-d4gl951eo8bef4702
         CLOUDBASE_REGION: ap-shanghai
         TRIAL_PROXY_BASE_URL: ""
         ENABLE_HARDENED_RUNTIME: NO   # 自签名 + AX 兜底用 CGEvent 时关掉硬化运行时更省心

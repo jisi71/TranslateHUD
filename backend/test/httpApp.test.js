@@ -16,8 +16,8 @@ function sourceHeader(text) {
 function listen(store, options = {}) {
   const calls = []
   const env = {
-    envId: 'liusheng-d0g430h1f486532bd',
-    gateway: 'https://liusheng-d0g430h1f486532bd.api.tcloudbasegateway.com',
+    envId: 'translatehud-d4gl951eo8bef4702',
+    gateway: 'https://translatehud-d4gl951eo8bef4702.api.tcloudbasegateway.com',
     apiKey: 'server-secret-key',
     baseURL: 'https://api.deepseek.com/v1',
     model: 'server-model',
@@ -356,8 +356,8 @@ test('cloud function dispatch gifts once through the same account handler', asyn
   const { dispatch } = require('../src/cloudEntry')
   const store = new MemoryAccountStore()
   const env = {
-    envId: 'liusheng-d0g430h1f486532bd',
-    gateway: 'https://liusheng-d0g430h1f486532bd.api.tcloudbasegateway.com',
+    envId: 'translatehud-d4gl951eo8bef4702',
+    gateway: 'https://translatehud-d4gl951eo8bef4702.api.tcloudbasegateway.com',
     apiKey: 'server-secret-key',
     baseURL: 'https://api.deepseek.com/v1',
     model: 'server-model'

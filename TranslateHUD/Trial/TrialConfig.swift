@@ -1,7 +1,7 @@
 import Foundation
 
 enum TrialConfig {
-    static let defaultEnvId = "liusheng-d0g430h1f486532bd"
+    static let defaultEnvId = "translatehud-d4gl951eo8bef4702"
     static let proxyOverrideKey = "trial.proxyBaseURL"
     static let deviceIdKey = "trial.deviceId"
 

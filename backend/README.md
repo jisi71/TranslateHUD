@@ -8,9 +8,10 @@ TranslateHUD 0.4.0 让没有自己 API Key 的人先用手机号试翻译。这�
 
 短信登录走腾讯云开发，不经过这层服务。云开发环境：
 
-- envId：`liusheng-d0g430h1f486532bd`
+- envId：`translatehud-d4gl951eo8bef4702`。这是 TranslateHUD 自己的云开发个人版，不要再用语音记录那个环境。
 - 地域：上海 `ap-shanghai`（短信验证码登录只支持上海）
-- 控制台里的「短信验证码登录」已经打开，渠道是云开发短信资源包。这次不用再配短信签名。
+- 控制台里的「短信验证码登录」需要在这个新环境里打开，渠道用云开发短信资源包。
+- 账本用云数据库（文档型），集合名 `trial_accounts`。不要改成 PostgreSQL。
 
 微信登录和邮箱登录这次不做。
 
@@ -40,7 +41,7 @@ TranslateHUD 0.4.0 让没有自己 API Key 的人先用手机号试翻译。这�
 | `TRANSLATION_BASE_URL` | 服务端 | 例如 `https://api.deepseek.com/v1` |
 | `TRANSLATION_MODEL` | 服务端 | 例如 `deepseek-v4-flash` |
 | `TENCENT_SECRET_ID` / `TENCENT_SECRET_KEY` | 服务端，用云数据库时 | 腾讯云 API 密钥。云函数里可以不填，函数自带环境身份 |
-| `CLOUDBASE_ENV_ID` | 可以公开 | 已经是 `liusheng-d0g430h1f486532bd` |
+| `CLOUDBASE_ENV_ID` | 可以公开 | 已经是 `translatehud-d4gl951eo8bef4702` |
 | `TRIAL_PROXY_BASE_URL` | App 设置或编译配置 | 体验服务地址，以 `/v1` 结尾 |
 
 App 的编译默认值在 `project.yml`。也可以复制 `Config/Secrets.xcconfig.example` 里的说明。平常在 App 设置的「体验服务地址」里粘贴即可，不用重新编译。
@@ -71,7 +72,7 @@ App 里的体验服务地址填：`http://127.0.0.1:8787/v1`
 
 ```text
 TRIAL_STORE=cloudbase
-CLOUDBASE_ENV_ID=liusheng-d0g430h1f486532bd
+CLOUDBASE_ENV_ID=translatehud-d4gl951eo8bef4702
 TRANSLATION_API_KEY=（你的密钥）
 TRANSLATION_BASE_URL=https://api.deepseek.com/v1
 TRANSLATION_MODEL=（你的模型）
@@ -82,7 +83,7 @@ PORT=8080
 
 服务起来之后，把外网地址加上 `/v1`，填进 App 的「体验服务地址」。例如 `https://你的服务域名/v1`。
 
-云托管需要能访问云数据库。账本集合名是 `trial_accounts`，文档 ID 就是用户 ID。不用提前建表，第一次登录会写进去。
+云托管需要能访问这个环境的云数据库（文档型）。账本集合名是 `trial_accounts`，文档 ID 就是用户 ID。不用提前建表，第一次登录会写进去。
 
 ## 云函数（备用）
 

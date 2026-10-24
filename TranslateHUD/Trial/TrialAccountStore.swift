@@ -13,7 +13,11 @@ final class TrialAccountStore: ObservableObject {
     @Published private(set) var isLoggedIn = false
     @Published private(set) var maskedPhone = ""
     @Published private(set) var userId = ""
-    @Published private(set) var balanceFen: Int?
+    @Published private(set) var balanceMicroYuan: Int?
+    /// Fen shown in the UI. Half-up from the micro-yuan ledger, display only.
+    var balanceFen: Int? {
+        balanceMicroYuan.map { TrialPricing.displayFen(microYuan: $0) }
+    }
     @Published private(set) var lastCostFen: Int?
     @Published private(set) var lastChargedFen: Int?
     @Published private(set) var balanceState: BalanceState = .idle
@@ -201,7 +205,7 @@ final class TrialAccountStore: ObservableObject {
     }
 
     func applySettlement(_ settlement: TrialSettlement) {
-        balanceFen = settlement.balanceFen
+        balanceMicroYuan = settlement.balanceMicroYuan
         lastCostFen = settlement.costFen
         lastChargedFen = settlement.chargedFen
         balanceState = .loaded
@@ -223,7 +227,7 @@ final class TrialAccountStore: ObservableObject {
         do {
             let token = try await validAccessToken()
             let snapshot = try await TrialProxyClient.syncAccount(proxyBase: proxy, accessToken: token)
-            balanceFen = snapshot.balanceFen
+            balanceMicroYuan = snapshot.balanceMicroYuan
             balanceState = .loaded
             if !snapshot.userId.isEmpty { userId = snapshot.userId }
             if announceGift {
@@ -266,7 +270,7 @@ final class TrialAccountStore: ObservableObject {
         userId = ""
         maskedPhone = ""
         expiresAt = .distantPast
-        balanceFen = nil
+        balanceMicroYuan = nil
         lastCostFen = nil
         lastChargedFen = nil
         balanceState = .idle

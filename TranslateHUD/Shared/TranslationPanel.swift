@@ -427,6 +427,7 @@ struct TranslationPanel: View {
             isLoggedIn: trial.isLoggedIn,
             proxyBaseURL: trial.effectiveProxyBaseURL,
             balanceFen: trial.balanceFen,
+            balanceMicroYuan: trial.balanceMicroYuan,
             sourceText: nil
         )
     }

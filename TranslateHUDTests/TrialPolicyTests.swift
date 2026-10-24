@@ -10,6 +10,16 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(TrialPricing.yuanString(fen: 199), "¥1.99")
         XCTAssertEqual(TrialPricing.yuanString(fen: 1), "¥0.01")
         XCTAssertEqual(TrialPricing.yuanString(fen: 0), "¥0.00")
+        XCTAssertEqual(TrialPricing.giftMicroYuan, 2_000_000)
+        XCTAssertEqual(TrialPricing.displayFen(microYuan: 2_000_000), 200)
+        XCTAssertEqual(TrialPricing.displayFen(microYuan: 10), 0)
+        XCTAssertEqual(TrialPricing.displayFen(microYuan: 4_999), 0)
+        XCTAssertEqual(TrialPricing.displayFen(microYuan: 5_000), 1)
+        XCTAssertEqual(TrialPricing.displayFen(microYuan: 1_994_999), 199)
+        XCTAssertEqual(TrialPricing.displayFen(microYuan: 1_995_000), 200)
+        XCTAssertEqual(TrialPricing.yuanString(microYuan: 10), "¥0.00")
+        XCTAssertEqual(TrialPricing.yuanString(microYuan: 5_000), "¥0.01")
+        XCTAssertEqual(TrialPricing.yuanString(microYuan: 1_999_990), "¥2.00")
     }
 
     func testPhoneNumbersUseCloudBaseFormat() {
@@ -77,6 +87,16 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(TranslationRoute.gate(input), .allowTrial)
     }
 
+    func testASubFenRemainderStillAllowsACallWhileZeroDoesNot() {
+        var dust = sampleTrial(balanceFen: 0, source: "你好", balanceMicroYuan: 100)
+        XCTAssertEqual(TranslationRoute.gate(dust), .allowTrial)
+        dust.balanceMicroYuan = 0
+        guard case .block(_, let message) = TranslationRoute.gate(dust) else {
+            return XCTFail("expected a block")
+        }
+        XCTAssertTrue(message.contains("API Key"))
+    }
+
     func testTrialReceiptParsesTheProxyFields() {
         let json: [String: Any] = [
             "choices": [],
@@ -93,7 +113,24 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(settlement?.chargedFen, 1)
         XCTAssertEqual(settlement?.balanceFen, 0)
         XCTAssertEqual(settlement?.promptTokens, 1000)
+        XCTAssertEqual(settlement?.costMicroYuan, 60_000)
         XCTAssertNil(TrialSettlement.parse(json: ["choices": []]))
+
+        let precise: [String: Any] = [
+            "translatehud_trial": [
+                "costMicroYuan": 10,
+                "chargedMicroYuan": 10,
+                "balanceMicroYuan": 1_999_990,
+                "costFen": 1,
+                "promptTokens": 1,
+                "completionTokens": 1
+            ]
+        ]
+        let dust = TrialSettlement.parse(json: precise)
+        XCTAssertEqual(dust?.costMicroYuan, 10)
+        XCTAssertEqual(dust?.costFen, 0)
+        XCTAssertEqual(dust?.balanceFen, 200)
+        XCTAssertEqual(dust?.balanceMicroYuan, 1_999_990)
     }
 
     func testScreenshotGateCanRunBeforeTheTextIsKnown() {
@@ -190,13 +227,14 @@ final class TrialPolicyTests: XCTestCase {
         return "\(part(["alg": "none"])).\(part(payload)).sig"
     }
 
-    private func sampleTrial(balanceFen: Int?, source: String?) -> TranslationRouteInput {
+    private func sampleTrial(balanceFen: Int?, source: String?, balanceMicroYuan: Int? = nil) -> TranslationRouteInput {
         TranslationRouteInput(
             hasOwnAPIKey: false,
             baseURL: "https://api.openai.com/v1",
             isLoggedIn: true,
             proxyBaseURL: "https://proxy.example/v1",
             balanceFen: balanceFen,
+            balanceMicroYuan: balanceMicroYuan,
             sourceText: source
         )
     }

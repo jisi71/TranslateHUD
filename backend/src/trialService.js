@@ -1,8 +1,8 @@
 'use strict'
 
-const { MESSAGES, decodeSourceHeader, quoteSource } = require('./trialPolicy')
+const { GIFT_FEN, GIFT_MICRO_YUAN, MESSAGES, decodeSourceHeader, quoteSource } = require('./trialPolicy')
 const { prepareUpstreamPayload, readUpstreamConfig } = require('./upstream')
-const { costFenFromUsage, parseUsage, readTrialPrices, settlementFields } = require('./usageBilling')
+const { costMicroYuanFromUsage, parseUsage, readTrialPrices, settlementFields } = require('./usageBilling')
 const { createSettlingStream, formatSSE } = require('./usageStream')
 
 const MAX_BODY_BYTES = 48 * 1024
@@ -85,9 +85,11 @@ async function handleAccount(ctx) {
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
       body: JSON.stringify({
         userId: identified.uid,
+        balanceMicroYuan: opened.record.balanceMicroYuan,
         balanceFen: opened.record.balanceFen,
         giftedNow: opened.giftedNow,
-        giftFen: opened.giftedNow ? opened.record.balanceFen : 0
+        giftMicroYuan: opened.giftedNow ? GIFT_MICRO_YUAN : 0,
+        giftFen: opened.giftedNow ? GIFT_FEN : 0
       })
     }
   } catch (error) {
@@ -111,6 +113,9 @@ function billingHeaders(settled, usage) {
   return {
     'Cache-Control': 'no-cache, no-transform',
     'X-Accel-Buffering': 'no',
+    'X-Trial-Cost-Micro-Yuan': String(fields.costMicroYuan),
+    'X-Trial-Charged-Micro-Yuan': String(fields.chargedMicroYuan),
+    'X-Trial-Balance-Micro-Yuan': String(fields.balanceMicroYuan),
     'X-Trial-Cost-Fen': String(fields.costFen),
     'X-Trial-Charged-Fen': String(fields.chargedFen),
     'X-Trial-Balance-Fen': String(fields.balanceFen),
@@ -120,7 +125,7 @@ function billingHeaders(settled, usage) {
 }
 
 async function settleUsage(ctx, uid, usage, prices) {
-  const cost = costFenFromUsage(usage, prices)
+  const cost = costMicroYuanFromUsage(usage, prices)
   if (cost == null) return null
   const settled = await ctx.store.settle(uid, cost)
   return settled
@@ -163,7 +168,7 @@ async function handleTranslate(ctx) {
   } catch (error) {
     return storeFailure(error)
   }
-  if (!opened.record || opened.record.balanceFen <= 0) {
+  if (!opened.record || opened.record.balanceMicroYuan <= 0) {
     return errorResult(402, 'trial_balance_exhausted', MESSAGES.exhausted)
   }
 

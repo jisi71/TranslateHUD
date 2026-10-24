@@ -6,8 +6,15 @@
 // Newlines count. The cap is the source text only, not the prompt around it.
 // Grapheme length gates the request. It is not the price. Successful calls settle
 // from upstream token usage in usageBilling.js.
+//
+// The ledger unit is the micro-yuan (微元, ¥0.000001). 1 fen = 10,000 micro-yuan.
+// The ¥2.00 gift is 2,000,000 micro-yuan. balanceFen on a record is only the
+// half-up display value. A document that still has balanceFen and no
+// balanceMicroYuan is an older fen ledger and is converted on read.
 
+const MICRO_YUAN_PER_FEN = 10_000
 const GIFT_FEN = 200
+const GIFT_MICRO_YUAN = GIFT_FEN * MICRO_YUAN_PER_FEN
 const MAX_GRAPHEMES = 500
 
 const MESSAGES = {
@@ -54,33 +61,68 @@ function quoteSource(text) {
   return { ok: true, graphemes }
 }
 
-// Post-success settlement. The balance never goes negative: a last request that
-// costs more than the gift has left is charged down to zero, and the unpaid
-// remainder stays with the operator. A later request sees an empty balance.
-function settleCharge(record, costFenValue) {
+// Half-up to fen for display only. 0.5 fen (5,000 micro-yuan) rounds up.
+// This number is not deducted and is not the exhaustion check.
+function displayFen(microYuan) {
+  const raw = Number(microYuan)
+  if (!Number.isFinite(raw)) return 0
+  const negative = raw < 0
+  const magnitude = Math.floor(Math.abs(raw))
+  const fen = Math.floor((magnitude + MICRO_YUAN_PER_FEN / 2) / MICRO_YUAN_PER_FEN)
+  return negative ? -fen : fen
+}
+
+function microFromRecord(record) {
+  if (record.balanceMicroYuan != null && record.balanceMicroYuan !== '') {
+    const micro = Number(record.balanceMicroYuan)
+    if (Number.isFinite(micro)) return Math.max(0, Math.floor(micro))
+    return 0
+  }
+  const fen = Number(record.balanceFen)
+  if (Number.isFinite(fen)) return Math.max(0, Math.floor(fen)) * MICRO_YUAN_PER_FEN
+  return 0
+}
+
+function ledgerRecord(microYuan, record) {
+  const balanceMicroYuan = Math.max(0, Math.floor(microYuan))
+  return {
+    balanceMicroYuan,
+    balanceFen: displayFen(balanceMicroYuan),
+    giftGranted: !record || record.giftGranted !== false,
+    createdAt: record && record.createdAt ? record.createdAt : 0
+  }
+}
+
+// Post-success settlement. costMicroYuan is the precise ledger amount.
+// The balance never goes negative: a last request that costs more than the
+// gift has left is charged down to zero, and the unpaid remainder stays with
+// the operator. A later request sees an empty balance.
+function settleCharge(record, costMicroYuan) {
   const current = record ? normalizeRecord(record) : null
-  const raw = Number(costFenValue)
+  const raw = Number(costMicroYuan)
   const cost = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0
   if (!current) {
     return {
       ok: true,
-      costFen: cost,
+      costMicroYuan: cost,
+      chargedMicroYuan: 0,
+      balanceMicroYuan: 0,
+      costFen: displayFen(cost),
       chargedFen: 0,
       balanceFen: 0,
       clamped: cost > 0,
       record: null
     }
   }
-  const charged = Math.min(current.balanceFen, cost)
-  const next = {
-    balanceFen: current.balanceFen - charged,
-    giftGranted: current.giftGranted,
-    createdAt: current.createdAt
-  }
+  const charged = Math.min(current.balanceMicroYuan, cost)
+  const next = ledgerRecord(current.balanceMicroYuan - charged, current)
   return {
     ok: true,
-    costFen: cost,
-    chargedFen: charged,
+    costMicroYuan: cost,
+    chargedMicroYuan: charged,
+    balanceMicroYuan: next.balanceMicroYuan,
+    costFen: displayFen(cost),
+    chargedFen: displayFen(charged),
     balanceFen: next.balanceFen,
     clamped: charged < cost,
     record: next
@@ -91,57 +133,55 @@ function openAccount(existing, now) {
   if (existing) return { record: normalizeRecord(existing), giftedNow: false }
   return {
     giftedNow: true,
-    record: {
-      balanceFen: GIFT_FEN,
-      giftGranted: true,
-      createdAt: now
-    }
+    record: ledgerRecord(GIFT_MICRO_YUAN, { giftGranted: true, createdAt: now })
   }
 }
 
-function applyCharge(record, costFenValue) {
+function applyCharge(record, costMicroYuan) {
   const current = record ? normalizeRecord(record) : null
-  const cost = Math.floor(Number(costFenValue) || 0)
-  if (!current || current.balanceFen <= 0) {
+  const cost = Math.max(0, Math.floor(Number(costMicroYuan) || 0))
+  if (!current || current.balanceMicroYuan <= 0) {
     return {
       ok: false,
       status: 402,
       code: 'trial_balance_exhausted',
       message: MESSAGES.exhausted,
+      balanceMicroYuan: current ? current.balanceMicroYuan : 0,
       balanceFen: current ? current.balanceFen : 0
     }
   }
   if (cost <= 0) {
-    return { ok: true, record: current, balanceFen: current.balanceFen }
+    return {
+      ok: true,
+      record: current,
+      balanceMicroYuan: current.balanceMicroYuan,
+      balanceFen: current.balanceFen
+    }
   }
-  if (current.balanceFen < cost) {
+  if (current.balanceMicroYuan < cost) {
     return {
       ok: false,
       status: 402,
       code: 'trial_balance_insufficient',
       message: MESSAGES.insufficient,
+      balanceMicroYuan: current.balanceMicroYuan,
       balanceFen: current.balanceFen
     }
   }
-  const next = {
-    balanceFen: current.balanceFen - cost,
-    giftGranted: true,
-    createdAt: current.createdAt
-  }
-  return { ok: true, record: next, balanceFen: next.balanceFen }
+  const next = ledgerRecord(current.balanceMicroYuan - cost, { ...current, giftGranted: true })
+  return { ok: true, record: next, balanceMicroYuan: next.balanceMicroYuan, balanceFen: next.balanceFen }
+}
+
+function credit(record, microYuan) {
+  const current = normalizeRecord(record)
+  if (!current) return null
+  const amount = Math.max(0, Math.floor(Number(microYuan) || 0))
+  return ledgerRecord(current.balanceMicroYuan + amount, current)
 }
 
 function normalizeRecord(record) {
   if (!record || typeof record !== 'object') return null
-  const balance = Number(record.balanceFen)
-  if (!Number.isFinite(balance)) {
-    return { balanceFen: 0, giftGranted: true, createdAt: record.createdAt || 0 }
-  }
-  return {
-    balanceFen: Math.max(0, Math.floor(balance)),
-    giftGranted: record.giftGranted !== false,
-    createdAt: record.createdAt || 0
-  }
+  return ledgerRecord(microFromRecord(record), record)
 }
 
 function decodeSourceHeader(header) {
@@ -160,13 +200,17 @@ function decodeSourceHeader(header) {
 }
 
 module.exports = {
+  MICRO_YUAN_PER_FEN,
   GIFT_FEN,
+  GIFT_MICRO_YUAN,
   MAX_GRAPHEMES,
   MESSAGES,
+  displayFen,
   graphemeLength,
   quoteSource,
   openAccount,
   applyCharge,
+  credit,
   settleCharge,
   normalizeRecord,
   decodeSourceHeader

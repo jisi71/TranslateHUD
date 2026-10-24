@@ -213,6 +213,7 @@ enum TranslationSession {
             isLoggedIn: trial.isLoggedIn,
             proxyBaseURL: trial.effectiveProxyBaseURL,
             balanceFen: trial.balanceFen,
+            balanceMicroYuan: trial.balanceMicroYuan,
             sourceText: sourceText
         )
     }

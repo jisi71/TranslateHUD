@@ -1,11 +1,17 @@
 'use strict'
 
-// Trial gifts are still stored in fen (¥0.01). A successful call is priced from
-// the upstream usage object, not from the source length.
+// A successful call is priced from the upstream usage object, not from the
+// source length. The ledger unit is the micro-yuan (微元): ¥0.000001.
+// 1 fen = 10,000 micro-yuan. The ¥2.00 gift is 2,000,000 micro-yuan.
 //
-// Prices are yuan per 1,000,000 tokens. They convert to integer fen per
-// 1,000,000 tokens; any leftover fraction of a fen rounds up. When the reported
-// usage is greater than zero, the charge is at least 1 fen.
+// Prices are yuan per 1,000,000 tokens and are stored as integer micro-yuan
+// per 1,000,000 tokens (the yuan figure times 1,000,000). The charge is
+//
+//   floor(tokens × micro-yuan-per-million / 1,000,000)
+//
+// That floor drops less than 1 micro-yuan. It does not round up to fen, and
+// there is no 1-fen minimum. Display fen is computed separately in trialPolicy
+// and is not what gets deducted.
 //
 // Defaults match DeepSeek Flash peak rates (2026-10): cache-miss input ¥2,
 // cache-hit input ¥0.04, output ¥8. Peak is the higher published rate, so a
@@ -18,6 +24,7 @@ const DEFAULT_INPUT_YUAN = '2'
 const DEFAULT_CACHE_HIT_YUAN = '0.04'
 const DEFAULT_OUTPUT_YUAN = '8'
 const TOKENS_PER_MILLION = 1_000_000
+const MICRO_YUAN_PER_YUAN = 1_000_000
 const MAX_TOKENS = 100_000_000
 
 function configError() {
@@ -29,27 +36,26 @@ function configError() {
   }
 }
 
-// "2" → 200 fen, "0.04" → 4 fen, "0.021" → 3 fen (2.1 fen, rounded up).
+// "2" → 2,000,000, "0.04" → 40,000, "0.021" → 21,000. Six decimal places of
+// yuan are one micro-yuan, so the default prices are exact integers.
 function parseYuanPerMillion(raw, fallback) {
   const text = raw == null || String(raw).trim() === '' ? fallback : String(raw).trim()
   if (!/^\d+(\.\d{1,6})?$/.test(text)) return null
   const [whole, frac = ''] = text.split('.')
-  const fenDigits = (frac + '00').slice(0, 2)
-  const extra = frac.slice(2)
-  let fen = Number(whole) * 100 + Number(fenDigits)
-  if (extra && /[1-9]/.test(extra)) fen += 1
-  if (!Number.isSafeInteger(fen) || fen < 0) return null
-  return fen
+  const digits = (frac + '000000').slice(0, 6)
+  const micro = Number(whole) * MICRO_YUAN_PER_YUAN + Number(digits)
+  if (!Number.isSafeInteger(micro) || micro < 0) return null
+  return micro
 }
 
 function readTrialPrices(env = {}) {
-  const inputFenPerMillion = parseYuanPerMillion(env.TRIAL_PRICE_INPUT_YUAN_PER_MILLION, DEFAULT_INPUT_YUAN)
-  const cacheHitFenPerMillion = parseYuanPerMillion(env.TRIAL_PRICE_CACHE_HIT_YUAN_PER_MILLION, DEFAULT_CACHE_HIT_YUAN)
-  const outputFenPerMillion = parseYuanPerMillion(env.TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION, DEFAULT_OUTPUT_YUAN)
-  if (inputFenPerMillion == null || cacheHitFenPerMillion == null || outputFenPerMillion == null) {
+  const inputMicroYuanPerMillion = parseYuanPerMillion(env.TRIAL_PRICE_INPUT_YUAN_PER_MILLION, DEFAULT_INPUT_YUAN)
+  const cacheHitMicroYuanPerMillion = parseYuanPerMillion(env.TRIAL_PRICE_CACHE_HIT_YUAN_PER_MILLION, DEFAULT_CACHE_HIT_YUAN)
+  const outputMicroYuanPerMillion = parseYuanPerMillion(env.TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION, DEFAULT_OUTPUT_YUAN)
+  if (inputMicroYuanPerMillion == null || cacheHitMicroYuanPerMillion == null || outputMicroYuanPerMillion == null) {
     return configError()
   }
-  return { ok: true, inputFenPerMillion, cacheHitFenPerMillion, outputFenPerMillion }
+  return { ok: true, inputMicroYuanPerMillion, cacheHitMicroYuanPerMillion, outputMicroYuanPerMillion }
 }
 
 function tokenCount(value) {
@@ -87,29 +93,36 @@ function parseUsage(usage) {
   }
 }
 
-function divCeil(numerator, denominator) {
-  return Math.floor((numerator + denominator - 1) / denominator)
+function rate(value) {
+  if (!Number.isSafeInteger(value) || value < 0) return null
+  return value
 }
 
-function costFenFromUsage(parsed, prices) {
+function costMicroYuanFromUsage(parsed, prices) {
   if (!parsed || !prices) return null
+  const input = rate(prices.inputMicroYuanPerMillion)
+  const cacheHit = rate(prices.cacheHitMicroYuanPerMillion)
+  const output = rate(prices.outputMicroYuanPerMillion)
+  if (input == null || cacheHit == null || output == null) return null
   const hit = parsed.cacheHitTokens == null ? 0 : parsed.cacheHitTokens
   if (hit > parsed.promptTokens) return null
   const miss = parsed.promptTokens - hit
-  const highest = Math.max(prices.inputFenPerMillion, prices.outputFenPerMillion, prices.cacheHitFenPerMillion)
-  const numerator = (miss * prices.inputFenPerMillion)
-    + (hit * prices.cacheHitFenPerMillion)
-    + (parsed.completionTokens * prices.outputFenPerMillion)
-    + ((parsed.extraTokens || 0) * highest)
-  if (!Number.isSafeInteger(numerator) || numerator < 0) return null
-  const rounded = divCeil(numerator, TOKENS_PER_MILLION)
-  const tokens = parsed.promptTokens + parsed.completionTokens + (parsed.extraTokens || 0)
-  if (tokens <= 0) return 0
-  return Math.max(1, rounded)
+  const highest = Math.max(input, output, cacheHit)
+  const numerator = (BigInt(miss) * BigInt(input))
+    + (BigInt(hit) * BigInt(cacheHit))
+    + (BigInt(parsed.completionTokens) * BigInt(output))
+    + (BigInt(parsed.extraTokens || 0) * BigInt(highest))
+  if (numerator < 0n) return null
+  const cost = numerator / BigInt(TOKENS_PER_MILLION)
+  if (cost > BigInt(Number.MAX_SAFE_INTEGER)) return null
+  return Number(cost)
 }
 
 function settlementFields(settled, usage) {
   return {
+    costMicroYuan: settled.costMicroYuan,
+    chargedMicroYuan: settled.chargedMicroYuan,
+    balanceMicroYuan: settled.balanceMicroYuan,
     costFen: settled.costFen,
     chargedFen: settled.chargedFen,
     balanceFen: settled.balanceFen,
@@ -125,7 +138,6 @@ module.exports = {
   parseYuanPerMillion,
   readTrialPrices,
   parseUsage,
-  costFenFromUsage,
-  settlementFields,
-  divCeil
+  costMicroYuanFromUsage,
+  settlementFields
 }

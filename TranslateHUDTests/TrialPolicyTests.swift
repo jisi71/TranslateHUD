@@ -110,10 +110,42 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(message, "请先用手机号登录，或在设置里填写你自己的 API Key。")
     }
 
+    func testATokenFromAnotherEnvironmentDisagreesWithThisApp() {
+        let current = TrialConfig.defaultEnvId
+        let foreign = trialJWT([
+            "aud": "liusheng-d0g430h1f486532bd",
+            "iss": "https://liusheng-d0g430h1f486532bd.api.tcloudbasegateway.com"
+        ])
+        XCTAssertTrue(TrialToken.disagrees(accessToken: foreign, envId: current))
+
+        let local = trialJWT(["aud": current, "sub": "user-1"])
+        XCTAssertFalse(TrialToken.disagrees(accessToken: local, envId: current))
+
+        let issuerOnly = trialJWT([
+            "iss": "https://\(current).api.tcloudbasegateway.com/auth/v1"
+        ])
+        XCTAssertFalse(TrialToken.disagrees(accessToken: issuerOnly, envId: current))
+
+        let noEnvironment = trialJWT(["sub": "user-1"])
+        XCTAssertFalse(TrialToken.disagrees(accessToken: noEnvironment, envId: current))
+        XCTAssertFalse(TrialToken.disagrees(accessToken: "not-a-jwt", envId: current))
+    }
+
     func testHeaderCarriesTheSourceTheServerWillCount() {
         let header = TrialHeaders.source("你好")
         let decoded = Data(base64Encoded: header[TrialHeaders.source] ?? "")
         XCTAssertEqual(decoded.flatMap { String(data: $0, encoding: .utf8) }, "你好")
+    }
+
+    private func trialJWT(_ payload: [String: Any]) -> String {
+        func part(_ json: [String: Any]) -> String {
+            let data = try! JSONSerialization.data(withJSONObject: json)
+            return data.base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+        }
+        return "\(part(["alg": "none"])).\(part(payload)).sig"
     }
 
     private func sampleTrial(balanceFen: Int?, source: String?) -> TranslationRouteInput {

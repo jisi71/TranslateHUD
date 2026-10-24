@@ -14,6 +14,33 @@ final class TrialAccountStore: ObservableObject {
     @Published private(set) var maskedPhone = ""
     @Published private(set) var userId = ""
     @Published private(set) var balanceFen: Int?
+    @Published private(set) var balanceState: BalanceState = .idle
+
+    enum BalanceState: Equatable {
+        case idle
+        case loading
+        case loaded
+        case failed
+    }
+
+    /// Shown beside「体验余额」. A missing number is never left on「读取中」after a failure.
+    var balanceValueText: String {
+        if let balanceFen { return TrialPricing.yuanString(fen: balanceFen) }
+        switch balanceState {
+        case .loading: return "读取中"
+        case .failed: return "读取失败"
+        case .idle, .loaded: return "尚未读取"
+        }
+    }
+
+    var balanceTitle: String {
+        if let balanceFen { return "体验余额 \(TrialPricing.yuanString(fen: balanceFen))" }
+        switch balanceState {
+        case .loading: return "正在读取体验余额"
+        case .failed: return "体验余额读取失败"
+        default: return "体验账号已登录"
+        }
+    }
     @Published var proxyBaseURL: String {
         didSet {
             guard !suppressPersist else { return }
@@ -66,6 +93,7 @@ final class TrialAccountStore: ObservableObject {
         }
         isLoggedIn = !accessToken.isEmpty && !refreshToken.isEmpty && !userId.isEmpty
         guard isLoggedIn else { return }
+        balanceState = .loading
         Task { await refreshFromServer() }
     }
 
@@ -117,6 +145,7 @@ final class TrialAccountStore: ObservableObject {
             code = ""
             self.verificationId = nil
             AppLog.info("体验账号登录成功")
+            balanceState = .loading
             await refreshFromServer(announceGift: true)
         } catch is CancellationError {
             return
@@ -130,6 +159,10 @@ final class TrialAccountStore: ObservableObject {
     }
 
     func validAccessToken() async throws -> String {
+        if TrialToken.disagrees(accessToken: accessToken, refreshToken: refreshToken, envId: TrialConfig.envId) {
+            logout(message: TrialCopy.envMismatch)
+            throw CloudBaseAuthError.message(TrialCopy.envMismatch)
+        }
         if !accessToken.isEmpty, expiresAt.timeIntervalSinceNow > 60 {
             return accessToken
         }
@@ -152,27 +185,39 @@ final class TrialAccountStore: ObservableObject {
 
     func refreshFromServer(announceGift: Bool = false) async {
         guard isLoggedIn else { return }
-        let proxy = effectiveProxyBaseURL
-        guard !proxy.isEmpty else {
-            if announceGift {
-                statusMessage = "已登录。体验服务地址还没填，暂时不能赠送额度。"
-            }
+        if TrialToken.disagrees(accessToken: accessToken, refreshToken: refreshToken, envId: TrialConfig.envId) {
+            logout(message: TrialCopy.envMismatch)
             return
         }
+        let proxy = effectiveProxyBaseURL
+        guard !proxy.isEmpty else {
+            balanceState = .failed
+            statusMessage = TrialCopy.needProxy
+            return
+        }
+        balanceState = .loading
         do {
             let token = try await validAccessToken()
             let snapshot = try await TrialProxyClient.syncAccount(proxyBase: proxy, accessToken: token)
             balanceFen = snapshot.balanceFen
+            balanceState = .loaded
             if !snapshot.userId.isEmpty { userId = snapshot.userId }
             if announceGift {
                 statusMessage = snapshot.giftedNow ? "已登录，已送上 ¥2.00 体验额度。" : "已登录。"
+            } else {
+                statusMessage = ""
             }
         } catch is CancellationError {
+            if balanceFen == nil { balanceState = .failed }
             return
         } catch {
-            if announceGift {
-                statusMessage = "已登录。暂时读不到体验余额：\((error as? LocalizedError)?.errorDescription ?? "请稍后再试。")"
+            let text = (error as? LocalizedError)?.errorDescription ?? TrialCopy.store
+            if text == TrialCopy.authExpired || text == TrialCopy.envMismatch {
+                logout(message: text)
+                return
             }
+            balanceState = .failed
+            statusMessage = text
         }
     }
 
@@ -198,6 +243,7 @@ final class TrialAccountStore: ObservableObject {
         maskedPhone = ""
         expiresAt = .distantPast
         balanceFen = nil
+        balanceState = .idle
         isLoggedIn = false
         verificationId = nil
         pendingPhone = ""

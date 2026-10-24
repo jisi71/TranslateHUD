@@ -11,7 +11,7 @@ TranslateHUD 0.4.0 让没有自己 API Key 的人先用手机号试翻译。这�
 - envId：`translatehud-d4gl951eo8bef4702`。这是 TranslateHUD 自己的云开发个人版，不要再用语音记录那个环境。
 - 地域：上海 `ap-shanghai`（短信验证码登录只支持上海）
 - 控制台里的「短信验证码登录」需要在这个新环境里打开，渠道用云开发短信资源包。
-- 账本用云数据库（文档型），集合名 `trial_accounts`。不要改成 PostgreSQL。
+- 账本用云数据库（文档型），集合名 `trial_accounts`。不要改成 PostgreSQL。新环境不用先在控制台手工建这个集合：服务第一次读余额时会自己创建。创建失败时，App 会显示「读取失败」，并可以点「重新读取」。
 
 微信登录和邮箱登录这次不做。
 
@@ -83,7 +83,26 @@ PORT=8080
 
 服务起来之后，把外网地址加上 `/v1`，填进 App 的「体验服务地址」。例如 `https://你的服务域名/v1`。
 
-云托管需要能访问这个环境的云数据库（文档型）。账本集合名是 `trial_accounts`，文档 ID 就是用户 ID。不用提前建表，第一次登录会写进去。
+云托管需要能访问这个环境的云数据库（文档型）。镜像里会安装 `@cloudbase/node-sdk`。第一次读余额时，服务会调用 `createCollection('trial_accounts')`。集合已经存在就跳过。文档 ID 就是用户 ID。不需要先在控制台建集合，也不要改成 PostgreSQL。
+
+数据库报错会变成 `trial_store`，不会把数据库原文交给 App。App 显示：`体验余额暂时读不出来。请在设置里点「重新读取」。`
+
+可选：在部署前先建集合（需要本机已经 `npm install`，并在 `.env` 里填好腾讯云密钥）：
+
+```bash
+cd backend
+npm install
+npm run ensure-collection
+```
+
+改过 `project.yml` 里的 `CLOUDBASE_ENV_ID` 之后，Mac 上要重新生成工程再安装，否则 App 里仍是旧环境，登录凭证对不上，余额会一直读失败：
+
+```bash
+xcodegen generate
+bash scripts/install-local.sh
+```
+
+`TranslateHUD.xcodeproj` 不入库。`install-local.sh` 里已经包含 `xcodegen generate`。换了环境之后，请退出登录再登一次。旧环境的登录不能用来读新环境的余额。
 
 ## 云函数（备用）
 

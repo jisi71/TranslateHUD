@@ -203,6 +203,14 @@ final class ServiceErrorMessageTests: XCTestCase {
         ).localizedDescription
         XCTAssertEqual(insufficient, "体验额度不够支付这次翻译。请缩短原文，或在设置里填写你自己的 API Key。")
         XCTAssertTrue(ServiceErrorMessage.http(code: 402, body: "{}").contains("API 账户余额不足"))
+
+        let store = ServiceErrorMessage.http(
+            code: 503,
+            body: "{\"error\":{\"code\":\"trial_store\",\"message\":\"\(secret)\"}}"
+        )
+        XCTAssertEqual(store, "体验余额暂时读不出来。请在设置里点「重新读取」。")
+        XCTAssertFalse(store.contains("secret-key"))
+        XCTAssertFalse(store.contains("HTTP"))
     }
 
     private func attach<V: View>(host: NSHostingController<V>, size: NSSize, name: String) throws {

@@ -380,6 +380,48 @@ test('cloud function dispatch gifts once through the same account handler', asyn
   assert.equal(body.userId, 'uid-9')
 })
 
+test('a database failure becomes trial_store and hides the driver message', async () => {
+  const store = {
+    async ensure() {
+      const error = new Error('secret-db-detail')
+      error.code = 'DATABASE_COLLECTION_NOT_EXIST'
+      throw error
+    }
+  }
+  const { server, base, calls } = await listen(store)
+  try {
+    const result = await request(base, '/v1/trial/account', { token: 'good-token', body: {} })
+    assert.equal(result.status, 503)
+    assert.equal(result.json.error.code, 'trial_store')
+    assert.equal(result.json.error.message, MESSAGES.store)
+    assert.equal(result.text.includes('secret-db-detail'), false)
+    assert.equal(result.text.includes('DATABASE_COLLECTION_NOT_EXIST'), false)
+    assert.equal(calls.length, 0)
+  } finally {
+    server.close()
+  }
+})
+
+test('cloud dispatch turns an unexpected throw into trial_store', async () => {
+  const { dispatch } = require('../src/cloudEntry')
+  const result = await dispatch({
+    httpMethod: 'POST',
+    path: '/v1/trial/account',
+    headers: { Authorization: 'Bearer good-token' },
+    body: '{}'
+  }, {
+    get store() {
+      throw Object.assign(new Error('secret-db-detail'), { code: 'BOOM' })
+    },
+    verifyUser: async () => ({ uid: 'uid-1' })
+  })
+  assert.equal(result.statusCode, 503)
+  const body = JSON.parse(result.body)
+  assert.equal(body.error.code, 'trial_store')
+  assert.equal(body.error.message, MESSAGES.store)
+  assert.equal(result.body.includes('secret-db-detail'), false)
+})
+
 test('prepareUpstreamPayload overwrites the client model', () => {
   const prepared = prepareUpstreamPayload(JSON.stringify({
     model: 'client-model',

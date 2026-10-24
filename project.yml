@@ -38,6 +38,8 @@ targets:
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         MARKETING_VERSION: "0.4.0"
         CURRENT_PROJECT_VERSION: "10"
+        # 改环境 ID 后必须重新 xcodegen generate（或跑 scripts/install-local.sh）。
+        # TranslateHUD.xcodeproj 不入库，旧工程会继续把上一次的环境写进 App。
         CLOUDBASE_ENV_ID: translatehud-d4gl951eo8bef4702
         CLOUDBASE_REGION: ap-shanghai
         TRIAL_PROXY_BASE_URL: ""

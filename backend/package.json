@@ -8,6 +8,10 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "stage": "rm -rf functions/trial/src && mkdir -p functions/trial && cp -R src functions/trial/src"
+    "stage": "rm -rf functions/trial/src && mkdir -p functions/trial && cp -R src functions/trial/src",
+    "ensure-collection": "node --env-file=.env scripts/ensure-collection.js"
+  },
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.10.0"
   }
 }

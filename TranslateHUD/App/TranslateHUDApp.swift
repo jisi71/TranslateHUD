@@ -51,10 +51,7 @@ private struct MenuBarMenu: View {
         )
         switch TranslationRoute.endpoint(input) {
         case .trial:
-            if let fen = trial.balanceFen {
-                return "体验余额 \(TrialPricing.yuanString(fen: fen))"
-            }
-            return "体验账号已登录"
+            return trial.balanceTitle
         case .ownKey:
             return "正在使用自己的 API"
         case .unavailable:

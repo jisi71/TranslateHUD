@@ -2,6 +2,7 @@
 
 const { defaultForward } = require('./upstream')
 const { defaultVerifyUser, handleAccount, handleTranslate, readEnv } = require('./trialService')
+const { MESSAGES } = require('./trialPolicy')
 
 function routeOf(urlPath) {
   const clean = String(urlPath || '/').split('?')[0]
@@ -96,11 +97,10 @@ function createRequestListener(deps = {}) {
     } catch (error) {
       if (res.writableEnded) return
       const tooLarge = error && error.code === 'LIMIT'
-      const status = tooLarge ? 413 : 500
-      const code = tooLarge ? 'trial_body_limit' : 'trial_upstream'
-      const message = tooLarge
-        ? '这次请求太长了，请缩短原文后再试。'
-        : '体验翻译暂时没有完成，额度已退回。请稍后再试。'
+      const storeFailed = error && error.code === 'trial_store'
+      const status = tooLarge ? 413 : (storeFailed ? 503 : 500)
+      const code = tooLarge ? 'trial_body_limit' : (storeFailed ? 'trial_store' : 'trial_upstream')
+      const message = tooLarge ? MESSAGES.body : (storeFailed ? MESSAGES.store : MESSAGES.upstream)
       res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
       res.end(JSON.stringify({ error: { code, message } }))
     }

@@ -1,9 +1,80 @@
 'use strict'
 
 const { TransactionalAccountStore } = require('./accountStore')
-const { normalizeRecord } = require('./trialPolicy')
+const { MESSAGES, normalizeRecord } = require('./trialPolicy')
 
 const COLLECTION = 'trial_accounts'
+const readyByDatabase = new WeakMap()
+
+function errorText(error) {
+  return `${error && error.code != null ? error.code : ''} ${error && error.message ? error.message : error || ''}`
+}
+
+function isCollectionAlreadyExists(error) {
+  return /already exist|已存在|DATABASE_COLLECTION_ALREADY_EXIST|ResourceInUse|CollectionExist/i.test(errorText(error))
+}
+
+function isCollectionMissing(error) {
+  return /DATABASE_COLLECTION_NOT_EXIST|COLLECTION_NOT_EXIST|collection.*not exist|集合不存在|Db or Table not exist|table not exist/i.test(errorText(error))
+}
+
+function isMissingDocument(error) {
+  if (isCollectionMissing(error)) return false
+  return /not exist|not found|不存在|DOCUMENT_NOT_FOUND|document not/i.test(errorText(error))
+}
+
+function causeCode(error) {
+  if (!error || error.code == null || error.code === '') return 'unknown'
+  return String(error.code)
+}
+
+function asStoreError(error) {
+  if (error && error.code === 'trial_store') return error
+  const wrapped = new Error('trial store failed')
+  wrapped.code = 'trial_store'
+  wrapped.status = 503
+  wrapped.publicMessage = MESSAGES.store
+  wrapped.causeCode = causeCode(error)
+  return wrapped
+}
+
+function createResultFailed(result) {
+  if (!result || typeof result !== 'object') return false
+  const code = result.code
+  if (code == null || code === '' || code === 0 || code === '0') return false
+  if (isCollectionAlreadyExists(result)) return false
+  return true
+}
+
+// Document databases do not create a collection on the first write.
+// createCollection is idempotent: "already exists" is success.
+async function createCollectionOnce(database, name) {
+  if (!database || typeof database.createCollection !== 'function') {
+    const error = new Error('createCollection unavailable')
+    error.code = 'createCollection-missing'
+    throw asStoreError(error)
+  }
+  let result
+  try {
+    result = await database.createCollection(name)
+  } catch (error) {
+    if (isCollectionAlreadyExists(error)) return
+    throw asStoreError(error)
+  }
+  if (createResultFailed(result)) throw asStoreError(result)
+}
+
+function ensureCollection(database, name = COLLECTION) {
+  let pending = readyByDatabase.get(database)
+  if (!pending) {
+    pending = createCollectionOnce(database, name).catch((error) => {
+      readyByDatabase.delete(database)
+      throw error
+    })
+    readyByDatabase.set(database, pending)
+  }
+  return pending
+}
 
 function normalizeSnap(snap) {
   if (!snap) return null
@@ -11,11 +82,6 @@ function normalizeSnap(snap) {
   if (!data || Array.isArray(data)) return null
   if (typeof data === 'object' && Object.keys(data).length === 0) return null
   return normalizeRecord(data)
-}
-
-function isMissingDocument(error) {
-  const text = `${error && error.code ? error.code : ''} ${error && error.message ? error.message : error}`
-  return /not exist|not found|不存在|DOCUMENT_NOT_FOUND|document not/i.test(text)
 }
 
 function initApp() {
@@ -33,7 +99,7 @@ function initApp() {
 
 function createCloudBaseStore(db) {
   const database = db || initApp().database()
-  return new TransactionalAccountStore(async () => {
+  const inner = new TransactionalAccountStore(async () => {
     const transaction = await database.startTransaction()
     return {
       async get(uid) {
@@ -63,10 +129,37 @@ function createCloudBaseStore(db) {
       }
     }
   })
+
+  async function run(method, args) {
+    try {
+      await ensureCollection(database)
+      return await inner[method](...args)
+    } catch (error) {
+      if (!isCollectionMissing(error)) throw asStoreError(error)
+      readyByDatabase.delete(database)
+      try {
+        await ensureCollection(database)
+        return await inner[method](...args)
+      } catch (retryError) {
+        throw asStoreError(retryError)
+      }
+    }
+  }
+
+  return {
+    ensure: (uid, now) => run('ensure', [uid, now]),
+    charge: (uid, costFen) => run('charge', [uid, costFen]),
+    refund: (uid, fen) => run('refund', [uid, fen])
+  }
 }
 
 module.exports = {
   COLLECTION,
   normalizeSnap,
+  ensureCollection,
+  isCollectionMissing,
+  isCollectionAlreadyExists,
+  asStoreError,
+  initApp,
   createCloudBaseStore
 }

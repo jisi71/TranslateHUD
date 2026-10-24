@@ -105,7 +105,9 @@ xcodegen generate
 ./scripts/install-local.sh
 ```
 
-也可以 `open TranslateHUD.xcodeproj` 在 Xcode 里 ⌘R 跑。
+`TranslateHUD.xcodeproj` 不入库，由 `xcodegen` 生成。改过 `project.yml` 里的 `CLOUDBASE_ENV_ID` 之后，必须再执行 `xcodegen generate`，或者直接跑 `./scripts/install-local.sh`（它会重新生成工程）。如果 yml 已经是新环境、工程文件还是上一次生成的，编出来的 App 仍会登录到旧环境，体验余额会对不上。
+
+也可以 `open TranslateHUD.xcodeproj` 在 Xcode 里 ⌘R 跑。请先确认工程是改完环境 ID 之后重新生成的。
 
 打本地 ad-hoc 包（仅供开发自用）：
 

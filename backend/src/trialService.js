@@ -68,19 +68,28 @@ async function identify(ctx) {
   }
 }
 
+function storeFailure(error) {
+  console.error(`trial store failed code=${(error && (error.causeCode || error.code)) || 'unknown'}`)
+  return errorResult(503, 'trial_store', MESSAGES.store)
+}
+
 async function handleAccount(ctx) {
   const identified = await identify(ctx)
   if (identified.status) return identified
-  const opened = await ctx.store.ensure(identified.uid, ctx.now())
-  return {
-    status: 200,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
-    body: JSON.stringify({
-      userId: identified.uid,
-      balanceFen: opened.record.balanceFen,
-      giftedNow: opened.giftedNow,
-      giftFen: opened.giftedNow ? opened.record.balanceFen : 0
-    })
+  try {
+    const opened = await ctx.store.ensure(identified.uid, ctx.now())
+    return {
+      status: 200,
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+      body: JSON.stringify({
+        userId: identified.uid,
+        balanceFen: opened.record.balanceFen,
+        giftedNow: opened.giftedNow,
+        giftFen: opened.giftedNow ? opened.record.balanceFen : 0
+      })
+    }
+  } catch (error) {
+    return storeFailure(error)
   }
 }
 
@@ -111,8 +120,13 @@ async function handleTranslate(ctx) {
   }
 
   // Gift first, then charge. A rejected request above does not create the gift.
-  await ctx.store.ensure(identified.uid, ctx.now())
-  const charged = await ctx.store.charge(identified.uid, quote.costFen)
+  let charged
+  try {
+    await ctx.store.ensure(identified.uid, ctx.now())
+    charged = await ctx.store.charge(identified.uid, quote.costFen)
+  } catch (error) {
+    return storeFailure(error)
+  }
   if (!charged.ok) return errorResult(charged.status, charged.code, charged.message)
 
   let refunded = false
@@ -172,5 +186,6 @@ module.exports = {
   defaultVerifyUser,
   handleAccount,
   handleTranslate,
-  errorResult
+  errorResult,
+  storeFailure
 }

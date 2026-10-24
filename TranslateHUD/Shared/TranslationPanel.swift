@@ -337,9 +337,9 @@ struct TranslationPanel: View {
             Menu {
                 switch TranslationRoute.endpoint(routeInput) {
                 case .trial:
-                    Text("体验额度")
-                    if let fen = trial.balanceFen {
-                        Text(TrialPricing.yuanString(fen: fen))
+                    Text(trial.balanceTitle)
+                    if trial.balanceState == .failed {
+                        Text("点设置里的「重新读取」")
                     }
                     Text("单次最多 500 字")
                 case .ownKey:
@@ -434,10 +434,7 @@ struct TranslationPanel: View {
     private var footerTitle: String {
         switch TranslationRoute.endpoint(routeInput) {
         case .trial:
-            if let fen = trial.balanceFen {
-                return "体验余额 \(TrialPricing.yuanString(fen: fen))"
-            }
-            return "体验额度"
+            return trial.balanceTitle
         case .ownKey:
             return providerName
         case .unavailable:

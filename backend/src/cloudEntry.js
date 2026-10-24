@@ -4,6 +4,7 @@ const { createAccountStoreFromEnv } = require('./accountStore')
 const { handleAccount, handleTranslate, readEnv } = require('./trialService')
 const { defaultForward } = require('./upstream')
 const { defaultVerifyUser } = require('./trialService')
+const { MESSAGES } = require('./trialPolicy')
 
 function decodeEventBody(event) {
   const body = event && event.body != null ? event.body : ''
@@ -17,7 +18,24 @@ async function bufferStream(stream) {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+function storeFailureBody() {
+  return {
+    statusCode: 503,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+    body: JSON.stringify({ error: { code: 'trial_store', message: MESSAGES.store } })
+  }
+}
+
 async function dispatch(event, deps) {
+  try {
+    return await dispatchUnsafe(event, deps)
+  } catch (error) {
+    console.error(`trial dispatch failed code=${(error && (error.causeCode || error.code)) || 'unknown'}`)
+    return storeFailureBody()
+  }
+}
+
+async function dispatchUnsafe(event, deps) {
   const method = event.httpMethod || event.method || 'POST'
   const path = event.path || event.requestContext && event.requestContext.path || '/'
   const headers = {}

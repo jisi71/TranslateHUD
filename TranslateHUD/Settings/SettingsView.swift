@@ -163,7 +163,7 @@ struct SettingsView: View {
             if trial.isLoggedIn {
                 LabeledContent("手机号", value: trial.maskedPhone.isEmpty ? "已登录" : trial.maskedPhone)
                 LabeledContent("体验余额") {
-                    Text(trial.balanceFen.map { TrialPricing.yuanString(fen: $0) } ?? "读取中")
+                    Text(trial.balanceValueText)
                 }
                 if !trial.userId.isEmpty {
                     LabeledContent("账号") {
@@ -173,7 +173,13 @@ struct SettingsView: View {
                             .lineLimit(2)
                     }
                 }
-                Button("退出登录") { trial.logout() }
+                HStack {
+                    Button(trial.balanceState == .loading ? "正在读取…" : "重新读取") {
+                        Task { await trial.refreshFromServer() }
+                    }
+                    .disabled(trial.balanceState == .loading)
+                    Button("退出登录") { trial.logout() }
+                }
             } else {
                 TextField("手机号", text: $trial.phone)
                     .textFieldStyle(.roundedBorder)

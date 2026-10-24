@@ -90,6 +90,7 @@ enum ServiceErrorMessage {
         case "trial_empty": return TrialCopy.empty
         case "trial_body_limit": return TrialCopy.bodyTooLong
         case "trial_source_required": return TrialCopy.sourceRequired
+        case "trial_store": return TrialCopy.store
         default: return nil
         }
     }

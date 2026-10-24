@@ -17,7 +17,8 @@ const MESSAGES = {
   upstream: '体验翻译暂时没有完成，额度已退回。请稍后再试。',
   empty: '没有可翻译的文字，请重新选中文字或框选包含文字的区域。',
   body: '这次请求太长了，请缩短原文后再试。',
-  source: '体验翻译需要原文。请更新到最新版 TranslateHUD。'
+  source: '体验翻译需要原文。请更新到最新版 TranslateHUD。',
+  store: '体验余额暂时读不出来。请在设置里点「重新读取」。'
 }
 
 function graphemeLength(text) {

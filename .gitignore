@@ -24,6 +24,7 @@ Artwork/
 # 体验额度：真实密钥和本地账本不入库
 backend/.env
 backend/data/
+backend/node_modules/
 backend/functions/trial/src/
 Config/Secrets.xcconfig
 

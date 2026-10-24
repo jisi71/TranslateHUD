@@ -131,6 +131,37 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertFalse(TrialToken.disagrees(accessToken: "not-a-jwt", envId: current))
     }
 
+    func testABlankTrialAddressUsesTheBuiltInOfficialService() {
+        let official = "https://translatehud-d4gl951eo8bef4702-1445578102.ap-shanghai.app.tcloudbase.com/v1"
+        XCTAssertEqual(TrialConfig.defaultProxyBaseURL, official)
+        XCTAssertTrue(TranslationRoute.isUsableProxy(official))
+
+        let bundled = TrialConfig.sanitized(
+            Bundle.main.object(forInfoDictionaryKey: "TrialProxyBaseURL") as? String
+        )
+        let resolved = TrialConfig.effectiveProxy(typed: "  ")
+        if bundled.isEmpty {
+            XCTAssertEqual(resolved, official)
+        } else {
+            XCTAssertEqual(resolved, bundled)
+        }
+        XCTAssertEqual(
+            TrialConfig.effectiveProxy(typed: "https://other.example/v1"),
+            "https://other.example/v1"
+        )
+
+        let input = TranslationRouteInput(
+            hasOwnAPIKey: false,
+            baseURL: "https://api.openai.com/v1",
+            isLoggedIn: true,
+            proxyBaseURL: resolved,
+            balanceFen: 200,
+            sourceText: "你好"
+        )
+        XCTAssertEqual(TranslationRoute.gate(input), .allowTrial)
+        XCTAssertEqual(TranslationRoute.endpoint(input), .trial)
+    }
+
     func testHeaderCarriesTheSourceTheServerWillCount() {
         let header = TrialHeaders.source("你好")
         let decoded = Data(base64Encoded: header[TrialHeaders.source] ?? "")

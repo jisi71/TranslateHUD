@@ -135,8 +135,8 @@
               <span class="lang-en">Translate the selection</span>
             </h2>
             <p>
-              <span class="lang-zh">按 Option+W，浮窗贴在选区下方。读不到选区时会短暂复制并尽量还原，剪贴板历史里仍可能留下一条。</span>
-              <span class="lang-en">Press Option+W and the panel opens under the selection. If it cannot be read, TranslateHUD copies once and tries to restore the clipboard. History tools may still keep that change.</span>
+              <span class="lang-zh">选中目标文字，然后按快捷键进行快速翻译。</span>
+              <span class="lang-en">Select the text, then press the shortcut to translate it quickly.</span>
             </p>
           </div>
           <figure class="feature-stage stage-sky">
@@ -159,8 +159,8 @@
               <span class="lang-en">Or drag a region</span>
             </h2>
             <p>
-              <span class="lang-zh">没有选区时，同一快捷键或菜单「截取屏幕区域翻译」会让你拖出一块区域。Vision 识别文字，译文仍在这块浮窗里。</span>
-              <span class="lang-en">With nothing selected, the same shortcut or the menu item “截取屏幕区域翻译” asks you to drag a rectangle. Vision reads it, and the translation stays in this panel.</span>
+              <span class="lang-zh">没有选中文字时，用快捷键或菜单框选屏幕上的一块区域。识别出文字后，译文出现在旁边的浮窗里。</span>
+              <span class="lang-en">With nothing selected, use the shortcut or the menu to drag a region of the screen. The words are read, and the translation appears in the panel beside them.</span>
             </p>
           </div>
           <figure class="feature-stage stage-mist">
@@ -207,7 +207,7 @@
               <span class="lang-en">Speak either side</span>
             </h2>
             <p>
-              <span class="lang-zh">两边可以分开朗读或停止。优先用这台 Mac 已安装的高级或增强语音，否则用基础语音。朗读不调用翻译接口。</span>
+              <span class="lang-zh">两边可以分开朗读或停止。优先用这台电脑上已安装的高级或增强语音，否则用基础语音。朗读不调用翻译接口。</span>
               <span class="lang-en">Speak or stop the source and the translation separately. Premium or enhanced voices already on the Mac are preferred; otherwise it uses a basic voice. Speech does not call the translation API.</span>
             </p>
           </div>
@@ -303,10 +303,6 @@
           <span class="lang-zh">下载与准备</span>
           <span class="lang-en">Download and prepare</span>
         </h2>
-        <p class="section-intro">
-          <span class="lang-zh">没有账号，也没有附送的 API 额度。模型列表是 OpenAI、DeepSeek、月之暗面 Kimi、智谱 GLM、通义千问、OpenRouter、本地 Ollama，或自定义的 OpenAI 兼容地址。云端服务要填 API Key；本地 Ollama 可以不填。</span>
-          <span class="lang-en">There is no account, and no included API credit. Providers are OpenAI, DeepSeek, Moonshot Kimi, Zhipu GLM, Qwen, OpenRouter, local Ollama, or a custom OpenAI-compatible address. Cloud services need an API key. Local Ollama can run without one.</span>
-        </p>
         <ol class="setup-steps">
           <li>
             <div class="setup-copy">
@@ -325,28 +321,28 @@
             <div class="setup-copy">
               <p class="step-no">2</p>
               <h3>
-                <span class="lang-zh">被拦就右键打开</span>
-                <span class="lang-en">If it is blocked, right-click Open</span>
+                <span class="lang-zh">打开辅助功能</span>
+                <span class="lang-en">Turn on Accessibility</span>
               </h3>
               <p>
-                <span class="lang-zh">这个包未经 Apple 公证。在「应用程序」里右键 TranslateHUD，选择「打开」。</span>
-                <span class="lang-en">This package is not notarized. In Applications, right-click TranslateHUD and choose Open.</span>
+                <span class="lang-zh">到「系统设置 → 隐私与安全性 → 辅助功能」，允许 TranslateHUD。没有它，选区翻译不能用。</span>
+                <span class="lang-en">Open System Settings → Privacy &amp; Security → Accessibility, and allow TranslateHUD. Without it, selection translation cannot run.</span>
               </p>
             </div>
             <figure class="setup-stage">
-              <div class="guide-card">
-                <img src="assets/icon.png" width="512" height="512" alt="">
-                <div>
-                  <p class="guide-title">TranslateHUD</p>
-                  <p class="guide-action">
-                    <span class="lang-zh">右键，然后选「打开」</span>
-                    <span class="lang-en">Right-click, then choose Open</span>
-                  </p>
-                </div>
+              <div class="shot-slot">
+                <p class="slot-kicker">
+                  <span class="lang-zh">截图位</span>
+                  <span class="lang-en">Screenshot slot</span>
+                </p>
+                <p class="slot-path">
+                  <span class="lang-zh">系统设置 → 隐私与安全性 → 辅助功能</span>
+                  <span class="lang-en">System Settings → Privacy &amp; Security → Accessibility</span>
+                </p>
               </div>
               <figcaption>
-                <span class="lang-zh">打开方式写在这里。仓库里没有系统拦截弹窗的截图，所以没有做成系统对话框的样子。</span>
-                <span class="lang-en">The action is written here. The repo has no screenshot of the block dialog, so this is not drawn as a system alert.</span>
+                <span class="lang-zh">等真实的系统设置截图。仓库里还没有这一页的图。</span>
+                <span class="lang-en">Waiting for a real System Settings screenshot. That picture is not in the repo yet.</span>
               </figcaption>
             </figure>
           </li>
@@ -354,72 +350,41 @@
             <div class="setup-copy">
               <p class="step-no">3</p>
               <h3>
-                <span class="lang-zh">打开辅助功能</span>
-                <span class="lang-en">Turn on Accessibility</span>
-              </h3>
-              <p>
-                <span class="lang-zh">菜单栏选「检查权限…」，或自己打开下面这条路径，允许 TranslateHUD。没有它，选区翻译不能用。</span>
-                <span class="lang-en">From the menu bar choose “检查权限…”, or follow the path below and allow TranslateHUD. Without it, selection translation cannot run.</span>
-              </p>
-            </div>
-            <figure class="setup-stage">
-              <div class="path-card">
-                <p>
-                  <span class="lang-zh">系统设置</span>
-                  <span class="lang-en">System Settings</span>
-                </p>
-                <p>
-                  <span class="lang-zh">隐私与安全性 → 辅助功能</span>
-                  <span class="lang-en">Privacy &amp; Security → Accessibility</span>
-                </p>
-                <p class="path-end">
-                  <span class="lang-zh">允许 TranslateHUD</span>
-                  <span class="lang-en">Allow TranslateHUD</span>
-                </p>
-              </div>
-              <figcaption>
-                <span class="lang-zh">这是要去的路径，不是「系统设置」的截图。应用里的提示是「需要辅助功能权限」。</span>
-                <span class="lang-en">The path to open. This is not a screenshot of System Settings. The in-app prompt says accessibility permission is required.</span>
-              </figcaption>
-            </figure>
-          </li>
-          <li class="setup-visual-step">
-            <div class="setup-copy">
-              <p class="step-no">4</p>
-              <h3>
                 <span class="lang-zh">打开屏幕录制</span>
                 <span class="lang-en">Turn on Screen Recording</span>
               </h3>
               <p>
-                <span class="lang-zh">同一页打开「屏幕录制」。没有它，框选会失败。授权后如果仍然不行，退出 TranslateHUD 再打开。</span>
-                <span class="lang-en">On the same page, allow Screen Recording. Without it, region capture fails. If it still fails, quit TranslateHUD and open it again.</span>
+                <span class="lang-zh">同一处打开「屏幕录制」。没有它，框选会失败。授权后如果仍然不行，退出再打开。</span>
+                <span class="lang-en">In the same place, allow Screen Recording. Without it, region capture fails. If it still fails, quit and open TranslateHUD again.</span>
               </p>
             </div>
             <figure class="setup-stage">
-              <img
-                class="shot"
-                src="assets/permission-message.png"
-                width="720"
-                height="194"
-                alt="应用内的屏幕录制权限说明：到系统设置的隐私与安全性中打开屏幕录制，授权后重新启动。"
-                data-alt-zh="应用内的屏幕录制权限说明：到系统设置的隐私与安全性中打开屏幕录制，授权后重新启动。"
-                data-alt-en="The in-app screen-recording message: enable Screen Recording under Privacy &amp; Security, then relaunch.">
+              <div class="shot-slot">
+                <p class="slot-kicker">
+                  <span class="lang-zh">截图位</span>
+                  <span class="lang-en">Screenshot slot</span>
+                </p>
+                <p class="slot-path">
+                  <span class="lang-zh">系统设置 → 隐私与安全性 → 屏幕录制</span>
+                  <span class="lang-en">System Settings → Privacy &amp; Security → Screen Recording</span>
+                </p>
+              </div>
               <figcaption>
-                <span class="lang-zh">应用里的真实提示。按它说的打开屏幕录制，然后重新启动。</span>
-                <span class="lang-en">The real in-app message. Follow it, then relaunch.</span>
+                <span class="lang-zh">等真实的系统设置截图。应用内提示不是这一页，所以没有放在这里。</span>
+                <span class="lang-en">Waiting for a real System Settings screenshot. The in-app tip is a different screen, so it is not used here.</span>
               </figcaption>
             </figure>
           </li>
           <li>
             <div class="setup-copy">
-              <p class="step-no">5</p>
+              <p class="step-no">4</p>
               <h3>
-                <span class="lang-zh">填上自己的接口</span>
-                <span class="lang-en">Add your own API</span>
+                <span class="lang-zh">兼容主流接口</span>
+                <span class="lang-en">Mainstream APIs</span>
               </h3>
               <p>
-                <span class="lang-zh">「打开设置…」里选服务商。云端服务填 API Key，本地 Ollama 可以不填，再点「发送测试翻译」。</span>
-                <span class="lang-en">In “打开设置…”, pick a provider. Cloud services need an API key. Local Ollama can run without one. Then choose “发送测试翻译”.</span>
+                <span class="lang-zh">兼容市面上主流 API 形式。</span>
+                <span class="lang-en">It works with mainstream OpenAI-compatible APIs.</span>
               </p>
             </div>
           </li>

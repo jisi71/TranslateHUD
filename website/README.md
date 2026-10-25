@@ -34,7 +34,7 @@ python3 -m http.server 8080
 
 首页介绍片要等真实视频。计划内容是功能、界面，以及一点设计取舍。文件到位后再放到 `website/assets/`，并换掉 `index.html` 里的占位块。在那之前不要填一个猜测的视频地址。
 
-功能区用的是 `translation-panel.png` 放在渐变底上。仓库里还没有：介绍片、框选那一步的系统截图、展开后的名词解释、Gatekeeper 弹窗、「系统设置」里辅助功能或屏幕录制的界面。下载准备里的前两项因此写成路径和操作，没有假装成系统截图；屏幕录制用的是应用内真实提示 `permission-message.png`。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
+功能区用的是 `translation-panel.png` 放在渐变底上。仓库里还没有：介绍片、框选那一步的系统截图、展开后的名词解释，以及「系统设置」里辅助功能、屏幕录制的界面。下载准备里这两项只写路径，并留了截图位，没有做成系统窗口的样子。`permission-message.png` 是应用内提示，用在权限说明里，不充当系统设置截图。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
 
 - `translation-panel.png`
 - `permission-message.png`
@@ -55,4 +55,4 @@ Open <http://127.0.0.1:8080>. Release notes: <http://127.0.0.1:8080/changelog/>.
 
 Point GitHub Pages or Vercel at the `website/` directory as the site root. Do not publish the repository `docs/` folder as the site. On Vercel, set Root Directory to `website`, Framework Preset to Other, and leave the build command empty.
 
-The download URL is the published v0.3.1 universal zip above. There is no notarized v0.3.2 asset, and the intro video has no file yet. There is also no screenshot of the Gatekeeper dialog or of System Settings. Those two setup steps are written paths, not imitation system windows. Screen Recording uses the real in-app image `permission-message.png`.
+The download URL is the published v0.3.1 universal zip above. There is no notarized v0.3.2 asset, and the intro video has no file yet. System Settings screenshots for Accessibility and Screen Recording are also missing. Those setup steps are short paths plus labeled slots, not imitation system windows. `permission-message.png` is the in-app tip only.

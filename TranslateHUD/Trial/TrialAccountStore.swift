@@ -53,14 +53,6 @@ final class TrialAccountStore: ObservableObject {
         TrialConfig.plistProxy
     }
 
-    private enum Key {
-        static let access = "trial.accessToken"
-        static let refresh = "trial.refreshToken"
-        static let userId = "trial.userId"
-        static let phone = "trial.phoneMasked"
-        static let expires = "trial.expiresAt"
-    }
-
     private var verificationId: String?
     private var isExistingUser = false
     private var pendingPhone = ""
@@ -80,14 +72,17 @@ final class TrialAccountStore: ObservableObject {
     private init() {}
 
     func restore() {
-        accessToken = KeychainHelper.get(Key.access) ?? ""
-        refreshToken = KeychainHelper.get(Key.refresh) ?? ""
-        userId = KeychainHelper.get(Key.userId) ?? ""
-        maskedPhone = KeychainHelper.get(Key.phone) ?? ""
-        if let raw = KeychainHelper.get(Key.expires), let interval = TimeInterval(raw) {
-            expiresAt = Date(timeIntervalSince1970: interval)
-        }
-        isLoggedIn = !accessToken.isEmpty && !refreshToken.isEmpty && !userId.isEmpty
+        let session = TrialKeychain.restore(
+            defaults: .standard,
+            domain: KeychainGate.appDefaultsDomain,
+            keychain: SystemKeychain()
+        )
+        accessToken = session.accessToken
+        refreshToken = session.refreshToken
+        userId = session.userId
+        maskedPhone = session.maskedPhone
+        expiresAt = session.expiresAt
+        isLoggedIn = session.isLoggedIn
         guard isLoggedIn else { return }
         balanceState = .loading
         Task { await refreshFromServer() }
@@ -137,7 +132,7 @@ final class TrialAccountStore: ObservableObject {
             )
             try persist(session)
             maskedPhone = PhoneNumberCN.mask(pendingPhone)
-            try? KeychainHelper.set(maskedPhone, forKey: Key.phone)
+            try? SystemKeychain().set(maskedPhone, forKey: TrialKeychain.Account.phone)
             code = ""
             self.verificationId = nil
             AppLog.info("体验账号登录成功")
@@ -223,10 +218,14 @@ final class TrialAccountStore: ObservableObject {
     }
 
     private func persist(_ session: CloudBaseSession) throws {
-        try KeychainHelper.set(session.accessToken, forKey: Key.access)
-        try KeychainHelper.set(session.refreshToken, forKey: Key.refresh)
-        try KeychainHelper.set(session.userId, forKey: Key.userId)
-        try KeychainHelper.set(String(session.expiresAt.timeIntervalSince1970), forKey: Key.expires)
+        try TrialKeychain.write(
+            accessToken: session.accessToken,
+            refreshToken: session.refreshToken,
+            userId: session.userId,
+            expiresAt: session.expiresAt,
+            defaults: .standard,
+            keychain: SystemKeychain()
+        )
         accessToken = session.accessToken
         refreshToken = session.refreshToken
         userId = session.userId
@@ -235,9 +234,7 @@ final class TrialAccountStore: ObservableObject {
     }
 
     private func logout(message: String) {
-        for key in [Key.access, Key.refresh, Key.userId, Key.phone, Key.expires] {
-            KeychainHelper.delete(key)
-        }
+        TrialKeychain.clear(defaults: .standard, keychain: SystemKeychain())
         accessToken = ""
         refreshToken = ""
         userId = ""

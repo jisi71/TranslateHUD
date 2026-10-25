@@ -5,8 +5,12 @@ struct TranslateHUDApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra("TranslateHUD", systemImage: "character.book.closed") {
+        MenuBarExtra {
             MenuBarMenu()
+        } label: {
+            Image("MenuBarIcon")
+                .renderingMode(.template)
+                .accessibilityLabel("TranslateHUD")
         }
         .menuBarExtraStyle(.menu)
     }

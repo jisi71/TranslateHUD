@@ -607,14 +607,139 @@ html[data-lang="en"] .lang-zh {
   box-shadow: inset 0 0 0 1.5px rgba(96, 149, 211, 0.72);
 }
 
-.stage-scene .hud-overlay {
+.hud-panel {
+  position: absolute;
   z-index: 2;
-  width: 58%;
-  left: auto;
   right: 4%;
-  top: auto;
-  bottom: 6%;
-  transform: none;
+  bottom: 5%;
+  width: min(352px, 68%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border-radius: 18px;
+  background: #1c1c1e;
+  color: #f6f3ec;
+  box-shadow:
+    0 26px 44px rgba(16, 22, 36, 0.38),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+
+.hud-head,
+.hud-source-row,
+.hud-status,
+.hud-actions,
+.hud-foot,
+.hud-lang,
+.hud-tools,
+.hud-provider {
+  display: flex;
+  align-items: center;
+}
+
+.hud-head,
+.hud-foot {
+  gap: 8px;
+}
+
+.hud-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.hud-lang {
+  margin-left: auto;
+  gap: 4px;
+  color: rgba(246, 243, 236, 0.62);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.hud-tools {
+  gap: 8px;
+}
+
+.hud-glyph {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: rgba(246, 243, 236, 0.62);
+}
+
+.hud-chev {
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+
+.hud-source-row {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.hud-source,
+.hud-out,
+.hud-status {
+  margin: 0;
+}
+
+.hud-source {
+  flex: 1;
+  color: rgba(246, 243, 236, 0.62);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.hud-status {
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  color: rgba(246, 243, 236, 0.78);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.hud-status .hud-glyph {
+  color: #8fd0a4;
+}
+
+.hud-out {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.hud-actions {
+  gap: 10px;
+}
+
+.hud-end {
+  margin-left: auto;
+}
+
+.hud-foot {
+  gap: 10px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hud-provider {
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  color: rgba(246, 243, 236, 0.84);
+  font-size: 13px;
+}
+
+.hud-foot .hud-glyph:last-child {
+  margin-left: auto;
 }
 
 .plain-shot img,
@@ -1025,10 +1150,21 @@ html[data-lang="en"] .lang-zh {
     line-height: 1.55;
   }
 
-  .stage-scene .hud-overlay {
-    width: 68%;
+  .hud-panel {
+    width: min(280px, 86%);
     right: 3%;
     bottom: 4%;
+    gap: 6px;
+    padding: 10px 10px 8px;
+  }
+
+  .hud-title,
+  .hud-out {
+    font-size: 13px;
+  }
+
+  .hud-source {
+    font-size: 12px;
   }
 }
 

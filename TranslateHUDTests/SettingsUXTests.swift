@@ -49,18 +49,13 @@ final class SettingsUXTests: XCTestCase {
     func testKnownPresetHidesTheAddressFieldAndOllamaDoesNotRequireAKey() {
         let deepseek = ProviderPreset.matching(baseURL: "https://api.deepseek.com/v1")
         XCTAssertFalse(deepseek.isCustom)
-        XCTAssertTrue(deepseek.setupHint.contains("API Key"))
-        XCTAssertTrue(deepseek.setupHint.contains("模型"))
-        XCTAssertFalse(deepseek.setupHint.contains("Base URL"))
 
         let ollama = ProviderPreset.matching(baseURL: "http://localhost:11434/v1")
-        XCTAssertTrue(ollama.setupHint.contains("不用填 API Key"))
+        XCTAssertFalse(ollama.isCustom)
         let filled = ollama.applying(toBaseURL: "", model: "")
         let config = ProviderConfig(baseURL: filled.baseURL, model: filled.model, apiKey: "")
         XCTAssertTrue(config.isUsable)
         XCTAssertNil(config.validationMessage)
-
-        XCTAssertEqual(ProviderPreset.custom.setupHint, "")
     }
 
     func testAutomaticTextFocusIsTheOnlyCaseWeBlock() {

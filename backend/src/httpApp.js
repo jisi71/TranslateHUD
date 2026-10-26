@@ -10,6 +10,7 @@ const {
   handleTranslate,
   readEnv
 } = require('./trialService')
+const { handleFeedback, FEEDBACK_MESSAGES, MAX_FEEDBACK_BODY } = require('./feedbackService')
 const { MESSAGES } = require('./trialPolicy')
 
 function routeOf(urlPath) {
@@ -18,25 +19,37 @@ function routeOf(urlPath) {
   if (clean.endsWith('/trial/invite-status')) return 'invite-status'
   if (clean.endsWith('/trial/redeem')) return 'redeem'
   if (clean.endsWith('/trial/account')) return 'account'
+  if (clean.endsWith('/trial/feedback')) return 'feedback'
   if (clean.endsWith('/chat/completions')) return 'translate'
   return null
 }
 
-function readBody(req, limit) {
+function readBody(req, limit, limitCode) {
   return new Promise((resolve, reject) => {
     const chunks = []
     let size = 0
+    let settled = false
+    const fail = (error) => {
+      if (settled) return
+      settled = true
+      reject(error)
+    }
+    const succeed = (value) => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
     req.on('data', (chunk) => {
+      if (settled) return
       size += chunk.length
       if (size > limit) {
-        reject(Object.assign(new Error('too large'), { code: 'LIMIT' }))
-        req.destroy()
+        fail(Object.assign(new Error('too large'), { code: limitCode || 'LIMIT' }))
         return
       }
       chunks.push(chunk)
     })
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
-    req.on('error', reject)
+    req.on('end', () => succeed(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', fail)
   })
 }
 
@@ -47,6 +60,8 @@ function createRequestListener(deps = {}) {
   const env = deps.env || readEnv()
   const now = deps.now || (() => Date.now())
   const bodyLimit = deps.bodyLimit || 48 * 1024
+  const feedbackBodyLimit = deps.feedbackBodyLimit || MAX_FEEDBACK_BODY
+  const feedbackStore = deps.feedbackStore
 
   return async function listener(req, res) {
     const route = routeOf(req.url || '/')
@@ -85,11 +100,15 @@ function createRequestListener(deps = {}) {
     })
 
     try {
-      const rawBody = req.method === 'GET' ? '' : await readBody(req, bodyLimit)
+      const isFeedback = route === 'feedback'
+      const rawBody = req.method === 'GET'
+        ? ''
+        : await readBody(req, isFeedback ? feedbackBodyLimit : bodyLimit, isFeedback ? 'FEEDBACK_LIMIT' : 'LIMIT')
       const ctx = {
         headers: req.headers,
         rawBody,
         store,
+        feedbackStore,
         verifyUser,
         forward,
         env,
@@ -100,6 +119,7 @@ function createRequestListener(deps = {}) {
       if (route === 'account') result = await handleAccount(ctx)
       else if (route === 'redeem') result = await handleRedeem(ctx)
       else if (route === 'invite-status') result = await handleInviteStatus(ctx)
+      else if (isFeedback) result = await handleFeedback(ctx)
       else result = await handleTranslate(ctx)
       if (typeof result.release === 'function') releaseInflight = result.release
       if (result.aborted || res.writableEnded) {
@@ -120,13 +140,19 @@ function createRequestListener(deps = {}) {
       res.end(result.body || '')
     } catch (error) {
       if (res.writableEnded) return
+      const feedbackTooLarge = error && error.code === 'FEEDBACK_LIMIT'
       const tooLarge = error && error.code === 'LIMIT'
       const storeFailed = error && error.code === 'trial_store'
-      const status = tooLarge ? 413 : (storeFailed ? 503 : 500)
-      const code = tooLarge ? 'trial_body_limit' : (storeFailed ? 'trial_store' : 'trial_upstream')
-      const message = tooLarge ? MESSAGES.body : (storeFailed ? MESSAGES.store : MESSAGES.upstream)
+      const status = (tooLarge || feedbackTooLarge) ? 413 : (storeFailed ? 503 : 500)
+      const code = feedbackTooLarge
+        ? 'feedback_too_large'
+        : (tooLarge ? 'trial_body_limit' : (storeFailed ? 'trial_store' : 'trial_upstream'))
+      const message = feedbackTooLarge
+        ? FEEDBACK_MESSAGES.tooLarge
+        : (tooLarge ? MESSAGES.body : (storeFailed ? MESSAGES.store : MESSAGES.upstream))
       res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
       res.end(JSON.stringify({ error: { code, message } }))
+      req.destroy()
     }
   }
 }

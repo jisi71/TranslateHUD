@@ -83,15 +83,6 @@ extension ProviderPreset {
         if savedIsBlank, !suggestedModel.isEmpty { return suggestedModel }
         return saved
     }
-
-    /// 非自定义预设下，代替 Base URL 输入框的一句说明。自定义返回空字符串。
-    var setupHint: String {
-        guard !isCustom else { return "" }
-        if TranslationRoute.isLocalHost(baseURL) {
-            return "这是本地服务，一般不用填 API Key。模型可以改。"
-        }
-        return "接口地址已按预设填好。填 API Key 就能用，模型可以改。"
-    }
 }
 
 /// 比较预设地址时忽略首尾空白、大小写、默认端口和末尾斜杠。

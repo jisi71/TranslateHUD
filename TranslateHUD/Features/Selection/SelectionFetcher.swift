@@ -100,7 +100,8 @@ enum SelectionFetcher {
     // MARK: - 真实抓取
 
     /// 主入口：AX 重试 → Cmd+C 异步兜底 → AX 最终确认。
-    /// 结果会区分“确认无选区”和“超时/权限/App 切换”，供路由决定是否允许进入截图。
+    /// 同键路由把“确认无选区”、复制超时，以及剪贴板变成图片或没有可读文字，交给截图。
+    /// 分键只按了翻译选中时，后一种结果仍提示失败，不打开截图。
     @MainActor
     static func fetch(expectedApplicationPID: pid_t?) async -> SelectionFetchResult {
         let coordinator = SelectionFetchCoordinator(provider: SystemSelectionProbeProvider())
@@ -256,41 +257,93 @@ private final class SystemSelectionProbeProvider: SelectionProbeProviding {
         var copyOccurred = false
 
         while clock.now < deadline {
-            guard !Task.isCancelled else { return .timedOut }
+            if Task.isCancelled {
+                return stop(copyOccurred, savedItems: savedItems, pasteboard: pasteboard, result: .timedOut)
+            }
             guard applicationStillMatches(expectedApplicationPID) else {
-                if copyOccurred { restore(savedItems, to: pasteboard) }
-                return .applicationChanged
+                return stop(copyOccurred, savedItems: savedItems, pasteboard: pasteboard, result: .applicationChanged)
             }
 
             if pasteboard.changeCount != beforeChange {
                 copyOccurred = true
-                if let copied = pasteboard.string(forType: .string)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines),
-                   !copied.isEmpty {
-                    let focused = SelectionFetcher.focusedElement()
-                    let rect = focused.flatMap(SelectionFetcher.currentSelectionRectViaAX)
-                    let context = focused.flatMap { SelectionFetcher.currentTextContext($0, selected: copied) }
-                    restore(savedItems, to: pasteboard)
-                    AppLog.info("Cmd+C 兜底命中: len=\(copied.count)")
-                    return .found(SelectionFetcher.Selection(text: copied, screenRectTopLeft: rect, context: context))
+                // Text can arrive a moment after changeCount moves. Image types are classified once, at the end.
+                if let copied = PasteboardContentClassifier.readableText(in: pasteboard.string(forType: .string)) {
+                    return finishFound(copied, pasteboard: pasteboard, savedItems: savedItems)
                 }
             }
 
             do {
                 try await Task.sleep(nanoseconds: 20_000_000)
             } catch {
-                if copyOccurred { restore(savedItems, to: pasteboard) }
-                return .timedOut
+                return stop(copyOccurred, savedItems: savedItems, pasteboard: pasteboard, result: .timedOut)
             }
         }
 
-        if copyOccurred {
+        guard copyOccurred else {
+            AppLog.info("Cmd+C 兜底超时：changeCount 未变化")
+            return .timedOut
+        }
+        // 图片或不含可读文字都先还原剪贴板，再交给路由。同键会进截图，分键仍提示失败。
+        switch readPasteboard(pasteboard) {
+        case .readableText(let copied):
+            return finishFound(copied, pasteboard: pasteboard, savedItems: savedItems)
+        case .image:
+            restore(savedItems, to: pasteboard)
+            AppLog.info("Cmd+C 兜底：剪贴板变为图片，没有可读文字")
+            return .image
+        case .noReadableText:
             restore(savedItems, to: pasteboard)
             AppLog.info("Cmd+C 兜底：剪贴板变化但文本未就绪")
             return .dataUnavailable
         }
-        AppLog.info("Cmd+C 兜底超时：changeCount 未变化")
-        return .timedOut
+    }
+
+    /// Type identifiers only. Image bytes are never read; callers restore the original pasteboard.
+    private func readPasteboard(_ pasteboard: NSPasteboard) -> PasteboardContentClassifier.Reading {
+        PasteboardContentClassifier.classify(
+            string: pasteboard.string(forType: .string),
+            typeIdentifiers: Self.typeIdentifiers(on: pasteboard)
+        )
+    }
+
+    private static func typeIdentifiers(on pasteboard: NSPasteboard) -> [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        func append(_ types: [NSPasteboard.PasteboardType]) {
+            for type in types where seen.insert(type.rawValue).inserted {
+                ordered.append(type.rawValue)
+            }
+        }
+        append(pasteboard.types ?? [])
+        // `types` is the first item. A multi-item copy can put the picture on a later item.
+        // `NSPasteboardItem.types` does not load the item's data.
+        for item in pasteboard.pasteboardItems ?? [] {
+            append(item.types)
+        }
+        return ordered
+    }
+
+    private func finishFound(
+        _ copied: String,
+        pasteboard: NSPasteboard,
+        savedItems: [NSPasteboardItem]
+    ) -> PasteboardSelectionProbe {
+        let focused = SelectionFetcher.focusedElement()
+        let rect = focused.flatMap(SelectionFetcher.currentSelectionRectViaAX)
+        let context = focused.flatMap { SelectionFetcher.currentTextContext($0, selected: copied) }
+        restore(savedItems, to: pasteboard)
+        AppLog.info("Cmd+C 兜底命中: len=\(copied.count)")
+        return .found(SelectionFetcher.Selection(text: copied, screenRectTopLeft: rect, context: context))
+    }
+
+    private func stop(
+        _ copyOccurred: Bool,
+        savedItems: [NSPasteboardItem],
+        pasteboard: NSPasteboard,
+        result: PasteboardSelectionProbe
+    ) -> PasteboardSelectionProbe {
+        if copyOccurred { restore(savedItems, to: pasteboard) }
+        return result
     }
 
     private func applicationStillMatches(_ expectedPID: pid_t?) -> Bool {

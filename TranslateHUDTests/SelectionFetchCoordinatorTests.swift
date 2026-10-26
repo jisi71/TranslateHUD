@@ -38,6 +38,47 @@ final class SelectionFetchCoordinatorTests: XCTestCase {
         XCTAssertEqual(provider.axProbeCount, 3)
     }
 
+    func testDataUnavailableAndImagePasteboardRouteOnlyInSameKeyMode() async {
+        for probe in [PasteboardSelectionProbe.dataUnavailable, .image] {
+            let provider = FakeSelectionProbeProvider(
+                axResults: [.unavailable, .unavailable, .unavailable],
+                pasteboardResult: probe
+            )
+            let result = await coordinator(provider).fetch(expectedApplicationPID: provider.pid)
+
+            XCTAssertEqual(
+                result,
+                .noReadableText(SelectionFetchResult.noReadableTextMessage),
+                "\(probe)"
+            )
+            XCTAssertTrue(ModeRouter.routesToScreenshot(result, whenNoSelection: true), "\(probe)")
+            XCTAssertFalse(ModeRouter.routesToScreenshot(result, whenNoSelection: false), "\(probe)")
+        }
+    }
+
+    func testPasteboardTextStaysOnSelectionRoute() async {
+        let selection = SelectionFetcher.Selection(text: "copied", screenRectTopLeft: nil)
+        let provider = FakeSelectionProbeProvider(
+            axResults: [.unavailable, .unavailable, .unavailable],
+            pasteboardResult: .found(selection)
+        )
+        let result = await coordinator(provider).fetch(expectedApplicationPID: provider.pid)
+
+        XCTAssertEqual(result, .found(selection))
+        XCTAssertFalse(ModeRouter.routesToScreenshot(result, whenNoSelection: true))
+    }
+
+    func testCopyFailureStaysFailedInsteadOfScreenshot() async {
+        let provider = FakeSelectionProbeProvider(
+            axResults: [.unavailable, .unavailable, .unavailable],
+            pasteboardResult: .eventPostFailed
+        )
+        let result = await coordinator(provider).fetch(expectedApplicationPID: provider.pid)
+
+        XCTAssertEqual(result, .failed("未能触发复制操作，请检查辅助功能权限，重新选中文字后再试。"))
+        XCTAssertFalse(ModeRouter.routesToScreenshot(result, whenNoSelection: true))
+    }
+
     func testApplicationChangeStopsBeforeAnyProbe() async {
         let provider = FakeSelectionProbeProvider(
             pid: 99,

@@ -30,7 +30,12 @@ enum ModeRouter {
         screenshotWhenConfirmedEmpty: Bool
     ) {
         if routesToScreenshot(result, whenNoSelection: screenshotWhenConfirmedEmpty) {
-            AppLog.info("路由：等待后未发现文本选区 → 截图")
+            switch result {
+            case .noReadableText:
+                AppLog.info("路由：剪贴板是图片或没有可读文字 → 截图")
+            default:
+                AppLog.info("路由：等待后未发现文本选区 → 截图")
+            }
             ScreenshotFlow.start()
             return
         }
@@ -55,6 +60,9 @@ enum ModeRouter {
         case .timedOut:
             AppLog.info("路由：选区抓取超时，不进入截图")
             ToastCenter.shared.show(title: "读取选区超时", message: "请保持文字选中后重试；截图可使用单独的截图快捷键。")
+        case .noReadableText(let message):
+            AppLog.info("路由：剪贴板是图片或没有可读文字，分键不进入截图")
+            ToastCenter.shared.show(title: "无法读取选区", message: message)
         case .failed(let message):
             AppLog.info("路由：选区抓取失败，不进入截图：\(message)")
             ToastCenter.shared.show(title: "无法读取选区", message: message)
@@ -67,9 +75,11 @@ enum ModeRouter {
         _ result: SelectionFetchResult,
         whenNoSelection enabled: Bool
     ) -> Bool {
+        // 同键：确认无选区、复制超时、或剪贴板变成图片/没有可读文字 → 截图。
+        // 分键按下的是「翻译选中」时，这些结果都不进截图。
         guard enabled else { return false }
         switch result {
-        case .confirmedEmpty, .timedOut:
+        case .confirmedEmpty, .timedOut, .noReadableText:
             return true
         case .found, .permissionDenied, .applicationChanged, .failed, .cancelled:
             return false

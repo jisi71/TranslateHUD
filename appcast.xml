@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>TranslateHUD</title>
+    <link>https://github.com/jisi71/TranslateHUD/releases</link>
+    <description>TranslateHUD 的更新说明</description>
+    <language>zh-Hans</language>
+  </channel>
+</rss>

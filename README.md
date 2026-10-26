@@ -85,8 +85,11 @@
 2. 解压，把 `TranslateHUD.app` 拖到 `/Applications/`
 3. 在「应用程序」里直接双击打开。Gatekeeper 应接受这个包
 4. 「辅助功能」和「屏幕录制」仍需手动授权，然后按 [首次使用](#首次使用) 完成配置
+5. 打开后可自动更新。公证版大约每天检查一次，也可以在菜单栏选「检查更新…」。有新版本时会看到更新说明，可以选择稍后提醒或现在安装，不用自己再拖一次 `.app`
 
-> 从源码构建的开发者仍可使用 `scripts/install-local.sh` 的本地签名，或 `scripts/build-release.sh` 的本地 ad-hoc 签名。这两种都留在本机开发使用。
+已经装过、里面还没有「检查更新…」的版本，需要先手动安装一次带自动更新的公证包。这一次之后就可以在软件里更新。
+
+> 从源码构建的开发者仍可使用 `scripts/install-local.sh` 的本地签名，或 `scripts/build-release.sh` 的本地 ad-hoc 签名。这两种都留在本机开发使用，在线更新保持关闭，本机安装会保持原样。发公证包的步骤见 [docs/updates.md](docs/updates.md)。
 
 ## 自己编译
 
@@ -168,6 +171,7 @@ TranslateHUD/
 ├── Trial/              # 手机号登录、体验额度、走服务端代理还是自己的 Key
 ├── Speech/             # AVSpeechSynthesizer / voice 选择 / 中英混读
 ├── Settings/           # SettingsView / SettingsWindowController
+├── Updates/            # 检查更新。仅 Developer ID 公证包会访问订阅地址
 ├── Permissions/        # PermissionManager (AX trust + 跳系统设置)
 ├── Shared/             # TranslationPanel / AppLog / ToastCenter / WindowRegistry / DiagnosticsRunner
 └── Resources/          # Info.plist / Assets.xcassets
@@ -203,6 +207,7 @@ backend/                # 体验额度账本和翻译代理，部署说明见 ba
 ## 依赖
 
 - [sindresorhus/KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts) — 全局快捷键 + SwiftUI Recorder（SPM 自动拉取）
+- [Sparkle](https://github.com/sparkle-project/Sparkle) — 公证版的检查更新与安装（SPM，2.10.1）。本机签名的包不会启用
 
 ## License
 

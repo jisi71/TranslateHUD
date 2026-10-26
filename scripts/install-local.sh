@@ -71,6 +71,7 @@ if ! xcodebuild \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="$CERT_NAME" \
     CODE_SIGNING_REQUIRED=YES \
+    TRANSLATEHUD_UPDATES_ENABLED=NO \
     build >"$BUILD_LOG" 2>&1; then
     echo "Error: build failed. Last 40 log lines:"
     tail -40 "$BUILD_LOG"

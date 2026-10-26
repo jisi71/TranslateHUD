@@ -1,10 +1,9 @@
 #!/bin/bash
-# 打 Release 版 .app + 压缩为 .zip 用于 GitHub Release。
+# 打本机自用的 Release .app，并压成 zip。
 #
-# 关键点：用 ad-hoc 签名（CODE_SIGN_IDENTITY="-"），不是开发者私人证书：
-#   - .app 里不包含 "TranslateHUD Local Sign" 等私人 cert 信息
-#   - 用户下载后右键 → 打开 一次绕过 Gatekeeper 即可使用
-#   - 每台用户机器上 cdhash 一致（同一份二进制），权限授一次永远生效
+# 这是 ad-hoc 签名（CODE_SIGN_IDENTITY="-"），在线更新保持关闭。
+# 不要把这个 zip 当作给用户的自动更新包上传。
+# 公证版用 scripts/developer-id-release.sh，说明见 docs/updates.md。
 #
 # 用法： bash scripts/build-release.sh
 
@@ -37,6 +36,7 @@ xcodebuild \
     CODE_SIGN_IDENTITY="-" \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGNING_REQUIRED=YES \
+    TRANSLATEHUD_UPDATES_ENABLED=NO \
     ARCHS="arm64 x86_64" \
     ONLY_ACTIVE_ARCH=NO \
     build 2>&1 | tail -5
@@ -67,4 +67,5 @@ echo "✓ 完成"
 echo "  路径: $(pwd)/$ZIP_NAME"
 echo "  大小: $SIZE"
 echo ""
-echo "  上传到 GitHub Release：gh release create v${VERSION} \"$ZIP_NAME\" --notes '...'"
+echo "  这是本机 ad-hoc 包，在线更新是关的。不要把它上传成用户的自动更新。"
+echo "  公证版请用 scripts/developer-id-release.sh。说明见 docs/updates.md。"

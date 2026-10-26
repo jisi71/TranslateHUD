@@ -34,6 +34,9 @@ private struct MenuBarMenu: View {
         Button("检查权限…") {
             PermissionManager.shared.openSystemPanels()
         }
+        Button("检查更新…") {
+            UpdateCenter.shared.checkForUpdates()
+        }
         Divider()
         Button("退出 TranslateHUD") {
             NSApplication.shared.terminate(nil)

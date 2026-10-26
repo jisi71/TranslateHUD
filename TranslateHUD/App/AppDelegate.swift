@@ -6,6 +6,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         KeychainLaunch.prepare()
         HotkeyManager.shared.registerAll()
         TrialAccountStore.shared.restore()
+        MainActor.assumeIsolated {
+            UpdateCenter.shared.startIfEnabled()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -4,7 +4,7 @@ import KeyboardShortcuts
 struct SettingsView: View {
     @ObservedObject private var store = SettingsStore.shared
     @ObservedObject private var trial = TrialAccountStore.shared
-    @State private var preset: ProviderPreset = ProviderPreset.all[0]
+    @State private var preset = ProviderPreset.matching(baseURL: SettingsStore.shared.baseURL)
     @State private var showApiKey = false
     @State private var testStatus: TestStatus = .idle
     @StateObject private var speechPreview = SpeechController()
@@ -23,17 +23,21 @@ struct SettingsView: View {
             trialSection
 
             Section("LLM 服务商") {
-                Picker("预设", selection: $preset) {
+                Picker("预设", selection: presetBinding) {
                     ForEach(ProviderPreset.all) { p in
                         Text(p.displayName).tag(p)
                     }
                 }
-                .onChange(of: preset) { _, new in
-                    store.applyPreset(new)
-                }
 
-                TextField("Base URL", text: $store.baseURL)
-                    .textFieldStyle(.roundedBorder)
+                if preset.isCustom {
+                    TextField("Base URL", text: $store.baseURL)
+                        .textFieldStyle(.roundedBorder)
+                } else {
+                    Text(preset.setupHint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 TextField("Model", text: $store.model)
                     .textFieldStyle(.roundedBorder)
@@ -137,7 +141,33 @@ struct SettingsView: View {
         }
         .frame(width: 560, height: 720)
         .navigationTitle("TranslateHUD 设置")
+        .onAppear { syncPresetPicker() }
         .onDisappear { speechPreview.stop() }
+        .onReceive(NotificationCenter.default.publisher(for: SettingsWindowController.willShowNotification)) { _ in
+            syncPresetPicker()
+        }
+    }
+
+    /// 用户点选预设才写入地址和推荐模型。打开窗口时直接改 `preset`，不走这个 setter。
+    private var presetBinding: Binding<ProviderPreset> {
+        Binding(
+            get: { preset },
+            set: { newValue in
+                guard newValue != preset else { return }
+                preset = newValue
+                store.applyPreset(newValue)
+            }
+        )
+    }
+
+    /// 按已保存的接口地址对齐预设，已填过的模型名称保持不动。
+    private func syncPresetPicker() {
+        let matched = ProviderPreset.matching(baseURL: store.baseURL)
+        preset = matched
+        let model = matched.modelForDisplay(saved: store.model)
+        if model != store.model {
+            store.model = model
+        }
     }
 
     @ViewBuilder

@@ -20,6 +20,37 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(TrialPricing.yuanString(microYuan: 10), "¥0.00")
         XCTAssertEqual(TrialPricing.yuanString(microYuan: 5_000), "¥0.01")
         XCTAssertEqual(TrialPricing.yuanString(microYuan: 1_999_990), "¥2.00")
+        XCTAssertEqual(TrialDisplayId.format(1), "00001")
+        XCTAssertEqual(TrialDisplayId.format(2), "00002")
+        XCTAssertEqual(TrialDisplayId.format(99999), "99999")
+        XCTAssertEqual(TrialDisplayId.format(100000), "100000")
+        XCTAssertEqual(TrialDisplayId.format(0), "")
+        XCTAssertEqual(TrialCopy.inviteGranted(microYuan: 2_000_000), "已领取 ¥2.00 体验额度。")
+        XCTAssertEqual(TrialCopy.inviteGranted(microYuan: 150 * 10_000), "已领取 ¥1.50 体验额度。")
+        XCTAssertTrue(TrialCopy.isInviteGranted("已领取 ¥2.00 体验额度。"))
+        XCTAssertFalse(TrialCopy.isInviteGranted("已领取体验额度。"))
+        XCTAssertEqual(RotateCwMotion.fromDegrees, 0)
+        XCTAssertEqual(RotateCwMotion.toDegrees, 360)
+        XCTAssertEqual(RotateCwMotion.duration, 0.8)
+        XCTAssertEqual(RotateCwMotion.anchorX, 12)
+        XCTAssertEqual(RotateCwMotion.anchorY, 12)
+        let center = RotateCwMotion.framePoint(viewBoxX: 12, viewBoxY: 12, side: 16)
+        XCTAssertEqual(center.x, 8)
+        XCTAssertEqual(center.y, 8)
+        XCTAssertTrue(RotateCwMotion.shouldKeepTurning(loading: true))
+        XCTAssertFalse(RotateCwMotion.shouldKeepTurning(loading: false))
+        XCTAssertEqual(RotateCwMotion.degrees(elapsed: 0), 0)
+        XCTAssertEqual(RotateCwMotion.degrees(elapsed: 0.8), 360)
+        XCTAssertEqual(RotateCwMotion.degrees(elapsed: 1.6), 720)
+        XCTAssertEqual(RotateCwMotion.uprightTarget(from: 0), 0)
+        XCTAssertEqual(RotateCwMotion.uprightTarget(from: 360), 360)
+        XCTAssertEqual(RotateCwMotion.uprightTarget(from: 90), 360)
+        XCTAssertEqual(RotateCwMotion.uprightTarget(from: 400), 720)
+        XCTAssertEqual(RotateCwMotion.settleDuration(from: 0), 0)
+        XCTAssertEqual(RotateCwMotion.settleDuration(from: 180), 0.4, accuracy: 0.0001)
+        XCTAssertTrue(RotateCwMotion.isNaturalOrientation(0))
+        XCTAssertTrue(RotateCwMotion.isNaturalOrientation(360))
+        XCTAssertFalse(RotateCwMotion.isNaturalOrientation(50))
     }
 
     func testPhoneNumbersUseCloudBaseFormat() {
@@ -95,6 +126,16 @@ final class TrialPolicyTests: XCTestCase {
             return XCTFail("expected a block")
         }
         XCTAssertTrue(message.contains("API Key"))
+        XCTAssertTrue(message.contains("体验额度已用完"))
+    }
+
+    func testAnAccountThatHasNotRedeemedIsAskedForAnInviteCode() {
+        let input = sampleTrial(balanceFen: 0, source: "你好", inviteRedeemed: false)
+        guard case .block(let title, let message) = TranslationRoute.gate(input) else {
+            return XCTFail("expected a block")
+        }
+        XCTAssertEqual(title, "还没有体验额度")
+        XCTAssertEqual(message, "还没有体验额度。请在设置里输入邀请码领取，或填写你自己的 API Key。")
     }
 
     func testTrialReceiptParsesTheProxyFields() {
@@ -223,7 +264,12 @@ final class TrialPolicyTests: XCTestCase {
         return "\(part(["alg": "none"])).\(part(payload)).sig"
     }
 
-    private func sampleTrial(balanceFen: Int?, source: String?, balanceMicroYuan: Int? = nil) -> TranslationRouteInput {
+    private func sampleTrial(
+        balanceFen: Int?,
+        source: String?,
+        balanceMicroYuan: Int? = nil,
+        inviteRedeemed: Bool = true
+    ) -> TranslationRouteInput {
         TranslationRouteInput(
             hasOwnAPIKey: false,
             baseURL: "https://api.openai.com/v1",
@@ -231,7 +277,8 @@ final class TrialPolicyTests: XCTestCase {
             proxyBaseURL: "https://proxy.example/v1",
             balanceFen: balanceFen,
             balanceMicroYuan: balanceMicroYuan,
-            sourceText: source
+            sourceText: source,
+            inviteRedeemed: inviteRedeemed
         )
     }
 }

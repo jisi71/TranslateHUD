@@ -339,7 +339,7 @@ struct TranslationPanel: View {
                 case .trial:
                     Text(trial.balanceTitle)
                     if trial.balanceState == .failed {
-                        Text("点设置里的「重新读取」")
+                        Text("点设置里余额旁的刷新")
                     }
                 case .ownKey:
                     Text(providerName)
@@ -427,7 +427,8 @@ struct TranslationPanel: View {
             proxyBaseURL: trial.effectiveProxyBaseURL,
             balanceFen: trial.balanceFen,
             balanceMicroYuan: trial.balanceMicroYuan,
-            sourceText: nil
+            sourceText: nil,
+            inviteRedeemed: trial.inviteRedeemed
         )
     }
 

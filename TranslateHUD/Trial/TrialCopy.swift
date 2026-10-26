@@ -13,7 +13,22 @@ enum TrialCopy {
     static let empty = "没有可翻译的文字，请重新选中文字或框选包含文字的区域。"
     static let bodyTooLong = "这次请求太长了，请缩短原文后再试。"
     static let sourceRequired = "体验翻译需要原文。请更新到最新版 TranslateHUD。"
-    static let store = "体验余额暂时读不出来。请在设置里点「重新读取」。"
+    static let store = "体验余额暂时读不出来。请在设置里点余额旁的刷新。"
+    static let concurrency = "同时进行的翻译太多了（同一账号最多 3 个）。请等当前翻译结束后再试。"
+    static let inviteRequired = "还没有体验额度。请在设置里输入邀请码领取，或填写你自己的 API Key。"
+    static let inviteClaimed = "这个账号已经领过体验额度。"
+
+    /// Bottom status after a successful redeem. The amount is the gift that was just credited.
+    static func inviteGranted(microYuan: Int) -> String {
+        "已领取 \(TrialPricing.yuanString(microYuan: microYuan)) 体验额度。"
+    }
+
+    static func isInviteGranted(_ message: String) -> Bool {
+        message.hasPrefix("已领取 ¥") && message.hasSuffix(" 体验额度。")
+    }
+    static let inviteInvalid = "邀请码不正确。"
+    static let inviteExhausted = "邀请码次数用尽"
+    static let inviteUnconfigured = "邀请码还没配置好。请稍后再试。"
     static let envMismatch = "当前 App 的云开发环境和登录时不一致。请重新登录。"
     static let needLogin = "请先用手机号登录，或在设置里填写你自己的 API Key。"
     static let needProxy = "体验服务地址还没有。请向我们索取地址，或改用你自己的 API Key。"

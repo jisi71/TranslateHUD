@@ -8,9 +8,12 @@
 // from upstream token usage in usageBilling.js.
 //
 // The ledger unit is the micro-yuan (微元, ¥0.000001). 1 fen = 10,000 micro-yuan.
-// The ¥2.00 gift is 2,000,000 micro-yuan. balanceFen on a record is only the
-// half-up display value. A document that still has balanceFen and no
-// balanceMicroYuan is an older fen ledger and is converted on read.
+// The ¥2.00 invite gift is 2,000,000 micro-yuan. It is not applied when the
+// account is first opened. balanceFen on a record is only the half-up display
+// value. A document that still has balanceFen and no balanceMicroYuan is an
+// older fen ledger and is converted on read. A document that already has
+// giftGranted (or omits it, which older gifts did) has already received ¥2
+// and cannot redeem an invite code.
 
 const MICRO_YUAN_PER_FEN = 10_000
 const GIFT_FEN = 200
@@ -28,7 +31,13 @@ const MESSAGES = {
   empty: '没有可翻译的文字，请重新选中文字或框选包含文字的区域。',
   body: '这次请求太长了，请缩短原文后再试。',
   source: '体验翻译需要原文。请更新到最新版 TranslateHUD。',
-  store: '体验余额暂时读不出来。请在设置里点「重新读取」。'
+  store: '体验余额暂时读不出来。请在设置里点余额旁的刷新。',
+  concurrency: '同时进行的翻译太多了（同一账号最多 3 个）。请等当前翻译结束后再试。',
+  inviteRequired: '还没有体验额度。请在设置里输入邀请码领取，或填写你自己的 API Key。',
+  inviteClaimed: '这个账号已经领过体验额度。',
+  inviteInvalid: '邀请码不正确。',
+  inviteExhausted: '邀请码次数用尽',
+  inviteUnconfigured: '邀请码还没配置好。请稍后再试。'
 }
 
 function graphemeLength(text) {
@@ -83,13 +92,110 @@ function microFromRecord(record) {
   return 0
 }
 
+function sanitizeSlots(slots) {
+  if (!Array.isArray(slots)) return []
+  const clean = []
+  for (const slot of slots) {
+    if (!slot || typeof slot !== 'object') continue
+    const id = String(slot.id || '').trim()
+    const until = Math.floor(Number(slot.until))
+    if (!id || !Number.isFinite(until)) continue
+    clean.push({ id, until })
+    if (clean.length >= 20) break
+  }
+  return clean
+}
+
+// Shown in the app instead of the CloudBase uid. 1 is "00001". Past 99999 the
+// text grows ("100000") and earlier numbers stay five digits. 0 means unassigned.
+function readDisplayNo(record) {
+  const n = Math.floor(Number(record && record.displayNo))
+  if (!Number.isSafeInteger(n) || n <= 0) return 0
+  return n
+}
+
+function formatDisplayId(displayNo) {
+  const n = Math.floor(Number(displayNo))
+  if (!Number.isSafeInteger(n) || n <= 0) return ''
+  const text = String(n)
+  return text.length >= 5 ? text : text.padStart(5, '0')
+}
+
+function readNextDisplayNo(counter) {
+  const n = Math.floor(Number(counter && counter.nextDisplayNo))
+  if (!Number.isSafeInteger(n) || n <= 0) return 1
+  return n
+}
+
+function withNextDisplayNo(counter, nextDisplayNo) {
+  const base = counter && typeof counter === 'object' ? { ...counter } : { redeemedCount: 0 }
+  base.nextDisplayNo = nextDisplayNo
+  if (!Number.isFinite(Number(base.redeemedCount))) base.redeemedCount = 0
+  return base
+}
+
+function compareAccountOrder(a, b) {
+  const createdA = Number(a.record && a.record.createdAt) || 0
+  const createdB = Number(b.record && b.record.createdAt) || 0
+  if (createdA !== createdB) return createdA - createdB
+  const uidA = String(a.uid)
+  const uidB = String(b.uid)
+  if (uidA < uidB) return -1
+  if (uidA > uidB) return 1
+  return 0
+}
+
+// Give each account without a displayNo the next integer. When several are
+// visible, earlier createdAt gets the smaller number. The account passed as
+// focusUid is always included, even if older accounts would fill the batch.
+// Already assigned numbers are never changed.
+const DISPLAY_BACKFILL_LIMIT = 20
+
+function assignDisplayNumbers(entries, counter, focusUid) {
+  const list = Array.isArray(entries) ? entries : []
+  let next = readNextDisplayNo(counter)
+  let maxAssigned = 0
+  for (const entry of list) {
+    const n = readDisplayNo(entry && entry.record)
+    if (n > maxAssigned) maxAssigned = n
+  }
+  if (next <= maxAssigned) next = maxAssigned + 1
+
+  let missing = list
+    .filter((entry) => entry && entry.uid != null && entry.record && readDisplayNo(entry.record) <= 0)
+    .map((entry) => ({ uid: String(entry.uid), record: normalizeRecord(entry.record) }))
+    .sort(compareAccountOrder)
+  if (missing.length > DISPLAY_BACKFILL_LIMIT) {
+    const focusKey = focusUid == null ? null : String(focusUid)
+    const focus = focusKey ? missing.filter((entry) => entry.uid === focusKey) : []
+    const others = missing
+      .filter((entry) => entry.uid !== focusKey)
+      .slice(0, DISPLAY_BACKFILL_LIMIT - focus.length)
+    missing = [...others, ...focus].sort(compareAccountOrder)
+  }
+
+  const updates = []
+  for (const entry of missing) {
+    const record = ledgerRecord(entry.record.balanceMicroYuan, { ...entry.record, displayNo: next })
+    updates.push({ uid: entry.uid, record })
+    next += 1
+  }
+  return { updates, counter: withNextDisplayNo(counter, next) }
+}
+
 function ledgerRecord(microYuan, record) {
-  const balanceMicroYuan = Math.max(0, Math.floor(microYuan))
+  const balanceMicroYuan = Math.max(0, Math.floor(Number(microYuan) || 0))
+  const redeemedAt = record && record.inviteRedeemedAt ? Math.floor(Number(record.inviteRedeemedAt) || 0) : 0
   return {
     balanceMicroYuan,
     balanceFen: displayFen(balanceMicroYuan),
+    // Missing giftGranted means an older auto-gift. Those accounts already
+    // received ¥2 and must not redeem again. New accounts set this to false.
     giftGranted: !record || record.giftGranted !== false,
-    createdAt: record && record.createdAt ? record.createdAt : 0
+    createdAt: record && record.createdAt ? record.createdAt : 0,
+    inviteRedeemedAt: redeemedAt > 0 ? redeemedAt : 0,
+    displayNo: readDisplayNo(record),
+    inflight: sanitizeSlots(record && record.inflight)
   }
 }
 
@@ -132,9 +238,22 @@ function settleCharge(record, costMicroYuan) {
 function openAccount(existing, now) {
   if (existing) return { record: normalizeRecord(existing), giftedNow: false }
   return {
-    giftedNow: true,
-    record: ledgerRecord(GIFT_MICRO_YUAN, { giftGranted: true, createdAt: now })
+    giftedNow: false,
+    record: ledgerRecord(0, { giftGranted: false, createdAt: now })
   }
+}
+
+// One successful invite per account. Legacy auto-gifts already have giftGranted.
+function grantInviteGift(record, now) {
+  const current = record ? normalizeRecord(record) : ledgerRecord(0, { giftGranted: false, createdAt: now })
+  if (current.giftGranted || current.inviteRedeemedAt > 0) return { ok: false, record: current }
+  const next = ledgerRecord(current.balanceMicroYuan + GIFT_MICRO_YUAN, {
+    ...current,
+    giftGranted: true,
+    inviteRedeemedAt: now,
+    createdAt: current.createdAt || now
+  })
+  return { ok: true, record: next }
 }
 
 function applyCharge(record, costMicroYuan) {
@@ -209,9 +328,14 @@ module.exports = {
   graphemeLength,
   quoteSource,
   openAccount,
+  grantInviteGift,
   applyCharge,
   credit,
   settleCharge,
   normalizeRecord,
-  decodeSourceHeader
+  decodeSourceHeader,
+  readDisplayNo,
+  formatDisplayId,
+  assignDisplayNumbers,
+  DISPLAY_BACKFILL_LIMIT
 }

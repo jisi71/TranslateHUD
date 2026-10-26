@@ -2,10 +2,39 @@ import Foundation
 
 struct TrialAccountSnapshot: Equatable, Sendable {
     var userId: String
+    /// Short account number shown in Settings, such as "00001". Empty until the server sends one.
+    var displayId: String
     var balanceMicroYuan: Int
     var giftedNow: Bool
+    var inviteRedeemed: Bool
+    /// Micro-yuan credited by this redeem. Zero when the call did not grant.
+    var giftMicroYuan: Int
 
     var balanceFen: Int { TrialPricing.displayFen(microYuan: balanceMicroYuan) }
+}
+
+enum TrialDisplayId {
+    /// At least five digits. 1 is "00001". 100000 stays "100000".
+    static func format(_ number: Int) -> String {
+        guard number > 0 else { return "" }
+        let text = String(number)
+        if text.count >= 5 { return text }
+        return String(repeating: "0", count: 5 - text.count) + text
+    }
+
+    static func parse(_ json: [String: Any]) -> String {
+        if let text = json["displayId"] as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, trimmed.allSatisfy(\.isNumber), let number = Int(trimmed), number > 0 {
+                return format(number)
+            }
+        }
+        if let number = json["displayNo"] as? Int, number > 0 { return format(number) }
+        if let number = json["displayNo"] as? NSNumber, number.intValue > 0 {
+            return format(number.intValue)
+        }
+        return ""
+    }
 }
 
 enum TrialProxyClient {
@@ -16,6 +45,16 @@ enum TrialProxyClient {
         }
         while components.path.hasSuffix("/") { components.path.removeLast() }
         components.path += "/trial/account"
+        return components.url
+    }
+
+    static func redeemURL(proxyBase: String) -> URL? {
+        guard TranslationRoute.isUsableProxy(proxyBase),
+              var components = URLComponents(string: proxyBase.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return nil
+        }
+        while components.path.hasSuffix("/") { components.path.removeLast() }
+        components.path += "/trial/redeem"
         return components.url
     }
 
@@ -51,8 +90,71 @@ enum TrialProxyClient {
         }
         let userId = (json["userId"] as? String) ?? ""
         let giftedNow = boolValue(json["giftedNow"])
-        return TrialAccountSnapshot(userId: userId, balanceMicroYuan: balance, giftedNow: giftedNow)
+        return TrialAccountSnapshot(
+            userId: userId,
+            displayId: TrialDisplayId.parse(json),
+            balanceMicroYuan: balance,
+            giftedNow: giftedNow,
+            inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow),
+            giftMicroYuan: giftAmount(json)
+        )
     }
+
+    static func redeem(
+        proxyBase: String,
+        accessToken: String,
+        code: String,
+        session: URLSession = .shared
+    ) async throws -> TrialAccountSnapshot {
+        guard let url = redeemURL(proxyBase: proxyBase) else {
+            throw TrialProxyError.message(TrialCopy.needProxy)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 20
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["code": code])
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw TrialProxyError.message("网络不通，邀请码暂时领不了。")
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        let body = String(data: data, encoding: .utf8) ?? ""
+        if let trial = ServiceErrorMessage.trialMessage(body), !(200..<300).contains(status) {
+            throw TrialProxyError.message(trial)
+        }
+        guard (200..<300).contains(status),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let balance = microBalance(json) else {
+            throw TrialProxyError.message("邀请码没有领到，请稍后再试。")
+        }
+        let userId = (json["userId"] as? String) ?? ""
+        let giftedNow = boolValue(json["giftedNow"])
+        return TrialAccountSnapshot(
+            userId: userId,
+            displayId: TrialDisplayId.parse(json),
+            balanceMicroYuan: balance,
+            giftedNow: giftedNow,
+            inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow),
+            giftMicroYuan: giftAmount(json)
+        )
+    }
+}
+
+private func inviteRedeemed(_ json: [String: Any], giftedNow: Bool) -> Bool {
+    if json["inviteRedeemed"] != nil { return boolValue(json["inviteRedeemed"]) }
+    if json["giftGranted"] != nil { return boolValue(json["giftGranted"]) }
+    return giftedNow
+}
+
+private func giftAmount(_ json: [String: Any]) -> Int {
+    if let micro = intValue(json["giftMicroYuan"]), micro > 0 { return micro }
+    if let fen = intValue(json["giftFen"]), fen > 0 { return fen * TrialPricing.microYuanPerFen }
+    return 0
 }
 
 private func microBalance(_ json: [String: Any]) -> Int? {

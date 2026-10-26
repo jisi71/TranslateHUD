@@ -4,12 +4,13 @@
 // From backend/: npm install && npm run ensure-collection
 // The running service also does this on the first balance read.
 
-const { ensureCollection, initApp } = require('../src/cloudBaseStore')
+const { COLLECTION, INVITE_COLLECTION, ensureCollection, initApp } = require('../src/cloudBaseStore')
 
 async function main() {
   const db = initApp().database()
-  await ensureCollection(db)
-  console.log('trial_accounts 已就绪')
+  await ensureCollection(db, COLLECTION)
+  await ensureCollection(db, INVITE_COLLECTION)
+  console.log('trial_accounts 和 trial_invite 已就绪')
 }
 
 main().catch((error) => {

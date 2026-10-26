@@ -214,7 +214,8 @@ enum TranslationSession {
             proxyBaseURL: trial.effectiveProxyBaseURL,
             balanceFen: trial.balanceFen,
             balanceMicroYuan: trial.balanceMicroYuan,
-            sourceText: sourceText
+            sourceText: sourceText,
+            inviteRedeemed: trial.inviteRedeemed
         )
     }
 }

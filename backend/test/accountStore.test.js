@@ -8,27 +8,32 @@ const path = require('path')
 const { FileAccountStore, MemoryAccountStore, TransactionalAccountStore } = require('../src/accountStore')
 const { GIFT_FEN, GIFT_MICRO_YUAN, MICRO_YUAN_PER_FEN } = require('../src/trialPolicy')
 
-test('memory store gifts once under concurrent ensure and keeps a zero balance', async () => {
+test('memory store does not gift on ensure and a concurrent redeem lands once', async () => {
   const store = new MemoryAccountStore()
   const results = await Promise.all([
     store.ensure('user-1', 10),
     store.ensure('user-1', 11),
     store.ensure('user-1', 12)
   ])
-  assert.equal(results.filter((item) => item.giftedNow).length, 1)
-  assert.equal(results.every((item) => item.record.balanceMicroYuan === GIFT_MICRO_YUAN), true)
-  assert.equal(results.every((item) => item.record.balanceFen === GIFT_FEN), true)
+  assert.equal(results.every((item) => item.giftedNow === false), true)
+  assert.equal(results.every((item) => item.record.balanceMicroYuan === 0), true)
+  assert.equal(results.every((item) => item.record.giftGranted === false), true)
 
-  await store.charge('user-1', GIFT_MICRO_YUAN)
+  const redeems = await Promise.all([
+    store.redeem('user-1', 'translatehud-200', 13, {}),
+    store.redeem('user-1', 'translatehud-200', 14, {})
+  ])
+  assert.equal(redeems.filter((item) => item.ok).length, 1)
   const again = await store.ensure('user-1', 20)
   assert.equal(again.giftedNow, false)
-  assert.equal(again.record.balanceMicroYuan, 0)
-  assert.equal(again.record.balanceFen, 0)
+  assert.equal(again.record.balanceMicroYuan, GIFT_MICRO_YUAN)
+  assert.equal(again.record.giftGranted, true)
+  assert.equal(store.invite.redeemedCount, 1)
 })
 
 test('memory store lets only one of two overlapping charges spend the same fen', async () => {
   const store = new MemoryAccountStore()
-  await store.ensure('user-2', 1)
+  await redeem(store, 'user-2')
   await store.charge('user-2', GIFT_MICRO_YUAN - 10 * MICRO_YUAN_PER_FEN)
   const results = await Promise.all([
     store.charge('user-2', 6 * MICRO_YUAN_PER_FEN),
@@ -44,7 +49,7 @@ test('memory store lets only one of two overlapping charges spend the same fen',
 
 test('settle deducts the given fen and a second settle cannot go negative', async () => {
   const store = new MemoryAccountStore()
-  await store.ensure('user-3', 1)
+  await redeem(store, 'user-3')
   const first = await store.settle('user-3', 50 * MICRO_YUAN_PER_FEN)
   assert.equal(first.chargedMicroYuan, 50 * MICRO_YUAN_PER_FEN)
   assert.equal(first.chargedFen, 50)
@@ -64,8 +69,7 @@ test('file store keeps the gift across a new process object', async () => {
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'translatehud-trial-'))
   const file = path.join(dir, 'accounts.json')
   const first = new FileAccountStore(file)
-  const gifted = await first.ensure('phone-user', 5)
-  assert.equal(gifted.giftedNow, true)
+  await redeem(first, 'phone-user', 5)
   await first.charge('phone-user', 30 * MICRO_YUAN_PER_FEN)
 
   const second = new FileAccountStore(file)
@@ -73,6 +77,9 @@ test('file store keeps the gift across a new process object', async () => {
   assert.equal(again.giftedNow, false)
   assert.equal(again.record.balanceMicroYuan, GIFT_MICRO_YUAN - 30 * MICRO_YUAN_PER_FEN)
   assert.equal(again.record.balanceFen, GIFT_FEN - 30)
+  const status = await second.inviteStatus({})
+  assert.equal(status.redeemedCount, 1)
+  assert.equal(status.code, 'translatehud-200')
 })
 
 test('a file written in fen is read as micro-yuan and is not treated as already micro-yuan', async () => {
@@ -88,25 +95,47 @@ test('a file written in fen is read as micro-yuan and is not treated as already 
   assert.equal(opened.record.balanceFen, 150)
 })
 
+function fingerprint(record) {
+  if (!record) return 'null'
+  return JSON.stringify({
+    balanceMicroYuan: record.balanceMicroYuan,
+    giftGranted: record.giftGranted !== false,
+    inflight: record.inflight || []
+  })
+}
+
 function createConflictDatabase() {
   const docs = new Map()
+  let invite = { redeemedCount: 0 }
   let tail = Promise.resolve()
   return {
     begin() {
       const writes = new Map()
       const seen = new Map()
+      let inviteWrite = null
+      let seenInvite = null
+      let seenNext = 1
       const tx = {
         async get(uid) {
           if (writes.has(uid)) return writes.get(uid)
           const current = docs.get(uid) || null
-          seen.set(uid, current ? current.balanceMicroYuan : null)
-          return current ? { ...current } : null
+          seen.set(uid, fingerprint(current))
+          return current ? { ...current, inflight: (current.inflight || []).map((slot) => ({ ...slot })) } : null
         },
         async create(uid, record) {
           writes.set(uid, { ...record, __create: true })
         },
         async save(uid, record) {
           writes.set(uid, { ...record, __replace: true, __seen: seen.get(uid) })
+        },
+        async getInvite() {
+          if (inviteWrite) return { ...inviteWrite }
+          seenInvite = invite.redeemedCount
+          seenNext = invite.nextDisplayNo || 1
+          return { ...invite, nextDisplayNo: invite.nextDisplayNo || 1 }
+        },
+        async saveInvite(doc) {
+          inviteWrite = { ...doc, __seen: seenInvite, __seenNext: seenNext }
         },
         commit() {
           const run = tail.then(() => {
@@ -117,21 +146,38 @@ function createConflictDatabase() {
                 error.code = 'CONFLICT'
                 throw error
               }
-              if (record.__replace) {
-                if (!current || current.balanceMicroYuan !== record.__seen) {
-                  const error = new Error('conflict')
-                  error.code = 'CONFLICT'
-                  throw error
-                }
+              if (record.__replace && fingerprint(current) !== record.__seen) {
+                const error = new Error('conflict')
+                error.code = 'CONFLICT'
+                throw error
               }
+            }
+            if (inviteWrite && (
+              invite.redeemedCount !== inviteWrite.__seen
+              || (invite.nextDisplayNo || 1) !== inviteWrite.__seenNext
+            )) {
+              const error = new Error('conflict')
+              error.code = 'CONFLICT'
+              throw error
             }
             for (const [uid, record] of writes) {
               docs.set(uid, {
                 balanceMicroYuan: record.balanceMicroYuan,
                 balanceFen: record.balanceFen,
                 giftGranted: record.giftGranted,
-                createdAt: record.createdAt
+                createdAt: record.createdAt,
+                inviteRedeemedAt: record.inviteRedeemedAt || 0,
+                displayNo: record.displayNo || 0,
+                inflight: record.inflight || []
               })
+            }
+            if (inviteWrite) {
+              invite = {
+                redeemedCount: inviteWrite.redeemedCount,
+                nextDisplayNo: inviteWrite.nextDisplayNo || 1,
+                ...(inviteWrite.maxRedeems ? { maxRedeems: inviteWrite.maxRedeems } : {}),
+                ...(inviteWrite.codes ? { codes: inviteWrite.codes } : {})
+              }
             }
           })
           tail = run.then(() => {}, () => {})
@@ -144,22 +190,28 @@ function createConflictDatabase() {
   }
 }
 
-test('transactional store retries a gift conflict and does not grant twice', async () => {
+async function redeem(store, uid, now = 1) {
+  const result = await store.redeem(uid, 'translatehud-200', now, {})
+  assert.equal(result.ok, true)
+  return result
+}
+
+test('transactional store retries a create conflict and does not open two gifts', async () => {
   const db = createConflictDatabase()
   const store = new TransactionalAccountStore(() => db.begin())
   const results = await Promise.all([
     store.ensure('user-3', 1),
     store.ensure('user-3', 2)
   ])
-  assert.equal(results.filter((item) => item.giftedNow).length, 1)
-  assert.equal(results.every((item) => item.record.balanceMicroYuan === GIFT_MICRO_YUAN), true)
-  assert.equal(results.every((item) => item.record.balanceFen === GIFT_FEN), true)
+  assert.equal(results.every((item) => item.giftedNow === false), true)
+  assert.equal(results.every((item) => item.record.balanceMicroYuan === 0), true)
+  assert.equal(results.every((item) => item.record.giftGranted === false), true)
 })
 
 test('transactional store retries a lost charge instead of double spending', async () => {
   const db = createConflictDatabase()
   const store = new TransactionalAccountStore(() => db.begin())
-  await store.ensure('user-4', 1)
+  await redeem(store, 'user-4')
   await store.charge('user-4', GIFT_MICRO_YUAN - 10 * MICRO_YUAN_PER_FEN)
   const results = await Promise.all([
     store.charge('user-4', 6 * MICRO_YUAN_PER_FEN),
@@ -174,7 +226,7 @@ test('transactional store retries a lost charge instead of double spending', asy
 test('transactional store does not let two calls spend the same sub-fen remainder', async () => {
   const db = createConflictDatabase()
   const store = new TransactionalAccountStore(() => db.begin())
-  await store.ensure('user-sub', 1)
+  await redeem(store, 'user-sub')
   await store.charge('user-sub', GIFT_MICRO_YUAN - 100)
   const results = await Promise.all([
     store.charge('user-sub', 80),
@@ -193,20 +245,24 @@ test('a scripted conflict on create reads the winner and does not gift again', a
     if (calls === 1) {
       return {
         async get() { return null },
+        async getInvite() { return { redeemedCount: 0 } },
         async create() {
           const error = new Error('write conflict')
           error.code = 'CONFLICT'
           throw error
         },
         async save() {},
+        async saveInvite() {},
         async commit() {},
         async rollback() {}
       }
     }
     return {
       async get() { return { balanceMicroYuan: 0, giftGranted: true, createdAt: 1 } },
+      async getInvite() { return { redeemedCount: 0, nextDisplayNo: 1 } },
       async create() { throw new Error('should not create') },
       async save() {},
+      async saveInvite() {},
       async commit() {},
       async rollback() {}
     }

@@ -49,7 +49,8 @@ private struct MenuBarMenu: View {
             proxyBaseURL: trial.effectiveProxyBaseURL,
             balanceFen: trial.balanceFen,
             balanceMicroYuan: trial.balanceMicroYuan,
-            sourceText: nil
+            sourceText: nil,
+            inviteRedeemed: trial.inviteRedeemed
         )
         switch TranslationRoute.endpoint(input) {
         case .trial:

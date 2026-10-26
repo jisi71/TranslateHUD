@@ -100,6 +100,12 @@ enum ServiceErrorMessage {
         case "trial_body_limit": return TrialCopy.bodyTooLong
         case "trial_source_required": return TrialCopy.sourceRequired
         case "trial_store": return TrialCopy.store
+        case "trial_concurrency": return TrialCopy.concurrency
+        case "trial_invite_required": return TrialCopy.inviteRequired
+        case "trial_invite_claimed": return TrialCopy.inviteClaimed
+        case "trial_invite_invalid": return TrialCopy.inviteInvalid
+        case "trial_invite_exhausted": return TrialCopy.inviteExhausted
+        case "trial_invite_unconfigured": return TrialCopy.inviteUnconfigured
         default: return nil
         }
     }

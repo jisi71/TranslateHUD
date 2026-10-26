@@ -7,18 +7,22 @@ final class TrialAccountStore: ObservableObject {
 
     @Published var phone = ""
     @Published var code = ""
+    @Published var inviteCode = ""
     @Published var statusMessage = ""
     @Published var isBusy = false
     @Published var codeCooldown = 0
     @Published private(set) var isLoggedIn = false
     @Published private(set) var maskedPhone = ""
     @Published private(set) var userId = ""
+    /// 设置里给用户看的短号，例如 00001。登录和扣费仍用 userId。
+    @Published private(set) var displayId = ""
     @Published private(set) var balanceMicroYuan: Int?
     /// Fen shown in the UI. Half-up from the micro-yuan ledger, display only.
     var balanceFen: Int? {
         balanceMicroYuan.map { TrialPricing.displayFen(microYuan: $0) }
     }
     @Published private(set) var balanceState: BalanceState = .idle
+    @Published private(set) var inviteRedeemed = false
 
     enum BalanceState: Equatable {
         case idle
@@ -130,9 +134,9 @@ final class TrialAccountStore: ObservableObject {
                 verificationId: verificationId,
                 isExistingUser: isExistingUser
             )
-            try persist(session)
-            maskedPhone = PhoneNumberCN.mask(pendingPhone)
-            try? SystemKeychain().set(maskedPhone, forKey: TrialKeychain.Account.phone)
+            let masked = PhoneNumberCN.mask(pendingPhone)
+            try persist(session, maskedPhone: masked)
+            maskedPhone = masked
             code = ""
             self.verificationId = nil
             AppLog.info("体验账号登录成功")
@@ -147,6 +151,53 @@ final class TrialAccountStore: ObservableObject {
 
     func logout() {
         logout(message: "已退出登录。")
+    }
+
+    func redeemInvite() async {
+        guard isLoggedIn, !isBusy else { return }
+        let entered = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !entered.isEmpty else {
+            statusMessage = "请输入邀请码。"
+            return
+        }
+        let proxy = effectiveProxyBaseURL
+        guard !proxy.isEmpty else {
+            statusMessage = TrialCopy.needProxy
+            return
+        }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let token = try await validAccessToken()
+            let snapshot = try await TrialProxyClient.redeem(
+                proxyBase: proxy,
+                accessToken: token,
+                code: entered
+            )
+            balanceMicroYuan = snapshot.balanceMicroYuan
+            balanceState = .loaded
+            inviteRedeemed = snapshot.inviteRedeemed
+            if !snapshot.userId.isEmpty { userId = snapshot.userId }
+            if !snapshot.displayId.isEmpty { displayId = snapshot.displayId }
+            if snapshot.inviteRedeemed {
+                inviteCode = ""
+                let granted = snapshot.giftMicroYuan > 0 ? snapshot.giftMicroYuan : TrialPricing.giftMicroYuan
+                statusMessage = TrialCopy.inviteGranted(microYuan: granted)
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            let text = (error as? LocalizedError)?.errorDescription ?? "邀请码没有领到，请稍后再试。"
+            if text == TrialCopy.authExpired || text == TrialCopy.envMismatch {
+                logout(message: text)
+                return
+            }
+            if text == TrialCopy.inviteClaimed {
+                inviteRedeemed = true
+                inviteCode = ""
+            }
+            statusMessage = text
+        }
     }
 
     func validAccessToken() async throws -> String {
@@ -198,8 +249,14 @@ final class TrialAccountStore: ObservableObject {
             balanceMicroYuan = snapshot.balanceMicroYuan
             balanceState = .loaded
             if !snapshot.userId.isEmpty { userId = snapshot.userId }
+            if !snapshot.displayId.isEmpty { displayId = snapshot.displayId }
+            inviteRedeemed = snapshot.inviteRedeemed
             if announceGift {
-                statusMessage = snapshot.giftedNow ? "已登录，已送上 ¥2.00 体验额度。" : "已登录。"
+                statusMessage = snapshot.inviteRedeemed
+                    ? "已登录。"
+                    : "已登录。在下面输入邀请码，可领取 ¥2.00 体验额度。"
+            } else if statusMessage == TrialCopy.inviteClaimed || TrialCopy.isInviteGranted(statusMessage) {
+                statusMessage = snapshot.inviteRedeemed ? statusMessage : ""
             } else {
                 statusMessage = ""
             }
@@ -217,11 +274,13 @@ final class TrialAccountStore: ObservableObject {
         }
     }
 
-    private func persist(_ session: CloudBaseSession) throws {
+    private func persist(_ session: CloudBaseSession, maskedPhone: String? = nil) throws {
+        let phone = maskedPhone ?? self.maskedPhone
         try TrialKeychain.write(
             accessToken: session.accessToken,
             refreshToken: session.refreshToken,
             userId: session.userId,
+            maskedPhone: phone,
             expiresAt: session.expiresAt,
             defaults: .standard,
             keychain: SystemKeychain()
@@ -238,10 +297,13 @@ final class TrialAccountStore: ObservableObject {
         accessToken = ""
         refreshToken = ""
         userId = ""
+        displayId = ""
         maskedPhone = ""
         expiresAt = .distantPast
         balanceMicroYuan = nil
         balanceState = .idle
+        inviteRedeemed = false
+        inviteCode = ""
         isLoggedIn = false
         verificationId = nil
         pendingPhone = ""

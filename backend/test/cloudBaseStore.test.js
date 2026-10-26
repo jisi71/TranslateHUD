@@ -7,6 +7,7 @@ const { GIFT_FEN, GIFT_MICRO_YUAN, MESSAGES } = require('../src/trialPolicy')
 
 function documentDatabase(options = {}) {
   const docs = new Map()
+  const inviteDocs = new Map()
   let exists = options.exists === true
   let createCalls = 0
   let gets = 0
@@ -28,7 +29,8 @@ function documentDatabase(options = {}) {
       }
       const staged = new Map()
       return {
-        collection() {
+        collection(name = 'trial_accounts') {
+          const table = name === 'trial_invite' ? inviteDocs : docs
           return {
             doc(uid) {
               return {
@@ -39,18 +41,18 @@ function documentDatabase(options = {}) {
                     error.code = 'DATABASE_COLLECTION_NOT_EXIST'
                     throw error
                   }
-                  if (!docs.has(uid)) return { data: {} }
-                  return { data: { ...docs.get(uid) } }
+                  if (!table.has(uid)) return { data: {} }
+                  return { data: { ...table.get(uid) } }
                 },
                 async set(record) {
-                  staged.set(uid, { ...record })
+                  staged.set(`${name}:${uid}`, { table, id: uid, record: { ...record } })
                 }
               }
             }
           }
         },
         async commit() {
-          for (const [uid, record] of staged) docs.set(uid, { ...record })
+          for (const entry of staged.values()) entry.table.set(entry.id, { ...entry.record })
         },
         async rollback() {}
       }
@@ -58,22 +60,23 @@ function documentDatabase(options = {}) {
   }
 }
 
-test('a fresh document database gets trial_accounts before the first gift', async () => {
+test('a fresh document database gets both collections before the first account', async () => {
   const db = documentDatabase()
   const store = createCloudBaseStore(db)
   const first = await store.ensure('user-1', 10)
-  assert.equal(first.giftedNow, true)
-  assert.equal(first.record.balanceMicroYuan, GIFT_MICRO_YUAN)
-  assert.equal(first.record.balanceFen, GIFT_FEN)
-  assert.equal(db.stats().createCalls, 1)
-  assert.equal(db.docs.get('user-1').balanceMicroYuan, GIFT_MICRO_YUAN)
-  assert.equal(db.docs.get('user-1').balanceFen, GIFT_FEN)
+  assert.equal(first.giftedNow, false)
+  assert.equal(first.record.balanceMicroYuan, 0)
+  assert.equal(first.record.balanceFen, 0)
+  assert.equal(first.record.giftGranted, false)
+  assert.equal(db.stats().createCalls, 2)
+  assert.equal(db.docs.get('user-1').balanceMicroYuan, 0)
+  assert.equal(db.docs.get('user-1').giftGranted, false)
 
   const second = await store.ensure('user-1', 11)
   assert.equal(second.giftedNow, false)
-  assert.equal(second.record.balanceMicroYuan, GIFT_MICRO_YUAN)
-  assert.equal(second.record.balanceFen, GIFT_FEN)
-  assert.equal(db.stats().createCalls, 1)
+  assert.equal(second.record.balanceMicroYuan, 0)
+  assert.equal(second.record.balanceFen, 0)
+  assert.equal(db.stats().createCalls, 2)
 })
 
 test('an existing collection is not an error and is not gifted twice', async () => {
@@ -83,11 +86,12 @@ test('an existing collection is not an error and is not gifted twice', async () 
   })
   const store = createCloudBaseStore(db)
   const opened = await store.ensure('user-2', 1)
-  assert.equal(opened.giftedNow, true)
+  assert.equal(opened.giftedNow, false)
+  assert.equal(opened.record.giftGranted, false)
   const again = await store.ensure('user-2', 2)
   assert.equal(again.giftedNow, false)
-  assert.equal(again.record.balanceMicroYuan, GIFT_MICRO_YUAN)
-  assert.equal(again.record.balanceFen, GIFT_FEN)
+  assert.equal(again.record.balanceMicroYuan, 0)
+  assert.equal(again.record.balanceFen, 0)
 })
 
 test('a collection permission failure stays a trial_store error and does not write', async () => {
@@ -105,12 +109,31 @@ test('a collection permission failure stays a trial_store error and does not wri
   assert.equal(db.docs.size, 0)
 })
 
-test('a missing collection seen during the first read is created and then gifted once', async () => {
+test('a missing collection seen during the first read is created and the account starts empty', async () => {
   const db = documentDatabase({ exists: true, failGets: 1 })
   const store = createCloudBaseStore(db)
   const opened = await store.ensure('user-4', 4)
-  assert.equal(opened.giftedNow, true)
-  assert.equal(opened.record.balanceMicroYuan, GIFT_MICRO_YUAN)
-  assert.equal(opened.record.balanceFen, GIFT_FEN)
-  assert.equal(db.docs.get('user-4').giftGranted, true)
+  assert.equal(opened.giftedNow, false)
+  assert.equal(opened.record.balanceMicroYuan, 0)
+  assert.equal(opened.record.balanceFen, 0)
+  assert.equal(db.docs.get('user-4').giftGranted, false)
+})
+
+test('a document that already has a gift cannot redeem a second one', async () => {
+  const db = documentDatabase({ exists: true })
+  db.docs.set('old', { balanceFen: 200, createdAt: 1 })
+  const store = createCloudBaseStore(db)
+  const legacy = await store.redeem('old', 'translatehud-200', 7, {})
+  assert.equal(legacy.ok, false)
+  assert.equal(legacy.code, 'trial_invite_claimed')
+  const fresh = await store.redeem('new-user', 'translatehud-200', 8, {})
+  assert.equal(fresh.ok, true)
+  assert.equal(fresh.record.balanceMicroYuan, GIFT_MICRO_YUAN)
+  const again = await store.redeem('new-user', 'translatehud-200', 9, {})
+  assert.equal(again.code, 'trial_invite_claimed')
+  const status = await store.inviteStatus({})
+  assert.equal(status.code, 'translatehud-200')
+  assert.equal(status.redeemedCount, 1)
+  assert.equal(status.remaining, 199)
+  assert.equal(status.exhausted, false)
 })

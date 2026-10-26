@@ -249,7 +249,8 @@ struct SettingsView: View {
     }
 }
 
-/// animate-ui RotateCw default: one 360° turn, 0.8s easeInOut, around the ring center.
+/// Lucide RotateCw around the ring center. While the balance read is in flight
+/// the icon turns one full circle every 0.8s. When the read ends it eases to upright and stops.
 enum RotateCwMotion {
     static let viewBox = 24.0
     static let anchorX = 12.0
@@ -260,8 +261,6 @@ enum RotateCwMotion {
     static let side = 16.0
     static let strokeWidthInViewBox = 2.0
 
-    static var animation: Animation { .easeInOut(duration: duration) }
-
     static func lineWidth(forSide side: Double) -> CGFloat {
         CGFloat(side / viewBox * strokeWidthInViewBox)
     }
@@ -270,19 +269,49 @@ enum RotateCwMotion {
     static func framePoint(viewBoxX: Double, viewBoxY: Double, side: Double) -> (x: Double, y: Double) {
         (viewBoxX / viewBox * side, viewBoxY / viewBox * side)
     }
+
+    /// Spin only for the real read. Hover never starts a lap.
+    static func shouldKeepTurning(loading: Bool) -> Bool { loading }
+
+    /// One full turn per `duration` while the read is in flight.
+    static func degrees(elapsed: Double) -> Double {
+        guard duration > 0 else { return fromDegrees }
+        return elapsed / duration * toDegrees
+    }
+
+    /// Next upright angle at or after `degrees` (a multiple of 360).
+    static func uprightTarget(from degrees: Double) -> Double {
+        let turn = toDegrees
+        guard turn > 0 else { return degrees }
+        let remainder = degrees.truncatingRemainder(dividingBy: turn)
+        let positive = remainder < 0 ? remainder + turn : remainder
+        if positive < 0.001 { return degrees - positive }
+        return degrees + (turn - positive)
+    }
+
+    /// How long to ease from the current angle to upright, at the same turn speed.
+    static func settleDuration(from degrees: Double) -> Double {
+        let turn = toDegrees
+        guard turn > 0 else { return 0 }
+        let left = uprightTarget(from: degrees) - degrees
+        return duration * max(0, left) / turn
+    }
+
+    static func isNaturalOrientation(_ degrees: Double) -> Bool {
+        let turn = abs(toDegrees) < 0.001 ? 1 : abs(toDegrees)
+        let remainder = abs(degrees.truncatingRemainder(dividingBy: turn))
+        return remainder < 0.001 || abs(remainder - turn) < 0.001
+    }
 }
 
 private struct TrialBalanceRefreshButton: View {
     var loading: Bool
     var action: () -> Void
 
-    @State private var turns = 0
+    @State private var angle = RotateCwMotion.fromDegrees
 
     var body: some View {
-        Button {
-            turns += 1
-            action()
-        } label: {
+        Button(action: action) {
             RotateCwShape()
                 .stroke(style: StrokeStyle(
                     lineWidth: RotateCwMotion.lineWidth(forSide: RotateCwMotion.side),
@@ -290,13 +319,29 @@ private struct TrialBalanceRefreshButton: View {
                     lineJoin: .round
                 ))
                 .frame(width: CGFloat(RotateCwMotion.side), height: CGFloat(RotateCwMotion.side))
-                .rotationEffect(.degrees(Double(turns) * RotateCwMotion.toDegrees), anchor: .center)
-                .animation(RotateCwMotion.animation, value: turns)
+                .rotationEffect(.degrees(angle), anchor: .center)
         }
         .buttonStyle(.borderless)
         .disabled(loading)
         .help("刷新体验余额")
         .accessibilityLabel("刷新体验余额")
+        .task(id: loading) {
+            guard RotateCwMotion.shouldKeepTurning(loading: loading) else {
+                let target = RotateCwMotion.uprightTarget(from: angle)
+                let distance = target - angle
+                if distance > 0.001 {
+                    withAnimation(.easeInOut(duration: RotateCwMotion.settleDuration(from: angle))) {
+                        angle = target
+                    }
+                }
+                return
+            }
+            let started = Date()
+            while !Task.isCancelled {
+                angle = RotateCwMotion.degrees(elapsed: Date().timeIntervalSince(started))
+                try? await Task.sleep(nanoseconds: 16_000_000)
+            }
+        }
     }
 }
 

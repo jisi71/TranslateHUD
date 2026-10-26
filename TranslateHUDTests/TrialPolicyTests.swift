@@ -37,6 +37,20 @@ final class TrialPolicyTests: XCTestCase {
         let center = RotateCwMotion.framePoint(viewBoxX: 12, viewBoxY: 12, side: 16)
         XCTAssertEqual(center.x, 8)
         XCTAssertEqual(center.y, 8)
+        XCTAssertTrue(RotateCwMotion.shouldKeepTurning(loading: true))
+        XCTAssertFalse(RotateCwMotion.shouldKeepTurning(loading: false))
+        XCTAssertEqual(RotateCwMotion.degrees(elapsed: 0), 0)
+        XCTAssertEqual(RotateCwMotion.degrees(elapsed: 0.8), 360)
+        XCTAssertEqual(RotateCwMotion.degrees(elapsed: 1.6), 720)
+        XCTAssertEqual(RotateCwMotion.uprightTarget(from: 0), 0)
+        XCTAssertEqual(RotateCwMotion.uprightTarget(from: 360), 360)
+        XCTAssertEqual(RotateCwMotion.uprightTarget(from: 90), 360)
+        XCTAssertEqual(RotateCwMotion.uprightTarget(from: 400), 720)
+        XCTAssertEqual(RotateCwMotion.settleDuration(from: 0), 0)
+        XCTAssertEqual(RotateCwMotion.settleDuration(from: 180), 0.4, accuracy: 0.0001)
+        XCTAssertTrue(RotateCwMotion.isNaturalOrientation(0))
+        XCTAssertTrue(RotateCwMotion.isNaturalOrientation(360))
+        XCTAssertFalse(RotateCwMotion.isNaturalOrientation(50))
     }
 
     func testPhoneNumbersUseCloudBaseFormat() {

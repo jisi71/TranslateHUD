@@ -248,6 +248,59 @@ main,
   opacity: 0.92;
 }
 
+.download-slot {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+.download-slot.is-invited .btn-glow,
+.download-slot.is-invited > .button {
+  display: none;
+}
+
+.invite-panel {
+  display: none;
+  box-sizing: border-box;
+  max-width: min(100%, 34rem);
+  padding: 14px 18px;
+  border-radius: 18px;
+  background: #fff;
+  text-align: left;
+  box-shadow: 0 16px 40px rgba(29, 29, 29, 0.08);
+}
+
+.download-slot.is-invited .invite-panel {
+  display: block;
+}
+
+.invite-line,
+.invite-remaining {
+  margin: 0;
+}
+
+.invite-line {
+  color: #1d1d1d;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.invite-remaining {
+  margin-top: 4px;
+  color: var(--muted-warm);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.cta-row .invite-panel {
+  padding: 16px 22px;
+}
+
+.cta-row .invite-line {
+  font-size: 16px;
+}
+
 .hero {
   padding: 72px 0 28px;
   text-align: center;

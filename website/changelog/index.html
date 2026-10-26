@@ -42,11 +42,13 @@
           <button type="button" data-set-lang="zh" aria-pressed="true">中文</button>
           <button type="button" data-set-lang="en" aria-pressed="false">English</button>
         </div>
-        <span class="btn-glow">
-          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
-            <span class="lang-zh">下载</span>
-            <span class="lang-en">Download</span>
-          </a>
+        <span class="download-slot" data-download-slot>
+          <span class="btn-glow">
+            <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+              <span class="lang-zh">下载</span>
+              <span class="lang-en">Download</span>
+            </a>
+          </span>
         </span>
       </div>
     </div>
@@ -188,10 +190,12 @@
           </figcaption>
         </figure>
         <p class="release-actions">
-          <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
-            <span class="lang-zh">下载 v0.3.1</span>
-            <span class="lang-en">Download v0.3.1</span>
-          </a>
+          <span class="download-slot" data-download-slot>
+            <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+              <span class="lang-zh">下载 v0.3.1</span>
+              <span class="lang-en">Download v0.3.1</span>
+            </a>
+          </span>
           <a href="https://github.com/jisi71/TranslateHUD/releases/tag/v0.3.1">
             <span class="lang-zh">GitHub 上的原文</span>
             <span class="lang-en">Original note on GitHub</span>
@@ -449,11 +453,13 @@
         <img src="../assets/icon.png" width="512" height="512" alt="" aria-hidden="true">
         TranslateHUD
       </a>
-      <span class="btn-glow">
-        <a class="button" href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
-          <span class="lang-zh">下载 macOS 版</span>
-          <span class="lang-en">Download for macOS</span>
-        </a>
+      <span class="download-slot" data-download-slot>
+        <span class="btn-glow">
+          <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip">
+            <span class="lang-zh">下载 macOS 版</span>
+            <span class="lang-en">Download for macOS</span>
+          </a>
+        </span>
       </span>
       <a href="../index.html">
         <span class="lang-zh">回到首页</span>
@@ -464,5 +470,6 @@
     </div>
   </footer>
   <script src="../js/lang.js"></script>
+  <script src="../js/download.js"></script>
 </body>
 </html>

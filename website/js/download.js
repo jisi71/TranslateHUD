@@ -76,9 +76,8 @@
       copyButtonMarkup() +
       "</div>" +
       '<p class="invite-note">' +
-      '<span class="lang-zh">新用户输入的2元使用额度 剩余可兑换次数：</span>' +
-      '<span class="lang-en">New users enter the code for ¥2 credit. Remaining redemptions: </span>' +
-      '<span data-invite-remaining>' + countText() + "</span>" +
+      '<span class="lang-zh"><span class="invite-note-lead">新用户输入邀请码获得2元体验额度</span><span class="invite-note-count">剩余可兑换次数：<span data-invite-remaining>' + countText() + "</span></span></span>" +
+      '<span class="lang-en"><span class="invite-note-lead">New users enter the invite code for ¥2 trial credit</span><span class="invite-note-count">Remaining redemptions: <span data-invite-remaining>' + countText() + "</span></span></span>" +
       "</p>" +
       "</div>"
     );

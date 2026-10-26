@@ -261,7 +261,6 @@ main,
 
 .invite-panel {
   display: none;
-  position: relative;
   box-sizing: border-box;
   width: max-content;
   max-width: 100%;
@@ -341,6 +340,16 @@ main,
   text-align: center;
 }
 
+.invite-note .lang-zh,
+.invite-note .lang-en {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35em 1.75em;
+  max-width: 100%;
+}
+
 .hero {
   padding: 72px 0 28px;
   text-align: center;
@@ -380,6 +389,10 @@ main,
   align-items: center;
   gap: 16px 20px;
   margin-top: 32px;
+}
+
+.hero .cta-row {
+  position: relative;
 }
 
 .fine {

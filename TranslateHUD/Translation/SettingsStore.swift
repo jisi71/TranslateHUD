@@ -87,7 +87,7 @@ final class SettingsStore: ObservableObject {
            let lang = TargetLanguage(rawValue: raw) {
             targetLanguage = lang
         } else {
-            targetLanguage = .chinese   // 默认简体中文；当输入也是中文时会被 TargetLanguage.resolved(...) 反向切到英语
+            targetLanguage = .chinese   // 默认简体中文。目标是中文或英文时，原文是哪一种就译成另一种。
         }
         suppressPersist = false
     }

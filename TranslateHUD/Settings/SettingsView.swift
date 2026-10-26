@@ -51,6 +51,7 @@ struct SettingsView: View {
                         .buttonStyle(.bordered)
                 }
             }
+            .panelSectionFill()
 
             Section("目标语言") {
                 Picker("翻译为", selection: $store.targetLanguage) {
@@ -60,8 +61,9 @@ struct SettingsView: View {
                 }
                 Text("中文和英文会自动对调。")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(PanelPalette.muted)
             }
+            .panelSectionFill()
 
             Section("朗读") {
                 Picker("中文声音", selection: $store.chineseVoiceIdentifier) {
@@ -82,10 +84,10 @@ struct SettingsView: View {
 
                 LabeledContent("语速") {
                     HStack(spacing: 8) {
-                        Text("慢").font(.caption).foregroundStyle(.secondary)
+                        Text("慢").font(.caption).foregroundStyle(PanelPalette.muted)
                         Slider(value: $store.speechRate, in: 0.35...0.55, step: 0.01)
                             .frame(width: 180)
-                        Text("快").font(.caption).foregroundStyle(.secondary)
+                        Text("快").font(.caption).foregroundStyle(PanelPalette.muted)
                     }
                 }
 
@@ -108,6 +110,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            .panelSectionFill()
 
             Section("测试连接") {
                 HStack {
@@ -120,10 +123,11 @@ struct SettingsView: View {
                 if let message = store.validationMessage {
                     Text(message)
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(PanelPalette.warning)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .panelSectionFill()
 
             Section("快捷键") {
                 LabeledContent("截图翻译") {
@@ -133,13 +137,17 @@ struct SettingsView: View {
                     KeyboardShortcuts.Recorder(for: .triggerSelection)
                 }
             }
+            .panelSectionFill()
 
             Section {
                 NavigationLink("帮助", value: SettingsRoute.help)
             }
+            .panelSectionFill()
         }
         .formStyle(.grouped)
+        .panelChrome()
         }
+        .panelChrome()
         .navigationTitle("TranslateHUD 设置")
         .navigationDestination(for: SettingsRoute.self) { route in
             settingsDestination(route)
@@ -150,6 +158,7 @@ struct SettingsView: View {
             syncPresetPicker()
         }
         }
+        .panelChrome()
         .frame(width: 560, height: 720)
     }
 
@@ -178,21 +187,23 @@ struct SettingsView: View {
     private var loginConsent: some View {
         HStack(spacing: 4) {
             Text("登录即表示已阅读")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(PanelPalette.muted)
             Button {
                 path.append(SettingsRoute.agreement)
             } label: {
                 Text("用户协议").underline()
             }
             .buttonStyle(.borderless)
+            .foregroundStyle(PanelPalette.primaryText)
             Text("和")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(PanelPalette.muted)
             Button {
                 path.append(SettingsRoute.privacy)
             } label: {
                 Text("隐私政策").underline()
             }
             .buttonStyle(.borderless)
+            .foregroundStyle(PanelPalette.primaryText)
         }
         .font(.caption)
         .controlSize(.small)
@@ -242,7 +253,7 @@ struct SettingsView: View {
                         .textFieldStyle(.roundedBorder)
                     Text("每个账号只能领取一次。")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(PanelPalette.muted)
                     Button(trial.isBusy ? "正在领取…" : "领取 ¥2 体验额度") {
                         Task { await trial.redeemInvite() }
                     }
@@ -270,10 +281,11 @@ struct SettingsView: View {
             if !trial.statusMessage.isEmpty {
                 Text(trial.statusMessage)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(PanelPalette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .panelSectionFill()
     }
 
     private var testDisabled: Bool {
@@ -299,7 +311,7 @@ struct SettingsView: View {
                 .font(.callout)
         case .fail(let msg):
             Label(msg, systemImage: "xmark.octagon.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(PanelPalette.error)
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
                 .help(msg)

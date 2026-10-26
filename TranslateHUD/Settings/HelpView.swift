@@ -40,6 +40,7 @@ struct SettingsBackContainer<Content: View>: View {
                 Label(title, systemImage: "chevron.backward")
             }
             .buttonStyle(.borderless)
+            .foregroundStyle(PanelPalette.primaryText)
             .help("返回\(title)")
             .accessibilityLabel("返回\(title)")
             .padding(.leading, 16)
@@ -48,6 +49,8 @@ struct SettingsBackContainer<Content: View>: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .panelChrome()
         .navigationBarBackButtonHidden(true)
     }
 }
@@ -60,8 +63,10 @@ struct HelpView: View {
                 NavigationLink("用户协议", value: SettingsRoute.agreement)
                 NavigationLink("隐私政策", value: SettingsRoute.privacy)
             }
+            .panelSectionFill()
         }
         .formStyle(.grouped)
+        .panelChrome()
         .navigationTitle("帮助")
     }
 }

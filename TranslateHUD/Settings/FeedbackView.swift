@@ -19,12 +19,15 @@ struct FeedbackView: View {
                     .textFieldStyle(.roundedBorder)
                 TextEditor(text: $bodyText)
                     .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .foregroundStyle(PanelPalette.primaryText)
                     .frame(height: 72)
                     .fixedSize(horizontal: false, vertical: true)
+                    .panelFieldSurface()
                     .overlay(alignment: .topLeading) {
                         if bodyText.isEmpty {
                             Text("问题描述")
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(PanelPalette.muted)
                                 .padding(.top, 8)
                                 .padding(.leading, 5)
                                 .allowsHitTesting(false)
@@ -43,6 +46,7 @@ struct FeedbackView: View {
                         Spacer(minLength: 8)
                         Button("移除") { remove(item.id) }
                             .buttonStyle(.borderless)
+                            .foregroundStyle(PanelPalette.primaryText)
                             .disabled(submitting)
                     }
                 }
@@ -51,7 +55,7 @@ struct FeedbackView: View {
                         .disabled(submitting || attachments.count >= FeedbackLimits.maxImages)
                     Text("可不加，最多 4 张")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(PanelPalette.muted)
                     Spacer()
                     Button(submitting ? "正在提交…" : "提交") {
                         Task { await submit() }
@@ -61,17 +65,19 @@ struct FeedbackView: View {
                 if !trial.isLoggedIn {
                     Text(FeedbackCopy.needLogin)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(PanelPalette.muted)
                 }
                 if !statusText.isEmpty {
                     Text(statusText)
                         .font(.caption)
-                        .foregroundStyle(succeeded ? Color.green : Color.red)
+                        .foregroundStyle(succeeded ? Color.green : PanelPalette.error)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .panelSectionFill()
         }
         .formStyle(.grouped)
+        .panelChrome()
         .disabled(submitting)
         .fileImporter(
             isPresented: $picking,

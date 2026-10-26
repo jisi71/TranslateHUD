@@ -28,7 +28,10 @@ final class SettingsWindowController {
     }
 
     private func makeWindow() -> SettingsWindow {
-        let hosting = NSHostingController(rootView: SettingsView())
+        let hosting = SettingsHostingController(rootView: SettingsView())
+        hosting.view.appearance = NSAppearance(named: .darkAqua)
+        hosting.view.wantsLayer = true
+        hosting.view.layer?.backgroundColor = PanelPalette.nsBackground.cgColor
         let win = SettingsWindow(contentViewController: hosting)
         win.title = "TranslateHUD 设置"
         win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
@@ -36,7 +39,25 @@ final class SettingsWindowController {
         win.minSize = NSSize(width: 520, height: 480)
         win.center()
         win.isReleasedWhenClosed = false
+        SettingsWindowChrome.apply(to: win)
         return win
+    }
+}
+
+/// SwiftUI 画完之后，把系统控件的底色收到浮窗那套深色上。
+final class SettingsHostingController: NSHostingController<SettingsView> {
+    private var paintScheduled = false
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        SettingsPanelSurface.apply(to: view)
+        guard !paintScheduled else { return }
+        paintScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.paintScheduled = false
+            SettingsPanelSurface.apply(to: self.view)
+        }
     }
 }
 
@@ -78,6 +99,7 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
+        SettingsWindowChrome.apply(to: self)
         clearUnapprovedTextFocus()
     }
 

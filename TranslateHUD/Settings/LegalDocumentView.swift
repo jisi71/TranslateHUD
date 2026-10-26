@@ -8,11 +8,13 @@ struct LegalDocumentView: View {
         ScrollView {
             Text(LegalDocument.load(resource: resource))
                 .font(.body)
+                .foregroundStyle(PanelPalette.primaryText)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(24)
                 .textSelection(.enabled)
         }
+        .panelChrome()
         .navigationTitle(title)
     }
 }

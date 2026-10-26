@@ -78,6 +78,46 @@ final class SettingsUXTests: XCTestCase {
         }
     }
 
+    func testSettingsUsesTheTranslationPanelPalette() {
+        XCTAssertEqual(PanelPalette.backgroundWhite, 0.085, accuracy: 0.000_001)
+        XCTAssertEqual(PanelPalette.primaryWhite, 0.94, accuracy: 0.000_001)
+        XCTAssertEqual(PanelPalette.mutedWhite, 0.63, accuracy: 0.000_001)
+        XCTAssertEqual(PanelPalette.borderWhite, 0.18, accuracy: 0.000_001)
+        XCTAssertEqual(PanelPalette.controlBorderWhite, 0.25, accuracy: 0.000_001)
+        XCTAssertEqual(PanelPalette.chipWhite, 0.04, accuracy: 0.000_001)
+        XCTAssertEqual(PanelPalette.quietWellWhite, 0.02, accuracy: 0.000_001)
+        XCTAssertEqual(PanelPalette.errorRed, 0.95, accuracy: 0.000_001)
+        XCTAssertEqual(PanelPalette.errorGreen, 0.5, accuracy: 0.000_001)
+        XCTAssertEqual(PanelPalette.errorBlue, 0.46, accuracy: 0.000_001)
+        XCTAssertEqual(PanelPalette.cardWhite, PanelPalette.compositedWhite(PanelPalette.chipWhite), accuracy: 0.000_001)
+        XCTAssertEqual(PanelPalette.fieldWhite, PanelPalette.compositedWhite(PanelPalette.quietWellWhite), accuracy: 0.000_001)
+        XCTAssertEqual(SettingsPanelSurface.luma(of: PanelPalette.nsBackground) ?? -1, PanelPalette.backgroundWhite, accuracy: 0.01)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: true
+        )
+        SettingsWindowChrome.apply(to: window)
+        XCTAssertEqual(window.appearance?.name, .darkAqua)
+        XCTAssertTrue(window.titlebarAppearsTransparent)
+        XCTAssertEqual(window.titlebarSeparatorStyle, .none)
+        XCTAssertEqual(
+            SettingsPanelSurface.luma(of: window.backgroundColor) ?? -1,
+            PanelPalette.backgroundWhite,
+            accuracy: 0.01
+        )
+        XCTAssertTrue(SettingsPanelSurface.sectionNeedsFill(luma: 0.95))
+        XCTAssertTrue(SettingsPanelSurface.sectionNeedsFill(luma: 0.2))
+        XCTAssertFalse(SettingsPanelSurface.sectionNeedsFill(luma: PanelPalette.cardWhite))
+        XCTAssertFalse(SettingsPanelSurface.sectionNeedsFill(luma: PanelPalette.backgroundWhite))
+        XCTAssertTrue(SettingsPanelSurface.fieldNeedsFill(luma: 1))
+        XCTAssertFalse(SettingsPanelSurface.fieldNeedsFill(luma: PanelPalette.fieldWhite))
+        XCTAssertTrue(SettingsPanelSurface.textNeedsLightForeground(luma: 0))
+        XCTAssertFalse(SettingsPanelSurface.textNeedsLightForeground(luma: PanelPalette.primaryWhite))
+    }
+
     func testTextFieldsAreTheRespondersThatCanStealFocus() {
         XCTAssertTrue(SettingsWindow.isTextInput(NSTextField()))
         XCTAssertTrue(SettingsWindow.isTextInput(NSSecureTextField()))

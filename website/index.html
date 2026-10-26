@@ -67,8 +67,8 @@
           <span class="lang-en">On-screen text, translated beside it.</span>
         </h1>
         <p class="lede">
-          <span class="lang-zh">选中一段文字，或框选一块屏幕，按 Option+W。译文在浮窗里边生成边出现。接口用你自己的，Key 存在钥匙串里。</span>
-          <span class="lang-en">Select a passage or drag a region of the screen, then press Option+W. The translation streams into a floating panel. You bring an OpenAI-compatible API, and the key stays in the Keychain.</span>
+          <span class="lang-zh">选中一段文字，或框选一块屏幕，按 Option+W。译文在浮窗里边生成边出现。</span>
+          <span class="lang-en">Select a passage or drag a region of the screen, then press Option+W. The translation streams into a floating panel.</span>
         </p>
         <div class="cta-row">
           <span class="download-slot" data-download-slot data-invite-host>
@@ -84,10 +84,6 @@
             <span class="lang-en">Release notes</span>
           </a>
         </div>
-        <p class="fine">
-          <span class="lang-zh">当前安装包是 v0.3.1，同时包含 Apple 芯片与 Intel 架构，ad-hoc 签名，尚未公证。v0.3.2 的公证包还没有发布。</span>
-          <span class="lang-en">The current package is v0.3.1. It includes both Apple silicon and Intel, is ad-hoc signed, and is not notarized. The notarized v0.3.2 package is not published.</span>
-        </p>
       </section>
 
       <!--
@@ -115,22 +111,7 @@
         </div>
       </figure>
 
-      <section class="section" id="features" aria-labelledby="features-title">
-        <div class="section-head">
-          <p class="kicker" id="features-title">
-            <span class="lang-zh">当前安装包里有的</span>
-            <span class="lang-en">In the current package</span>
-          </p>
-          <h2>
-            <span class="lang-zh">五件已经能用的事</span>
-            <span class="lang-en">Five things that work today</span>
-          </h2>
-          <p class="section-intro">
-            <span class="lang-zh">下面写的都在说明文档里，并且包含在已发布的 v0.3.1 里。浮窗随内容变高、把前后文交给模型当翻译参考，是 v0.3.2 草案，还不能下载。</span>
-            <span class="lang-en">Everything below is documented and included in the published v0.3.1 build. Panels that grow with their content, and sending surrounding text to the model as translation context, are in the v0.3.2 draft. That build cannot be downloaded yet.</span>
-          </p>
-        </div>
-
+      <section class="section" id="features">
         <article class="feature">
           <div class="feature-text">
             <p class="tag"><span class="lang-zh">选区</span><span class="lang-en">Selection</span></p>
@@ -245,10 +226,6 @@
               <span class="lang-zh">边生成，边出现</span>
               <span class="lang-en">It arrives as it is written</span>
             </h2>
-            <p>
-              <span class="lang-zh">译文写进浮窗时就可以取消或重试。连续 45 秒没有新字，或总时长超过 120 秒，会超时。</span>
-              <span class="lang-en">Cancel or retry while the translation is still arriving. It times out after 45 seconds with no new text, or 120 seconds in total.</span>
-            </p>
           </div>
           <figure class="feature-stage stage-lake">
             <img
@@ -256,9 +233,9 @@
               src="assets/translation-panel.png"
               width="1000"
               height="654"
-              alt="深色翻译浮窗。译文写在右侧，生成过程中可以取消或重试。"
-              data-alt-zh="深色翻译浮窗。译文写在右侧，生成过程中可以取消或重试。"
-              data-alt-en="The dark translation panel. The translation is written on the right, and you can cancel or retry while it arrives.">
+              alt="深色翻译浮窗。译文写在右侧。"
+              data-alt-zh="深色翻译浮窗。译文写在右侧。"
+              data-alt-en="The dark translation panel. The translation is written on the right.">
           </figure>
         </article>
 
@@ -290,12 +267,12 @@
           <div class="feature-text">
             <p class="tag"><span class="lang-zh">名词</span><span class="lang-en">Terms</span></p>
             <h2>
-              <span class="lang-zh">展开之后才解释</span>
-              <span class="lang-en">Notes only after you expand</span>
+              <span class="lang-zh">自动找出，点开解释</span>
+              <span class="lang-en">Found first, explained on click</span>
             </h2>
             <p>
-              <span class="lang-zh">展开「名词解释」后才单独请求。最多用中文说明 5 个专名、缩写或术语。</span>
-              <span class="lang-en">A separate request starts only after you expand Term notes. It explains at most five proper nouns, abbreviations, or terms, in Chinese.</span>
+              <span class="lang-zh">自动分析文中需要解释的词；点击后，把文中不好理解的名字、缩写拿出来解释，方便用户理解。</span>
+              <span class="lang-en">It picks out words in the passage that need an explanation. After you click, it explains the names and abbreviations that are hard to follow.</span>
             </p>
           </div>
           <figure class="feature-stage stage-frost">
@@ -304,22 +281,18 @@
               src="assets/translation-panel.png"
               width="1000"
               height="654"
-              alt="深色翻译浮窗，原文与译文并排。名词解释要展开后才会另外请求。"
-              data-alt-zh="深色翻译浮窗，原文与译文并排。名词解释要展开后才会另外请求。"
-              data-alt-en="The dark translation panel, with source and translation side by side. Term notes are a separate request after you expand them.">
+              alt="深色翻译浮窗，原文与译文并排。"
+              data-alt-zh="深色翻译浮窗，原文与译文并排。"
+              data-alt-en="The dark translation panel, with source and translation side by side.">
           </figure>
         </article>
       </section>
 
       <section class="section" id="permissions" aria-labelledby="permissions-title">
         <div class="section-head">
-          <p class="kicker" id="permissions-title">
-            <span class="lang-zh">权限</span>
-            <span class="lang-en">Permissions</span>
-          </p>
-          <h2>
-            <span class="lang-zh">两项都要手动打开</span>
-            <span class="lang-en">Both switches are manual</span>
+          <h2 id="permissions-title">
+            <span class="lang-zh">必要权限</span>
+            <span class="lang-en">Required permissions</span>
           </h2>
         </div>
         <div class="split">
@@ -354,8 +327,8 @@
               data-alt-zh="应用内的屏幕录制权限说明，提示到系统设置的隐私与安全性中打开屏幕录制，并在授权后重新启动。"
               data-alt-en="The in-app screen-recording message. It says to enable Screen Recording under Privacy &amp; Security, then relaunch after granting access.">
             <figcaption>
-              <span class="lang-zh">应用里的真实提示，说明的是屏幕录制。辅助功能会另外提示。</span>
-              <span class="lang-en">A real in-app message, for Screen Recording. Accessibility has its own prompt.</span>
+              <span class="lang-zh">这是应用里的提示，不是「系统设置」的界面。屏幕录制那一页还需要一张真实的系统设置截图。</span>
+              <span class="lang-en">This is an in-app prompt, not System Settings. A real screenshot of the Screen Recording page is still needed.</span>
             </figcaption>
           </figure>
         </div>

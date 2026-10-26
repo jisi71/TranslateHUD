@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct LegalDocumentView: View {
+    @Environment(\.panelColors) private var colors
     var title: String
     var resource: String
 
@@ -8,7 +9,7 @@ struct LegalDocumentView: View {
         ScrollView {
             Text(LegalDocument.load(resource: resource))
                 .font(.body)
-                .foregroundStyle(PanelPalette.primaryText)
+                .foregroundStyle(colors.primaryText)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(24)

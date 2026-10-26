@@ -10,6 +10,8 @@ struct TranslationPanel: View {
     @ObservedObject var speech: SpeechController
     @ObservedObject private var settings = SettingsStore.shared
     @ObservedObject private var trial = TrialAccountStore.shared
+    @ObservedObject private var appearance = PanelAppearance.shared
+    @Environment(\.colorScheme) private var systemScheme
     var heightBudget: PanelHeightBudget = PopoverContent.heightBudget(visibleHeight: 2_000)
     var onClose: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
@@ -21,9 +23,10 @@ struct TranslationPanel: View {
     @State private var showsContext = false
     @State private var hasCopied = false
 
-    private let background = PanelPalette.background
-    private let muted = PanelPalette.muted
-    private let border = PanelPalette.border
+    private var colors: PanelColors {
+        _ = appearance.changeID
+        return PanelColors.resolve(preference: settings.appearancePreference, systemScheme: systemScheme)
+    }
 
     private var translated: String {
         switch progress.state {
@@ -59,11 +62,14 @@ struct TranslationPanel: View {
             footer
         }
         .fixedSize(horizontal: false, vertical: true)
-        .foregroundStyle(PanelPalette.primaryText)
-        .background(background)
+        .foregroundStyle(colors.primaryText)
+        .background(colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(border, lineWidth: 1))
-        .environment(\.colorScheme, .dark)
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(colors.border, lineWidth: 1))
+        .environment(\.panelColors, colors)
+        .preferredColorScheme(settings.appearancePreference == .system ? nil : colors.colorScheme)
+        .environment(\.colorScheme, colors.colorScheme)
+        .background(PanelWindowAppearanceAnchor(scheme: colors.scheme, followsSystem: settings.appearancePreference == .system))
         .onChange(of: layoutSignature) { _, _ in onLayoutChange() }
         .task(id: hasCopied) {
             guard hasCopied else { return }
@@ -172,7 +178,7 @@ struct TranslationPanel: View {
         let label = Text(sourceBody)
             .font(.system(size: 14))
             .lineSpacing(4)
-            .foregroundStyle(muted)
+            .foregroundStyle(colors.muted)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -226,7 +232,7 @@ struct TranslationPanel: View {
         HeightFitting {
             TermExplanationView(progress: termProgress)
                 .padding(12)
-                .background(PanelPalette.well, in: RoundedRectangle(cornerRadius: 8))
+                .background(colors.well, in: RoundedRectangle(cornerRadius: 8))
         }
         .panelSectionRole(.extra)
     }
@@ -240,7 +246,7 @@ struct TranslationPanel: View {
         HStack(spacing: 10) {
             Image(systemName: "character.bubble")
                 .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(muted)
+                .foregroundStyle(colors.muted)
             Text("Translation")
                 .font(.system(size: 17, weight: .semibold))
             Spacer(minLength: 10)
@@ -264,7 +270,7 @@ struct TranslationPanel: View {
                     Image(systemName: "chevron.down").font(.system(size: 10, weight: .medium))
                 }
                 .font(.system(size: 13))
-                .foregroundStyle(muted)
+                .foregroundStyle(colors.muted)
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
@@ -309,8 +315,8 @@ struct TranslationPanel: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PanelPalette.quietWell, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(border, lineWidth: 1))
+        .background(colors.quietWell, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(colors.border, lineWidth: 1))
         .accessibilityElement(children: .combine)
     }
 
@@ -357,8 +363,8 @@ struct TranslationPanel: View {
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 30)
-                .background(PanelPalette.chip, in: RoundedRectangle(cornerRadius: 7))
-                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(PanelPalette.controlBorder, lineWidth: 1))
+                .background(colors.chip, in: RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(colors.controlBorder, lineWidth: 1))
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
@@ -384,7 +390,7 @@ struct TranslationPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(image == nil ? "原文上下文" : "原始截图")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(muted)
+                .foregroundStyle(colors.muted)
             if let image {
                 Image(nsImage: image)
                     .resizable()
@@ -392,9 +398,9 @@ struct TranslationPanel: View {
                     .frame(maxHeight: 240)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             } else if let context {
-                (Text(context.before).foregroundColor(muted)
-                 + Text(original).bold().foregroundColor(PanelPalette.emphasis)
-                 + Text(context.after).foregroundColor(muted))
+                (Text(context.before).foregroundColor(colors.muted)
+                 + Text(original).bold().foregroundColor(colors.emphasis)
+                 + Text(context.after).foregroundColor(colors.muted))
                     .font(.system(size: 13))
                     .lineSpacing(4)
                     .textSelection(.enabled)
@@ -402,17 +408,17 @@ struct TranslationPanel: View {
             } else {
                 Text("此应用未提供选中文字的前后文，可返回原页面查看。")
                     .font(.system(size: 13))
-                    .foregroundStyle(muted)
+                    .foregroundStyle(colors.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(PanelPalette.well, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(border, lineWidth: 1))
+        .background(colors.well, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(colors.border, lineWidth: 1))
     }
 
-    private var separator: some View { border.frame(height: 1) }
+    private var separator: some View { colors.border.frame(height: 1) }
 
     private var languageName: String {
         let language = progress.targetLanguage ?? settings.targetLanguage
@@ -450,9 +456,9 @@ struct TranslationPanel: View {
 
     private var statusColor: Color {
         switch progress.state {
-        case .timedOut: return PanelPalette.warning
-        case .failed: return PanelPalette.error
-        default: return muted
+        case .timedOut: return colors.warning
+        case .failed: return colors.error
+        default: return colors.muted
         }
     }
 
@@ -464,7 +470,7 @@ struct TranslationPanel: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(active ? PanelPalette.emphasis : muted)
+        .foregroundStyle(active ? colors.emphasis : colors.muted)
         .help(help)
         .accessibilityLabel(help)
     }

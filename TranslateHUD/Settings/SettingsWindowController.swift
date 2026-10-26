@@ -8,10 +8,12 @@ final class SettingsWindowController {
     private init() {}
 
     private var window: SettingsWindow?
+    private var appearanceObserver: NSObjectProtocol?
 
     func show() {
         let win = window ?? makeWindow()
         window = win
+        applyAppearance()
         // 窗口已经开着时，只是把它带到前面，不要清掉正在输入的内容和焦点。
         let becomingVisible = !win.isVisible
         if becomingVisible {
@@ -29,9 +31,7 @@ final class SettingsWindowController {
 
     private func makeWindow() -> SettingsWindow {
         let hosting = SettingsHostingController(rootView: SettingsView())
-        hosting.view.appearance = NSAppearance(named: .darkAqua)
         hosting.view.wantsLayer = true
-        hosting.view.layer?.backgroundColor = PanelPalette.nsBackground.cgColor
         let win = SettingsWindow(contentViewController: hosting)
         win.title = "TranslateHUD 设置"
         win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
@@ -39,12 +39,33 @@ final class SettingsWindowController {
         win.minSize = NSSize(width: 520, height: 480)
         win.center()
         win.isReleasedWhenClosed = false
-        SettingsWindowChrome.apply(to: win)
+        window = win
+        installAppearanceObserver()
+        applyAppearance()
         return win
+    }
+
+    private func installAppearanceObserver() {
+        guard appearanceObserver == nil else { return }
+        appearanceObserver = NotificationCenter.default.addObserver(
+            forName: .panelAppearanceDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyAppearance()
+        }
+    }
+
+    private func applyAppearance() {
+        guard let window else { return }
+        SettingsWindowChrome.apply(to: window)
+        if let content = window.contentView {
+            SettingsPanelSurface.apply(to: content)
+        }
     }
 }
 
-/// SwiftUI 画完之后，把系统控件的底色收到浮窗那套深色上。
+/// SwiftUI 画完之后，把系统控件的底色收到当前浮窗配色上。
 final class SettingsHostingController: NSHostingController<SettingsView> {
     private var paintScheduled = false
 

@@ -2,74 +2,132 @@ import AppKit
 import SwiftUI
 
 extension View {
-    /// Page fill, text, and separators from the translation panel.
+    /// Page fill, text, and separators from the same palette the translation panel uses.
     func panelChrome() -> some View {
         modifier(PanelChromeModifier())
     }
 
     /// Grouped-form section uses the panel's raised chip instead of the system sheet color.
     func panelSectionFill() -> some View {
-        listRowBackground(PanelPalette.cardFill)
+        modifier(PanelSectionFillModifier())
     }
 
     /// Inset field, same veil and stroke family as the panel's status strip and footer chip.
     func panelFieldSurface() -> some View {
-        background(PanelPalette.fieldFill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        modifier(PanelFieldSurfaceModifier())
+    }
+}
+
+private struct PanelChromeModifier: ViewModifier {
+    @ObservedObject private var appearance = PanelAppearance.shared
+    @ObservedObject private var settings = SettingsStore.shared
+    @Environment(\.colorScheme) private var systemScheme
+
+    func body(content: Content) -> some View {
+        let colors = resolvedColors
+        content
+            .environment(\.panelColors, colors)
+            .preferredColorScheme(settings.appearancePreference == .system ? nil : colors.colorScheme)
+            .environment(\.colorScheme, colors.colorScheme)
+            .foregroundStyle(colors.primaryText)
+            .scrollContentBackground(.hidden)
+            .listRowSeparatorTint(colors.border)
+            .background(colors.background)
+            .background(PanelWindowAppearanceAnchor(scheme: colors.scheme, followsSystem: settings.appearancePreference == .system))
+    }
+
+    private var resolvedColors: PanelColors {
+        _ = appearance.changeID
+        return PanelColors.resolve(preference: settings.appearancePreference, systemScheme: systemScheme)
+    }
+}
+
+private struct PanelSectionFillModifier: ViewModifier {
+    @Environment(\.panelColors) private var colors
+
+    func body(content: Content) -> some View {
+        content.listRowBackground(colors.cardFill)
+    }
+}
+
+private struct PanelFieldSurfaceModifier: ViewModifier {
+    @Environment(\.panelColors) private var colors
+
+    func body(content: Content) -> some View {
+        content
+            .background(colors.fieldFill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(PanelPalette.controlBorder, lineWidth: 1)
+                    .strokeBorder(colors.controlBorder, lineWidth: 1)
                     .allowsHitTesting(false)
             )
     }
 }
 
-private struct PanelChromeModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .preferredColorScheme(.dark)
-            .environment(\.colorScheme, .dark)
-            .foregroundStyle(PanelPalette.primaryText)
-            .scrollContentBackground(.hidden)
-            .listRowSeparatorTint(PanelPalette.border)
-            .background(PanelPalette.background)
-    }
-}
-
 enum SettingsWindowChrome {
     static func apply(to window: NSWindow) {
-        let appearance = NSAppearance(named: .darkAqua)
-        window.appearance = appearance
-        window.contentView?.appearance = appearance
-        window.backgroundColor = PanelPalette.nsBackground
+        let preference = SettingsStore.shared.appearancePreference
+        let followsSystem = preference == .system
+        if followsSystem {
+            PanelWindowAppearance.apply(to: window, scheme: .light, followsSystem: true)
+        }
+        let colors = PanelColors.current(appearance: window.effectiveAppearance)
+        apply(to: window, colors: colors, followsSystem: followsSystem)
+    }
+
+    static func apply(to window: NSWindow, colors: PanelColors, followsSystem: Bool) {
+        PanelWindowAppearance.apply(to: window, scheme: colors.scheme, followsSystem: followsSystem)
+        window.backgroundColor = colors.nsBackground
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
+        window.contentView?.wantsLayer = true
+        window.contentView?.layer?.backgroundColor = colors.nsBackground.cgColor
     }
 }
 
 /// AppKit still paints form cards, text fields, and scroll views with system colors.
-/// After layout, push those surfaces onto the panel palette. SwiftUI text and section
-/// fills above cover the same colors; this catches the controls SwiftUI does not retint.
+/// After layout, push those surfaces onto the active panel palette.
 enum SettingsPanelSurface {
     static func apply(to root: NSView) {
         guard !applying else { return }
         applying = true
         defer { applying = false }
-        paint(root, isRoot: true)
+        let colors = PanelColors.current(appearance: root.window?.effectiveAppearance)
+        paint(root, isRoot: true, colors: colors)
     }
 
     /// A large rounded fill that is not already the section card.
     static func sectionNeedsFill(luma: CGFloat) -> Bool {
-        luma >= 0.11 && abs(luma - PanelPalette.cardWhite) > 0.004
+        sectionNeedsFill(luma: luma, colors: .dark)
+    }
+
+    static func sectionNeedsFill(luma: CGFloat, colors: PanelColors) -> Bool {
+        if colors.scheme == .dark {
+            return luma >= 0.11 && abs(luma - colors.cardWhite) > 0.004
+        }
+        if abs(luma - colors.cardWhite) <= 0.004 { return false }
+        if abs(luma - colors.backgroundWhite) <= 0.012 { return false }
+        return true
     }
 
     static func fieldNeedsFill(luma: CGFloat?) -> Bool {
+        fieldNeedsFill(luma: luma, fieldWhite: PanelPalette.fieldWhite)
+    }
+
+    static func fieldNeedsFill(luma: CGFloat?, fieldWhite: CGFloat) -> Bool {
         guard let luma else { return true }
-        return abs(luma - PanelPalette.fieldWhite) > 0.02
+        return abs(luma - fieldWhite) > 0.02
     }
 
     static func textNeedsLightForeground(luma: CGFloat?) -> Bool {
         guard let luma else { return true }
         return luma < 0.55
+    }
+
+    /// Editable text should be rewritten when it is not already the palette's ink.
+    static func textNeedsPrimaryForeground(luma: CGFloat?, primaryWhite: CGFloat) -> Bool {
+        guard let luma else { return true }
+        return abs(luma - primaryWhite) > 0.2
     }
 
     static func luma(of color: NSColor?) -> CGFloat? {
@@ -79,35 +137,35 @@ enum SettingsPanelSurface {
 
     private static var applying = false
 
-    private static func paint(_ view: NSView, isRoot: Bool) {
+    private static func paint(_ view: NSView, isRoot: Bool, colors: PanelColors) {
         if isRoot {
             view.wantsLayer = true
-            assign(PanelPalette.nsBackground, to: view.layer)
+            assign(colors.nsBackground, to: view.layer, target: colors.backgroundWhite)
         }
 
         if let scroll = view as? NSScrollView {
-            paint(scroll)
+            paint(scroll, colors: colors)
         } else if let effect = view as? NSVisualEffectView {
-            paint(effect)
+            paint(effect, colors: colors)
         } else if let field = view as? NSTextField {
-            paint(field)
+            paint(field, colors: colors)
         } else if let text = view as? NSTextView {
-            paint(text)
+            paint(text, colors: colors)
         } else if !isRoot {
-            paintSectionLayer(on: view)
-            paintHairline(on: view)
+            paintSectionLayer(on: view, colors: colors)
+            paintHairline(on: view, colors: colors)
         }
 
         for subview in view.subviews {
-            paint(subview, isRoot: false)
+            paint(subview, isRoot: false, colors: colors)
         }
     }
 
-    private static func paint(_ scroll: NSScrollView) {
+    private static func paint(_ scroll: NSScrollView, colors: PanelColors) {
         // The feedback editor's scroller is the field. Every other scroller is the page.
         let editor = scroll.documentView is NSTextView
-        let color = editor ? PanelPalette.nsField : PanelPalette.nsBackground
-        let target = editor ? PanelPalette.fieldWhite : PanelPalette.backgroundWhite
+        let color = editor ? colors.nsField : colors.nsBackground
+        let target = editor ? colors.fieldWhite : colors.backgroundWhite
         if needsPaint(scroll.backgroundColor, target: target) {
             scroll.drawsBackground = true
             scroll.backgroundColor = color
@@ -119,7 +177,7 @@ enum SettingsPanelSurface {
         }
     }
 
-    private static func paint(_ effect: NSVisualEffectView) {
+    private static func paint(_ effect: NSVisualEffectView, colors: PanelColors) {
         let wide = effect.bounds.width > 240 && effect.bounds.height > 40
         guard wide else { return }
         if effect.subviews.isEmpty {
@@ -127,21 +185,21 @@ enum SettingsPanelSurface {
             return
         }
         if effect.alphaValue != 1 { effect.alphaValue = 1 }
-        paintSectionLayer(on: effect)
+        paintSectionLayer(on: effect, colors: colors)
     }
 
-    private static func paint(_ field: NSTextField) {
+    private static func paint(_ field: NSTextField, colors: PanelColors) {
         guard field.isEditable else { return }
-        if field.appearance?.name != .darkAqua {
-            field.appearance = NSAppearance(named: .darkAqua)
+        if field.appearance?.name != colors.appearanceName {
+            field.appearance = NSAppearance(named: colors.appearanceName)
         }
-        if fieldNeedsFill(luma: luma(of: field.backgroundColor)) {
+        if fieldNeedsFill(luma: luma(of: field.backgroundColor), fieldWhite: colors.fieldWhite) {
             field.drawsBackground = true
-            field.backgroundColor = PanelPalette.nsField
+            field.backgroundColor = colors.nsField
         }
         // Don't restyle the live field editor; that can drop the insertion point.
-        if !isEditing(field), textNeedsLightForeground(luma: luma(of: field.textColor)) {
-            field.textColor = PanelPalette.nsPrimaryText
+        if !isEditing(field), textNeedsPrimaryForeground(luma: luma(of: field.textColor), primaryWhite: colors.primaryWhite) {
+            field.textColor = colors.nsPrimaryText
         }
     }
 
@@ -150,26 +208,27 @@ enum SettingsPanelSurface {
         return field.window?.firstResponder === editor
     }
 
-    private static func paint(_ text: NSTextView) {
+    private static func paint(_ text: NSTextView, colors: PanelColors) {
         // Selectable legal text keeps the colors SwiftUI already applied.
         guard text.isEditable else { return }
-        if text.window?.firstResponder !== text, textNeedsLightForeground(luma: luma(of: text.textColor)) {
-            text.textColor = PanelPalette.nsPrimaryText
-            text.insertionPointColor = PanelPalette.nsPrimaryText
+        if text.window?.firstResponder !== text,
+           textNeedsPrimaryForeground(luma: luma(of: text.textColor), primaryWhite: colors.primaryWhite) {
+            text.textColor = colors.nsPrimaryText
+            text.insertionPointColor = colors.nsPrimaryText
         }
-        if fieldNeedsFill(luma: luma(of: text.backgroundColor)) {
+        if fieldNeedsFill(luma: luma(of: text.backgroundColor), fieldWhite: colors.fieldWhite) {
             text.drawsBackground = true
-            text.backgroundColor = PanelPalette.nsField
+            text.backgroundColor = colors.nsField
         }
     }
 
-    private static func paintSectionLayer(on view: NSView) {
+    private static func paintSectionLayer(on view: NSView, colors: PanelColors) {
         guard view.bounds.width > 240, view.bounds.height > 40 else { return }
         // The feedback text box is a short rounded field, not a section card.
         if view.bounds.height < 120, containsTextView(view) { return }
         guard let layer = view.layer, layer.cornerRadius >= 8 else { return }
-        guard let y = luma(of: layer.backgroundColor), sectionNeedsFill(luma: y) else { return }
-        layer.backgroundColor = PanelPalette.nsCard.cgColor
+        guard let y = luma(of: layer.backgroundColor), sectionNeedsFill(luma: y, colors: colors) else { return }
+        layer.backgroundColor = colors.nsCard.cgColor
     }
 
     private static func containsTextView(_ view: NSView) -> Bool {
@@ -177,16 +236,16 @@ enum SettingsPanelSurface {
         return view.subviews.contains(where: containsTextView)
     }
 
-    private static func paintHairline(on view: NSView) {
+    private static func paintHairline(on view: NSView, colors: PanelColors) {
         let height = view.bounds.height
         guard height > 0.4, height < 1.6, view.bounds.width > 80, let layer = view.layer else { return }
         guard layer.backgroundColor != nil else { return }
-        guard needsPaint(layer.backgroundColor, target: PanelPalette.borderWhite) else { return }
-        layer.backgroundColor = PanelPalette.nsBorder.cgColor
+        guard needsPaint(layer.backgroundColor, target: colors.borderWhite) else { return }
+        layer.backgroundColor = colors.nsBorder.cgColor
     }
 
-    private static func assign(_ color: NSColor, to layer: CALayer?) {
-        guard let layer, needsPaint(layer.backgroundColor, target: PanelPalette.backgroundWhite) else { return }
+    private static func assign(_ color: NSColor, to layer: CALayer?, target: CGFloat) {
+        guard let layer, needsPaint(layer.backgroundColor, target: target) else { return }
         layer.backgroundColor = color.cgColor
     }
 

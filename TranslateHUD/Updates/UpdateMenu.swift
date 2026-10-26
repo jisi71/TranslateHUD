@@ -109,6 +109,7 @@ struct UpdateActionButton: View {
 }
 
 struct UpdateSettingsSection: View {
+    @Environment(\.panelColors) private var colors
     @ObservedObject private var menu = UpdateMenuModel.shared
 
     var body: some View {
@@ -116,7 +117,7 @@ struct UpdateSettingsSection: View {
             UpdateActionButton()
             Text(UpdateMenu.settingsDetail(for: menu.state, fallback: UpdatePolicy.current.statusMessage))
                 .font(.caption)
-                .foregroundStyle(PanelPalette.muted)
+                .foregroundStyle(colors.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .panelSectionFill()

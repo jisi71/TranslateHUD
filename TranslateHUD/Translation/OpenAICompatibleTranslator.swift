@@ -4,15 +4,18 @@ struct OpenAICompatibleTranslator: Translator {
     let config: ProviderConfig
     let session: URLSession
     let extraHTTPHeaders: [String: String]
+    let onTrialSettlement: (@Sendable (TrialSettlement) async -> Void)?
 
     init(
         config: ProviderConfig,
         session: URLSession = .shared,
-        extraHTTPHeaders: [String: String] = [:]
+        extraHTTPHeaders: [String: String] = [:],
+        onTrialSettlement: (@Sendable (TrialSettlement) async -> Void)? = nil
     ) {
         self.config = config
         self.session = session
         self.extraHTTPHeaders = extraHTTPHeaders
+        self.onTrialSettlement = onTrialSettlement
     }
 
     private struct QualityRejected: Error {
@@ -140,6 +143,11 @@ struct OpenAICompatibleTranslator: Translator {
             throw TranslationError.parse("服务响应格式无法读取，请确认接口兼容性或更换服务后重试。")
         }
         if let error = json["error"], !(error is NSNull) { throw TranslationError.service(ServiceErrorMessage.stream(error)) }
+        if let settlement = TrialSettlement.parse(json: json) {
+            await onTrialSettlement?(settlement)
+        } else if let http, let settlement = TrialSettlement.parse(response: http) {
+            await onTrialSettlement?(settlement)
+        }
         guard
             let choices = json["choices"] as? [[String: Any]],
             let first = choices.first,
@@ -332,7 +340,7 @@ struct OpenAICompatibleTranslator: Translator {
 
             // 处理一个完整的 SSE event（多个 data: 行用 "\n" 拼接成 payload）。
             // 返回 true → 收到 [DONE]，调用方 break。
-            func emitEvent() throws -> Bool {
+            func emitEvent() async throws -> Bool {
                 let payload = dataLines.joined(separator: "\n")
                 dataLines.removeAll(keepingCapacity: true)
                 eventCount += 1
@@ -345,6 +353,14 @@ struct OpenAICompatibleTranslator: Translator {
                     let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
                 else {
                     throw TranslationError.parse("服务发送的流式数据无法读取，请重试或更换服务。")
+                }
+                if json["translatehud_trial"] != nil {
+                    if let settlement = TrialSettlement.parse(json: json) {
+                        await onTrialSettlement?(settlement)
+                    }
+                    if (json["choices"] as? [[String: Any]])?.first == nil {
+                        return false
+                    }
                 }
                 if let error = json["error"], !(error is NSNull) { throw TranslationError.service(ServiceErrorMessage.stream(error)) }
                 guard let choices = json["choices"] as? [[String: Any]] else {
@@ -387,7 +403,7 @@ struct OpenAICompatibleTranslator: Translator {
                 // SSE 事件以空行结束：把已缓存的 data: 行拼成完整 payload
                 if line.isEmpty {
                     if !dataLines.isEmpty {
-                        if try emitEvent() { break }
+                        if try await emitEvent() { break }
                     }
                     continue
                 }
@@ -402,7 +418,7 @@ struct OpenAICompatibleTranslator: Translator {
                     // without the blank-line event separator required by SSE. If the current
                     // buffer is already a complete payload, flush it before starting the next one.
                     if !dataLines.isEmpty, bufferedPayloadIsComplete() {
-                        if try emitEvent() { break }
+                        if try await emitEvent() { break }
                     }
                     dataLines.append(value)
                 }
@@ -410,7 +426,7 @@ struct OpenAICompatibleTranslator: Translator {
             }
             // 流结束但末尾没有空行收尾 → 把残留的 data 行兜底 emit 一次
             if !dataLines.isEmpty {
-                _ = try emitEvent()
+                _ = try await emitEvent()
             }
 
             AppLog.info("流式完结(strict=\(strict)): events=\(eventCount) contentChunks=\(contentChunkCount) outLen=\(accumulated.count)")

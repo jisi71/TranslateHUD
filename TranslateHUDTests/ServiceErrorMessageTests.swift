@@ -201,7 +201,17 @@ final class ServiceErrorMessageTests: XCTestCase {
             code: 402,
             body: "{\"error\":{\"code\":\"trial_balance_insufficient\"}}"
         ).localizedDescription
-        XCTAssertEqual(insufficient, "体验额度不够支付这次翻译。请缩短原文，或在设置里填写你自己的 API Key。")
+        XCTAssertEqual(insufficient, "体验额度不够支付这次翻译。请在设置里填写你自己的 API Key。")
+        let missing = ServiceErrorMessage.http(
+            code: 502,
+            body: "{\"error\":{\"code\":\"trial_usage_missing\",\"message\":\"\(secret)\"}}"
+        )
+        XCTAssertEqual(missing, "这次翻译没有返回用量，没有扣体验额度。请稍后再试。")
+        XCTAssertFalse(missing.contains("secret"))
+        XCTAssertEqual(
+            ServiceErrorMessage.stream(["code": "trial_usage_missing", "message": secret]),
+            "这次翻译没有返回用量，没有扣体验额度。请稍后再试。"
+        )
         XCTAssertTrue(ServiceErrorMessage.http(code: 402, body: "{}").contains("API 账户余额不足"))
 
         let store = ServiceErrorMessage.http(

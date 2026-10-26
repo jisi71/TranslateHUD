@@ -41,10 +41,6 @@ enum ServiceErrorMessage {
         return "HTTP \(code)：\(message)"
     }
 
-    static func stream(_ error: Any) -> String {
-        providerDetail(error) ?? "服务在输出过程中返回错误，原因暂未确认。请稍后重试；若持续失败，请查看服务商状态。"
-    }
-
     static func incompleteOutput(reason: String) -> String {
         if reason == "length" {
             return "译文被模型长度限制截断，请缩短原文或更换支持更长输出的模型。"
@@ -80,6 +76,18 @@ enum ServiceErrorMessage {
         } else {
             code = root["code"] as? String
         }
+        return trialCopy(code)
+    }
+
+    static func stream(_ error: Any) -> String {
+        if let fields = error as? [String: Any] {
+            let code = (fields["code"] as? String) ?? (fields["type"] as? String)
+            if let copy = trialCopy(code) { return copy }
+        }
+        return providerDetail(error) ?? "服务在输出过程中返回错误，原因暂未确认。请稍后重试；若持续失败，请查看服务商状态。"
+    }
+
+    private static func trialCopy(_ code: String?) -> String? {
         switch code?.lowercased() {
         case "trial_length_limit": return TrialCopy.lengthLimit
         case "trial_balance_exhausted": return TrialCopy.balanceExhausted
@@ -87,6 +95,7 @@ enum ServiceErrorMessage {
         case "trial_auth": return TrialCopy.authExpired
         case "trial_not_configured": return TrialCopy.notConfigured
         case "trial_upstream": return TrialCopy.upstream
+        case "trial_usage_missing": return TrialCopy.usageMissing
         case "trial_empty": return TrialCopy.empty
         case "trial_body_limit": return TrialCopy.bodyTooLong
         case "trial_source_required": return TrialCopy.sourceRequired

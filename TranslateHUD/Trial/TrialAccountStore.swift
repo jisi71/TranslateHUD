@@ -13,7 +13,11 @@ final class TrialAccountStore: ObservableObject {
     @Published private(set) var isLoggedIn = false
     @Published private(set) var maskedPhone = ""
     @Published private(set) var userId = ""
-    @Published private(set) var balanceFen: Int?
+    @Published private(set) var balanceMicroYuan: Int?
+    /// Fen shown in the UI. Half-up from the micro-yuan ledger, display only.
+    var balanceFen: Int? {
+        balanceMicroYuan.map { TrialPricing.displayFen(microYuan: $0) }
+    }
     @Published private(set) var balanceState: BalanceState = .idle
 
     enum BalanceState: Equatable {
@@ -33,31 +37,20 @@ final class TrialAccountStore: ObservableObject {
         }
     }
 
+    /// Menu bar and panel footer. The per-request cost is not shown.
     var balanceTitle: String {
-        if let balanceFen { return "体验余额 \(TrialPricing.yuanString(fen: balanceFen))" }
+        if let balanceFen {
+            return "体验余额 \(TrialPricing.yuanString(fen: balanceFen))"
+        }
         switch balanceState {
         case .loading: return "正在读取体验余额"
         case .failed: return "体验余额读取失败"
         default: return "体验账号已登录"
         }
     }
-    @Published var proxyBaseURL: String {
-        didSet {
-            guard !suppressPersist else { return }
-            TrialConfig.proxyOverride = proxyBaseURL
-        }
-    }
 
     var effectiveProxyBaseURL: String {
-        TrialConfig.effectiveProxy(typed: proxyBaseURL)
-    }
-
-    private enum Key {
-        static let access = "trial.accessToken"
-        static let refresh = "trial.refreshToken"
-        static let userId = "trial.userId"
-        static let phone = "trial.phoneMasked"
-        static let expires = "trial.expiresAt"
+        TrialConfig.plistProxy
     }
 
     private var verificationId: String?
@@ -66,7 +59,6 @@ final class TrialAccountStore: ObservableObject {
     private var accessToken = ""
     private var refreshToken = ""
     private var expiresAt = Date.distantPast
-    private var suppressPersist = false
     private var cooldownTask: Task<Void, Never>?
 
     private var auth: CloudBaseAuthAPI {
@@ -77,21 +69,20 @@ final class TrialAccountStore: ObservableObject {
         )
     }
 
-    private init() {
-        suppressPersist = true
-        proxyBaseURL = TrialConfig.proxyOverride
-        suppressPersist = false
-    }
+    private init() {}
 
     func restore() {
-        accessToken = KeychainHelper.get(Key.access) ?? ""
-        refreshToken = KeychainHelper.get(Key.refresh) ?? ""
-        userId = KeychainHelper.get(Key.userId) ?? ""
-        maskedPhone = KeychainHelper.get(Key.phone) ?? ""
-        if let raw = KeychainHelper.get(Key.expires), let interval = TimeInterval(raw) {
-            expiresAt = Date(timeIntervalSince1970: interval)
-        }
-        isLoggedIn = !accessToken.isEmpty && !refreshToken.isEmpty && !userId.isEmpty
+        let session = TrialKeychain.restore(
+            defaults: .standard,
+            domain: KeychainGate.appDefaultsDomain,
+            keychain: SystemKeychain()
+        )
+        accessToken = session.accessToken
+        refreshToken = session.refreshToken
+        userId = session.userId
+        maskedPhone = session.maskedPhone
+        expiresAt = session.expiresAt
+        isLoggedIn = session.isLoggedIn
         guard isLoggedIn else { return }
         balanceState = .loading
         Task { await refreshFromServer() }
@@ -141,7 +132,7 @@ final class TrialAccountStore: ObservableObject {
             )
             try persist(session)
             maskedPhone = PhoneNumberCN.mask(pendingPhone)
-            try? KeychainHelper.set(maskedPhone, forKey: Key.phone)
+            try? SystemKeychain().set(maskedPhone, forKey: TrialKeychain.Account.phone)
             code = ""
             self.verificationId = nil
             AppLog.info("体验账号登录成功")
@@ -183,6 +174,11 @@ final class TrialAccountStore: ObservableObject {
         }
     }
 
+    func applySettlement(_ settlement: TrialSettlement) {
+        balanceMicroYuan = settlement.balanceMicroYuan
+        balanceState = .loaded
+    }
+
     func refreshFromServer(announceGift: Bool = false) async {
         guard isLoggedIn else { return }
         if TrialToken.disagrees(accessToken: accessToken, refreshToken: refreshToken, envId: TrialConfig.envId) {
@@ -199,7 +195,7 @@ final class TrialAccountStore: ObservableObject {
         do {
             let token = try await validAccessToken()
             let snapshot = try await TrialProxyClient.syncAccount(proxyBase: proxy, accessToken: token)
-            balanceFen = snapshot.balanceFen
+            balanceMicroYuan = snapshot.balanceMicroYuan
             balanceState = .loaded
             if !snapshot.userId.isEmpty { userId = snapshot.userId }
             if announceGift {
@@ -222,10 +218,14 @@ final class TrialAccountStore: ObservableObject {
     }
 
     private func persist(_ session: CloudBaseSession) throws {
-        try KeychainHelper.set(session.accessToken, forKey: Key.access)
-        try KeychainHelper.set(session.refreshToken, forKey: Key.refresh)
-        try KeychainHelper.set(session.userId, forKey: Key.userId)
-        try KeychainHelper.set(String(session.expiresAt.timeIntervalSince1970), forKey: Key.expires)
+        try TrialKeychain.write(
+            accessToken: session.accessToken,
+            refreshToken: session.refreshToken,
+            userId: session.userId,
+            expiresAt: session.expiresAt,
+            defaults: .standard,
+            keychain: SystemKeychain()
+        )
         accessToken = session.accessToken
         refreshToken = session.refreshToken
         userId = session.userId
@@ -234,15 +234,13 @@ final class TrialAccountStore: ObservableObject {
     }
 
     private func logout(message: String) {
-        for key in [Key.access, Key.refresh, Key.userId, Key.phone, Key.expires] {
-            KeychainHelper.delete(key)
-        }
+        TrialKeychain.clear(defaults: .standard, keychain: SystemKeychain())
         accessToken = ""
         refreshToken = ""
         userId = ""
         maskedPhone = ""
         expiresAt = .distantPast
-        balanceFen = nil
+        balanceMicroYuan = nil
         balanceState = .idle
         isLoggedIn = false
         verificationId = nil

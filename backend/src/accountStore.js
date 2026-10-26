@@ -2,7 +2,7 @@
 
 const fs = require('fs')
 const path = require('path')
-const { applyCharge, normalizeRecord, openAccount } = require('./trialPolicy')
+const { applyCharge, credit, normalizeRecord, openAccount, settleCharge } = require('./trialPolicy')
 
 function clone(record) {
   const normalized = normalizeRecord(record)
@@ -31,25 +31,33 @@ class MemoryAccountStore {
     })
   }
 
-  async charge(uid, costFen) {
+  async charge(uid, costMicroYuan) {
     return this.lock(uid, async () => {
       const existing = this.users.get(uid)
-      const decision = applyCharge(existing ? clone(existing) : null, costFen)
+      const decision = applyCharge(existing ? clone(existing) : null, costMicroYuan)
       if (decision.ok) this.users.set(uid, clone(decision.record))
       return decision
     })
   }
 
-  async refund(uid, fen) {
-    const amount = Math.floor(Number(fen) || 0)
+  async settle(uid, costMicroYuan) {
+    return this.lock(uid, async () => {
+      const existing = this.users.get(uid)
+      const decision = settleCharge(existing ? clone(existing) : null, costMicroYuan)
+      if (decision.record) this.users.set(uid, clone(decision.record))
+      return decision
+    })
+  }
+
+  async refund(uid, microYuan) {
+    const amount = Math.floor(Number(microYuan) || 0)
     if (amount <= 0) return null
     return this.lock(uid, async () => {
       const existing = this.users.get(uid)
       if (!existing) return null
-      const next = clone(existing)
-      next.balanceFen += amount
+      const next = credit(existing, amount)
       this.users.set(uid, next)
-      return next.balanceFen
+      return next.balanceMicroYuan
     })
   }
 }
@@ -110,9 +118,9 @@ class FileAccountStore {
     })
   }
 
-  async charge(uid, costFen) {
+  async charge(uid, costMicroYuan) {
     return this.lock(async () => {
-      const decision = applyCharge(this.users.has(uid) ? clone(this.users.get(uid)) : null, costFen)
+      const decision = applyCharge(this.users.has(uid) ? clone(this.users.get(uid)) : null, costMicroYuan)
       if (decision.ok) {
         this.users.set(uid, clone(decision.record))
         await this.persist()
@@ -121,17 +129,27 @@ class FileAccountStore {
     })
   }
 
-  async refund(uid, fen) {
-    const amount = Math.floor(Number(fen) || 0)
+  async settle(uid, costMicroYuan) {
+    return this.lock(async () => {
+      const decision = settleCharge(this.users.has(uid) ? clone(this.users.get(uid)) : null, costMicroYuan)
+      if (decision.record) {
+        this.users.set(uid, clone(decision.record))
+        await this.persist()
+      }
+      return decision
+    })
+  }
+
+  async refund(uid, microYuan) {
+    const amount = Math.floor(Number(microYuan) || 0)
     if (amount <= 0) return null
     return this.lock(async () => {
       const existing = this.users.get(uid)
       if (!existing) return null
-      const next = clone(existing)
-      next.balanceFen += amount
+      const next = credit(existing, amount)
       this.users.set(uid, next)
       await this.persist()
-      return next.balanceFen
+      return next.balanceMicroYuan
     })
   }
 }
@@ -168,12 +186,12 @@ class TransactionalAccountStore {
     })
   }
 
-  async charge(uid, costFen) {
+  async charge(uid, costMicroYuan) {
     return this.withRetry(async () => {
       const tx = await this.begin()
       try {
         const existing = await tx.get(uid)
-        const decision = applyCharge(existing, costFen)
+        const decision = applyCharge(existing, costMicroYuan)
         if (decision.ok && decision.record !== existing) await tx.save(uid, decision.record)
         await tx.commit()
         return decision
@@ -184,8 +202,24 @@ class TransactionalAccountStore {
     })
   }
 
-  async refund(uid, fen) {
-    const amount = Math.floor(Number(fen) || 0)
+  async settle(uid, costMicroYuan) {
+    return this.withRetry(async () => {
+      const tx = await this.begin()
+      try {
+        const existing = await tx.get(uid)
+        const decision = settleCharge(existing, costMicroYuan)
+        if (decision.record) await tx.save(uid, decision.record)
+        await tx.commit()
+        return decision
+      } catch (error) {
+        await tx.rollback().catch(() => {})
+        throw error
+      }
+    })
+  }
+
+  async refund(uid, microYuan) {
+    const amount = Math.floor(Number(microYuan) || 0)
     if (amount <= 0) return null
     return this.withRetry(async () => {
       const tx = await this.begin()
@@ -195,11 +229,10 @@ class TransactionalAccountStore {
           await tx.commit()
           return null
         }
-        const next = clone(existing)
-        next.balanceFen += amount
+        const next = credit(existing, amount)
         await tx.save(uid, next)
         await tx.commit()
-        return next.balanceFen
+        return next.balanceMicroYuan
       } catch (error) {
         await tx.rollback().catch(() => {})
         throw error

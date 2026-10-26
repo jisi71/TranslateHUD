@@ -2,8 +2,10 @@ import Foundation
 
 struct TrialAccountSnapshot: Equatable, Sendable {
     var userId: String
-    var balanceFen: Int
+    var balanceMicroYuan: Int
     var giftedNow: Bool
+
+    var balanceFen: Int { TrialPricing.displayFen(microYuan: balanceMicroYuan) }
 }
 
 enum TrialProxyClient {
@@ -44,18 +46,28 @@ enum TrialProxyClient {
         }
         guard (200..<300).contains(status),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let balance = intValue(json["balanceFen"]) else {
+              let balance = microBalance(json) else {
             throw TrialProxyError.message("暂时读不到体验余额，请稍后再试。")
         }
         let userId = (json["userId"] as? String) ?? ""
         let giftedNow = boolValue(json["giftedNow"])
-        return TrialAccountSnapshot(userId: userId, balanceFen: balance, giftedNow: giftedNow)
+        return TrialAccountSnapshot(userId: userId, balanceMicroYuan: balance, giftedNow: giftedNow)
     }
+}
+
+private func microBalance(_ json: [String: Any]) -> Int? {
+    if let micro = intValue(json["balanceMicroYuan"]) { return micro }
+    if let fen = intValue(json["balanceFen"]) { return fen * TrialPricing.microYuanPerFen }
+    return nil
 }
 
 private func intValue(_ value: Any?) -> Int? {
     if let int = value as? Int { return int }
-    if let number = value as? NSNumber { return number.intValue }
+    if let number = value as? NSNumber {
+        let wide = number.int64Value
+        if wide > Int64(Int.max) || wide < Int64(Int.min) { return nil }
+        return Int(wide)
+    }
     return nil
 }
 

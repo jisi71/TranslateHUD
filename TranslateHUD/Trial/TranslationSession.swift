@@ -44,7 +44,10 @@ struct TrialProxyTranslator: Translator {
         let inner = OpenAICompatibleTranslator(
             config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: token),
             session: session,
-            extraHTTPHeaders: TrialHeaders.source(texts.joined(separator: "\n"))
+            extraHTTPHeaders: TrialHeaders.source(texts.joined(separator: "\n")),
+            onTrialSettlement: { settlement in
+                await TrialActor.apply(settlement)
+            }
         )
         do {
             let result = try await inner.translate(texts, to: target, context: context)
@@ -70,7 +73,10 @@ struct TrialProxyTranslator: Translator {
                     let inner = OpenAICompatibleTranslator(
                         config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: token),
                         session: session,
-                        extraHTTPHeaders: TrialHeaders.source(text)
+                        extraHTTPHeaders: TrialHeaders.source(text),
+                        onTrialSettlement: { settlement in
+                            await TrialActor.apply(settlement)
+                        }
                     )
                     for try await event in inner.translateStreaming(text, to: target, context: context) {
                         continuation.yield(event)
@@ -98,6 +104,12 @@ enum TrialActor {
                     continuation.resume(throwing: error)
                 }
             }
+        }
+    }
+
+    static func apply(_ settlement: TrialSettlement) async {
+        await MainActor.run {
+            TrialAccountStore.shared.applySettlement(settlement)
         }
     }
 
@@ -130,7 +142,10 @@ struct TrialProxyTermExplainer: TermExplainer {
         let inner = OpenAICompatibleTermExplainer(
             config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: token),
             session: session,
-            extraHTTPHeaders: TrialHeaders.source(texts.joined(separator: "\n"))
+            extraHTTPHeaders: TrialHeaders.source(texts.joined(separator: "\n")),
+            onTrialSettlement: { settlement in
+                await TrialActor.apply(settlement)
+            }
         )
         do {
             let terms = try await inner.explain(texts: texts, in: language, context: context)
@@ -198,6 +213,7 @@ enum TranslationSession {
             isLoggedIn: trial.isLoggedIn,
             proxyBaseURL: trial.effectiveProxyBaseURL,
             balanceFen: trial.balanceFen,
+            balanceMicroYuan: trial.balanceMicroYuan,
             sourceText: sourceText
         )
     }

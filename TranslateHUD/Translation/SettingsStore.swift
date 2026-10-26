@@ -1,14 +1,14 @@
 import Foundation
 import Combine
 
-/// 全局设置持久化 + 发布。baseURL/model 走 UserDefaults，apiKey 走 Keychain。
+/// 全局设置持久化 + 发布。baseURL/model 走 UserDefaults。
+/// API Key 只在记住「存过」之后从钥匙串读一次，随后留在内存里。
 final class SettingsStore: ObservableObject {
     static let shared = SettingsStore()
 
     private enum K {
         static let baseURL = "translation.baseURL"
         static let model = "translation.model"
-        static let apiKey = "translation.apiKey"  // Keychain account
         static let targetLanguage = "translation.targetLanguage"
         static let chineseVoiceIdentifier = "speech.chineseVoiceIdentifier"
         static let englishVoiceIdentifier = "speech.englishVoiceIdentifier"
@@ -27,21 +27,14 @@ final class SettingsStore: ObservableObject {
             UserDefaults.standard.set(model, forKey: K.model)
         }
     }
-    private var cachedAPIKey: String?
+    private let apiKeyStore: StoredSecret
     var apiKey: String {
-        get {
-            if let cachedAPIKey { return cachedAPIKey }
-            let value = KeychainHelper.get(K.apiKey) ?? ""
-            cachedAPIKey = value
-            hasOwnAPIKey = !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            return value
-        }
+        get { apiKeyStore.value }
         set {
             objectWillChange.send()
-            cachedAPIKey = newValue
-            hasOwnAPIKey = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             guard !suppressPersist else { return }
-            try? KeychainHelper.set(newValue, forKey: K.apiKey)
+            apiKeyStore.update(newValue)
+            hasOwnAPIKey = apiKeyStore.hasSecret
         }
     }
     @Published var targetLanguage: TargetLanguage {
@@ -68,8 +61,7 @@ final class SettingsStore: ObservableObject {
             UserDefaults.standard.set(speechRate, forKey: K.speechRate)
         }
     }
-    /// True after the keychain has been read once at launch, and whenever the key changes.
-    /// Views use this flag so drawing a translation panel does not read the keychain again.
+    /// 内存里有没有非空 API Key。翻译浮窗看这个标记，不再读钥匙串。
     @Published private(set) var hasOwnAPIKey: Bool
 
     private var suppressPersist = false
@@ -82,9 +74,15 @@ final class SettingsStore: ObservableObject {
         englishVoiceIdentifier = UserDefaults.standard.string(forKey: K.englishVoiceIdentifier) ?? ""
         let savedSpeechRate = UserDefaults.standard.object(forKey: K.speechRate) as? Double
         speechRate = min(max(savedSpeechRate ?? 0.46, 0.35), 0.55)
-        let storedKey = KeychainHelper.get(K.apiKey) ?? ""
-        cachedAPIKey = storedKey
-        hasOwnAPIKey = !storedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        apiKeyStore = StoredSecret(
+            account: KeychainGate.apiKeyAccount,
+            flagKey: KeychainGate.apiKeyFlag,
+            defaults: .standard,
+            domain: KeychainGate.appDefaultsDomain,
+            keychain: SystemKeychain(),
+            isLegacyKey: KeychainGate.isAppLegacyKey
+        )
+        hasOwnAPIKey = apiKeyStore.hasSecret
         if let raw = UserDefaults.standard.string(forKey: K.targetLanguage),
            let lang = TargetLanguage(rawValue: raw) {
             targetLanguage = lang

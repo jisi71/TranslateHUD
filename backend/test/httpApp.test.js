@@ -6,11 +6,18 @@ const http = require('http')
 const { PassThrough } = require('stream')
 const { MemoryAccountStore } = require('../src/accountStore')
 const { createRequestListener } = require('../src/httpApp')
-const { GIFT_FEN, MESSAGES } = require('../src/trialPolicy')
+const { GIFT_FEN, GIFT_MICRO_YUAN, MESSAGES, MICRO_YUAN_PER_FEN } = require('../src/trialPolicy')
 const { prepareUpstreamPayload } = require('../src/upstream')
 
 function sourceHeader(text) {
   return Buffer.from(text, 'utf8').toString('base64')
+}
+
+function modelJSON(content, usage = { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }) {
+  return JSON.stringify({
+    choices: [{ message: { content }, finish_reason: 'stop' }],
+    usage
+  })
 }
 
 function listen(store, options = {}) {
@@ -27,16 +34,19 @@ function listen(store, options = {}) {
     if (token !== 'good-token') throw new Error('nope')
     return { uid: 'uid-1' }
   })
-  const forward = options.forward || (async ({ endpoint, apiKey, payload, signal }) => {
+  const inner = options.forward || (async ({ signal }) => {
     if (signal && signal.aborted) {
       throw new Error('request body completion aborted the upstream call')
     }
-    calls.push({ endpoint, apiKey, payload })
     return {
       status: 200,
-      text: JSON.stringify({ choices: [{ message: { content: '你好' } }] })
+      text: modelJSON('你好')
     }
   })
+  const forward = async (args) => {
+    calls.push({ endpoint: args.endpoint, apiKey: args.apiKey, payload: args.payload })
+    return inner(args)
+  }
   const server = http.createServer(createRequestListener({
     store,
     env,
@@ -80,11 +90,14 @@ test('first account call gifts ¥2 once and the second call does not', async () 
     const first = await request(base, '/v1/trial/account', { token: 'good-token', body: {} })
     assert.equal(first.status, 200)
     assert.equal(first.json.giftedNow, true)
+    assert.equal(first.json.balanceMicroYuan, GIFT_MICRO_YUAN)
     assert.equal(first.json.balanceFen, GIFT_FEN)
+    assert.equal(first.json.giftMicroYuan, GIFT_MICRO_YUAN)
     assert.equal(first.json.userId, 'uid-1')
 
     const second = await request(base, '/v1/trial/account', { token: 'good-token', body: {} })
     assert.equal(second.json.giftedNow, false)
+    assert.equal(second.json.balanceMicroYuan, GIFT_MICRO_YUAN)
     assert.equal(second.json.balanceFen, GIFT_FEN)
   } finally {
     server.close()
@@ -110,7 +123,17 @@ test('trial translation bills the source, hides the server key, and lowers the b
       }
     })
     assert.equal(result.status, 200)
-    assert.equal(result.headers.get('x-trial-balance-fen'), String(GIFT_FEN - 1))
+    assert.equal(result.headers.get('x-trial-cost-micro-yuan'), '10')
+    assert.equal(result.headers.get('x-trial-charged-micro-yuan'), '10')
+    assert.equal(result.headers.get('x-trial-balance-micro-yuan'), String(GIFT_MICRO_YUAN - 10))
+    assert.equal(result.headers.get('x-trial-cost-fen'), '0')
+    assert.equal(result.headers.get('x-trial-charged-fen'), '0')
+    assert.equal(result.headers.get('x-trial-balance-fen'), String(GIFT_FEN))
+    assert.equal(result.json.translatehud_trial.costMicroYuan, 10)
+    assert.equal(result.json.translatehud_trial.costFen, 0)
+    assert.equal(result.json.translatehud_trial.balanceMicroYuan, GIFT_MICRO_YUAN - 10)
+    assert.equal(result.json.translatehud_trial.balanceFen, GIFT_FEN)
+    assert.equal(calls[0].payload.stream_options, undefined)
     assert.equal(calls.length, 1)
     assert.equal(calls[0].apiKey, 'server-secret-key')
     assert.equal(calls[0].payload.model, 'server-model')
@@ -123,7 +146,8 @@ test('trial translation bills the source, hides the server key, and lowers the b
     assert.equal(calls[0].payload.thinking.type, 'disabled')
     const saved = await store.ensure('uid-1')
     assert.equal(saved.giftedNow, false)
-    assert.equal(saved.record.balanceFen, GIFT_FEN - 1)
+    assert.equal(saved.record.balanceMicroYuan, GIFT_MICRO_YUAN - 10)
+    assert.equal(saved.record.balanceFen, GIFT_FEN)
   } finally {
     server.close()
   }
@@ -153,7 +177,7 @@ test('over 500 graphemes is rejected, the upstream is not called, and nothing is
 test('a zero balance does not call the upstream', async () => {
   const store = new MemoryAccountStore()
   await store.ensure('uid-1', 1)
-  await store.charge('uid-1', GIFT_FEN)
+  await store.charge('uid-1', GIFT_MICRO_YUAN)
   const { server, base, calls } = await listen(store)
   try {
     const result = await request(base, '/v1/chat/completions', {
@@ -166,17 +190,27 @@ test('a zero balance does not call the upstream', async () => {
     assert.equal(result.json.error.message, MESSAGES.exhausted)
     assert.equal(calls.length, 0)
     const saved = await store.ensure('uid-1')
+    assert.equal(saved.record.balanceMicroYuan, 0)
     assert.equal(saved.record.balanceFen, 0)
   } finally {
     server.close()
   }
 })
 
-test('a short balance does not call the upstream', async () => {
+test('a short balance still calls the upstream and settlement stops at zero', async () => {
   const store = new MemoryAccountStore()
   await store.ensure('uid-1', 1)
-  await store.charge('uid-1', GIFT_FEN - 1)
-  const { server, base, calls } = await listen(store)
+  await store.charge('uid-1', GIFT_MICRO_YUAN - MICRO_YUAN_PER_FEN)
+  const { server, base, calls } = await listen(store, {
+    forward: async () => ({
+      status: 200,
+      text: modelJSON('你好', {
+        prompt_tokens: 1_000_000,
+        completion_tokens: 0,
+        total_tokens: 1_000_000
+      })
+    })
+  })
   try {
     const source = '字'.repeat(20)
     const result = await request(base, '/v1/chat/completions', {
@@ -184,17 +218,127 @@ test('a short balance does not call the upstream', async () => {
       source,
       body: { model: 'm', messages: [{ role: 'user', content: source }] }
     })
-    assert.equal(result.status, 402)
-    assert.equal(result.json.error.code, 'trial_balance_insufficient')
-    assert.equal(calls.length, 0)
+    assert.equal(result.status, 200)
+    assert.equal(calls.length, 1)
+    assert.equal(result.headers.get('x-trial-cost-micro-yuan'), String(GIFT_MICRO_YUAN))
+    assert.equal(result.headers.get('x-trial-charged-micro-yuan'), String(MICRO_YUAN_PER_FEN))
+    assert.equal(result.headers.get('x-trial-balance-micro-yuan'), '0')
+    assert.equal(result.headers.get('x-trial-cost-fen'), '200')
+    assert.equal(result.headers.get('x-trial-charged-fen'), '1')
+    assert.equal(result.headers.get('x-trial-balance-fen'), '0')
+    assert.equal(result.json.translatehud_trial.clamped, undefined)
     const saved = await store.ensure('uid-1')
-    assert.equal(saved.record.balanceFen, 1)
+    assert.equal(saved.record.balanceMicroYuan, 0)
+    assert.equal(saved.record.balanceFen, 0)
   } finally {
     server.close()
   }
 })
 
-test('upstream failure refunds the charge', async () => {
+test('a finished response without usage is not billed', async () => {
+  const store = new MemoryAccountStore()
+  const { server, base, calls } = await listen(store, {
+    forward: async () => ({
+      status: 200,
+      text: JSON.stringify({ choices: [{ message: { content: '你好' } }] })
+    })
+  })
+  try {
+    const result = await request(base, '/v1/chat/completions', {
+      token: 'good-token',
+      source: '你好',
+      body: { model: 'm', messages: [{ role: 'user', content: '你好' }] }
+    })
+    assert.equal(result.status, 502)
+    assert.equal(result.json.error.code, 'trial_usage_missing')
+    assert.equal(result.json.error.message, MESSAGES.usageMissing)
+    assert.equal(calls.length, 1)
+    const saved = await store.ensure('uid-1')
+    assert.equal(saved.record.balanceMicroYuan, GIFT_MICRO_YUAN)
+    assert.equal(saved.record.balanceFen, GIFT_FEN)
+  } finally {
+    server.close()
+  }
+})
+
+test('one cache-hit token is not forced up to 1 fen', async () => {
+  const store = new MemoryAccountStore()
+  const { server, base, calls } = await listen(store, {
+    forward: async () => ({
+      status: 200,
+      text: modelJSON('你好', {
+        prompt_tokens: 1,
+        completion_tokens: 0,
+        total_tokens: 1,
+        prompt_cache_hit_tokens: 1
+      })
+    })
+  })
+  try {
+    const result = await request(base, '/v1/chat/completions', {
+      token: 'good-token',
+      source: '你好',
+      body: { model: 'm', messages: [{ role: 'user', content: '你好' }] }
+    })
+    assert.equal(result.status, 200)
+    assert.equal(calls.length, 1)
+    assert.equal(result.headers.get('x-trial-cost-micro-yuan'), '0')
+    assert.equal(result.headers.get('x-trial-cost-fen'), '0')
+    assert.equal(result.json.translatehud_trial.costMicroYuan, 0)
+    const saved = await store.ensure('uid-1')
+    assert.equal(saved.record.balanceMicroYuan, GIFT_MICRO_YUAN)
+  } finally {
+    server.close()
+  }
+})
+
+test('a sub-fen remainder still starts a call and the ledger keeps the remainder', async () => {
+  const store = new MemoryAccountStore()
+  await store.ensure('uid-1', 1)
+  await store.charge('uid-1', GIFT_MICRO_YUAN - 100)
+  const { server, base, calls } = await listen(store)
+  try {
+    const result = await request(base, '/v1/chat/completions', {
+      token: 'good-token',
+      source: '你好',
+      body: { model: 'm', messages: [{ role: 'user', content: '你好' }] }
+    })
+    assert.equal(result.status, 200)
+    assert.equal(calls.length, 1)
+    assert.equal(result.headers.get('x-trial-cost-micro-yuan'), '10')
+    assert.equal(result.headers.get('x-trial-charged-micro-yuan'), '10')
+    assert.equal(result.headers.get('x-trial-balance-micro-yuan'), '90')
+    assert.equal(result.headers.get('x-trial-cost-fen'), '0')
+    assert.equal(result.headers.get('x-trial-balance-fen'), '0')
+    const saved = await store.ensure('uid-1')
+    assert.equal(saved.record.balanceMicroYuan, 90)
+    assert.equal(saved.record.balanceFen, 0)
+  } finally {
+    server.close()
+  }
+})
+
+test('a bad token price refuses before the upstream call and does not gift', async () => {
+  const store = new MemoryAccountStore()
+  const { server, base, calls } = await listen(store, {
+    env: { TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION: 'nope' }
+  })
+  try {
+    const result = await request(base, '/v1/chat/completions', {
+      token: 'good-token',
+      source: '你好',
+      body: { model: 'm', messages: [{ role: 'user', content: '你好' }] }
+    })
+    assert.equal(result.status, 503)
+    assert.equal(result.json.error.code, 'trial_not_configured')
+    assert.equal(calls.length, 0)
+    assert.equal(store.users.has('uid-1'), false)
+  } finally {
+    server.close()
+  }
+})
+
+test('upstream failure does not charge', async () => {
   const store = new MemoryAccountStore()
   const { server, base } = await listen(store, {
     forward: async () => ({ status: 500, text: '{"error":{"message":"secret upstream"}}' })
@@ -209,6 +353,7 @@ test('upstream failure refunds the charge', async () => {
     assert.equal(result.json.error.code, 'trial_upstream')
     assert.equal(result.text.includes('secret upstream'), false)
     const saved = await store.ensure('uid-1')
+    assert.equal(saved.record.balanceMicroYuan, GIFT_MICRO_YUAN)
     assert.equal(saved.record.balanceFen, GIFT_FEN)
   } finally {
     server.close()
@@ -224,7 +369,7 @@ test('reading the request body does not cancel the upstream call', async () => {
       abortedDuringCall = Boolean(signal && signal.aborted)
       return {
         status: 200,
-        text: JSON.stringify({ choices: [{ message: { content: 'ok' } }] })
+        text: modelJSON('ok')
       }
     }
   })
@@ -237,13 +382,14 @@ test('reading the request body does not cancel the upstream call', async () => {
     assert.equal(result.status, 200)
     assert.equal(abortedDuringCall, false)
     const saved = await store.ensure('uid-1')
-    assert.equal(saved.record.balanceFen, GIFT_FEN - 1)
+    assert.equal(saved.record.balanceMicroYuan, GIFT_MICRO_YUAN - 10)
+    assert.equal(saved.record.balanceFen, GIFT_FEN)
   } finally {
     server.close()
   }
 })
 
-test('closing the client after streaming starts does not refund the charge', async () => {
+test('closing the client before usage arrives does not charge', async () => {
   const store = new MemoryAccountStore()
   const stream = new PassThrough()
   const { server, base } = await listen(store, {
@@ -280,7 +426,8 @@ test('closing the client after streaming starts does not refund the charge', asy
     stream.destroy(new Error('upstream reset after the client left'))
     await new Promise((resolve) => setTimeout(resolve, 40))
     const saved = await store.ensure('uid-1')
-    assert.equal(saved.record.balanceFen, GIFT_FEN - 1)
+    assert.equal(saved.record.balanceMicroYuan, GIFT_MICRO_YUAN)
+    assert.equal(saved.record.balanceFen, GIFT_FEN)
   } finally {
     controller.abort()
     server.close()
@@ -295,12 +442,14 @@ test('streaming proxy lets the client read the first chunk before the upstream f
   const { server, base } = await listen(store, {
     forward: async ({ payload, apiKey }) => {
       assert.equal(payload.stream, true)
+      assert.deepEqual(payload.stream_options, { include_usage: true })
       assert.equal(apiKey, 'server-secret-key')
       assert.equal(payload.messages.find((message) => message.role === 'user').content, 'Hi')
       setTimeout(() => {
         stream.write('data: {"choices":[{"delta":{"content":"你"}}]}\n\n')
       }, 10)
       gate.then(() => {
+        stream.write('data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n')
         stream.write('data: [DONE]\n\n')
         stream.end()
       })
@@ -341,10 +490,47 @@ test('streaming proxy lets the client read the first chunk before the upstream f
       seen += decoder.decode(chunk.value)
     }
     assert.match(seen, /\[DONE\]/)
+    assert.match(seen, /translatehud_trial/)
+    assert.match(seen, /"costMicroYuan":10/)
+    assert.match(seen, /"costFen":0/)
+    assert.ok(seen.indexOf('translatehud_trial') < seen.lastIndexOf('[DONE]'))
     const saved = await store.ensure('uid-1')
-    assert.equal(saved.record.balanceFen, GIFT_FEN - 1)
+    assert.equal(saved.record.balanceMicroYuan, GIFT_MICRO_YUAN - 10)
+    assert.equal(saved.record.balanceFen, GIFT_FEN)
   } finally {
     release()
+    server.close()
+  }
+})
+
+test('a finished stream without usage does not charge', async () => {
+  const store = new MemoryAccountStore()
+  const stream = new PassThrough()
+  const { server, base } = await listen(store, {
+    forward: async () => {
+      stream.end('data: {"choices":[{"delta":{"content":"你"},"finish_reason":"stop"}]}\n\n')
+      return { status: 200, stream }
+    }
+  })
+  try {
+    const response = await fetch(`${base}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer good-token',
+        'Content-Type': 'application/json',
+        'X-TranslateHUD-Source': sourceHeader('Hi')
+      },
+      body: JSON.stringify({ model: 'client', stream: true, messages: [{ role: 'user', content: 'Hi' }] })
+    })
+    assert.equal(response.status, 200)
+    const text = await response.text()
+    assert.match(text, /你/)
+    assert.match(text, /trial_usage_missing/)
+    assert.equal(text.includes('[DONE]'), false)
+    const saved = await store.ensure('uid-1')
+    assert.equal(saved.record.balanceMicroYuan, GIFT_MICRO_YUAN)
+    assert.equal(saved.record.balanceFen, GIFT_FEN)
+  } finally {
     server.close()
   }
 })
@@ -391,6 +577,7 @@ test('cloud function dispatch gifts once through the same account handler', asyn
   assert.equal(result.statusCode, 200)
   const body = JSON.parse(result.body)
   assert.equal(body.giftedNow, true)
+  assert.equal(body.balanceMicroYuan, GIFT_MICRO_YUAN)
   assert.equal(body.balanceFen, GIFT_FEN)
   assert.equal(body.userId, 'uid-9')
 })

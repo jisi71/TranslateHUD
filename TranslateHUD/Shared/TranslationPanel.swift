@@ -341,7 +341,6 @@ struct TranslationPanel: View {
                     if trial.balanceState == .failed {
                         Text("点设置里的「重新读取」")
                     }
-                    Text("单次最多 500 字")
                 case .ownKey:
                     Text(providerName)
                     Text(settings.model)
@@ -427,6 +426,7 @@ struct TranslationPanel: View {
             isLoggedIn: trial.isLoggedIn,
             proxyBaseURL: trial.effectiveProxyBaseURL,
             balanceFen: trial.balanceFen,
+            balanceMicroYuan: trial.balanceMicroYuan,
             sourceText: nil
         )
     }

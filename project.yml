@@ -19,6 +19,7 @@ targets:
       - path: TranslateHUD
         excludes:
           - "Resources/Info.plist"
+          - "Resources/Legal/README.md"
     info:
       path: TranslateHUD/Resources/Info.plist
       properties:

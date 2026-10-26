@@ -4,11 +4,12 @@ import KeyboardShortcuts
 struct SettingsView: View {
     @ObservedObject private var store = SettingsStore.shared
     @ObservedObject private var trial = TrialAccountStore.shared
-    @State private var preset: ProviderPreset = ProviderPreset.all[0]
+    @State private var preset = ProviderPreset.matching(baseURL: SettingsStore.shared.baseURL)
     @State private var showApiKey = false
     @State private var testStatus: TestStatus = .idle
     @StateObject private var speechPreview = SpeechController()
     @State private var voiceRefreshToken = 0
+    @State private var path: [SettingsRoute] = []
 
     enum TestStatus {
         case idle
@@ -18,22 +19,22 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        NavigationStack(path: $path) {
         ScrollView {
         Form {
             trialSection
 
             Section("LLM 服务商") {
-                Picker("预设", selection: $preset) {
+                Picker("预设", selection: presetBinding) {
                     ForEach(ProviderPreset.all) { p in
                         Text(p.displayName).tag(p)
                     }
                 }
-                .onChange(of: preset) { _, new in
-                    store.applyPreset(new)
-                }
 
-                TextField("Base URL", text: $store.baseURL)
-                    .textFieldStyle(.roundedBorder)
+                if preset.isCustom {
+                    TextField("Base URL", text: $store.baseURL)
+                        .textFieldStyle(.roundedBorder)
+                }
 
                 TextField("Model", text: $store.model)
                     .textFieldStyle(.roundedBorder)
@@ -50,6 +51,7 @@ struct SettingsView: View {
                         .buttonStyle(.bordered)
                 }
             }
+            .panelSectionFill()
 
             Section("目标语言") {
                 Picker("翻译为", selection: $store.targetLanguage) {
@@ -59,8 +61,9 @@ struct SettingsView: View {
                 }
                 Text("中文和英文会自动对调。")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(PanelPalette.muted)
             }
+            .panelSectionFill()
 
             Section("朗读") {
                 Picker("中文声音", selection: $store.chineseVoiceIdentifier) {
@@ -81,10 +84,10 @@ struct SettingsView: View {
 
                 LabeledContent("语速") {
                     HStack(spacing: 8) {
-                        Text("慢").font(.caption).foregroundStyle(.secondary)
+                        Text("慢").font(.caption).foregroundStyle(PanelPalette.muted)
                         Slider(value: $store.speechRate, in: 0.35...0.55, step: 0.01)
                             .frame(width: 180)
-                        Text("快").font(.caption).foregroundStyle(.secondary)
+                        Text("快").font(.caption).foregroundStyle(PanelPalette.muted)
                     }
                 }
 
@@ -107,6 +110,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            .panelSectionFill()
 
             Section("测试连接") {
                 HStack {
@@ -119,10 +123,11 @@ struct SettingsView: View {
                 if let message = store.validationMessage {
                     Text(message)
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(PanelPalette.warning)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .panelSectionFill()
 
             Section("快捷键") {
                 LabeledContent("截图翻译") {
@@ -132,12 +137,95 @@ struct SettingsView: View {
                     KeyboardShortcuts.Recorder(for: .triggerSelection)
                 }
             }
+            .panelSectionFill()
+
+            Section {
+                NavigationLink("帮助", value: SettingsRoute.help)
+            }
+            .panelSectionFill()
         }
         .formStyle(.grouped)
+        .panelChrome()
         }
-        .frame(width: 560, height: 720)
+        .panelChrome()
         .navigationTitle("TranslateHUD 设置")
+        .navigationDestination(for: SettingsRoute.self) { route in
+            settingsDestination(route)
+        }
+        .onAppear { syncPresetPicker() }
         .onDisappear { speechPreview.stop() }
+        .onReceive(NotificationCenter.default.publisher(for: SettingsWindowController.willShowNotification)) { _ in
+            syncPresetPicker()
+        }
+        }
+        .panelChrome()
+        .frame(width: 560, height: 720)
+    }
+
+    /// 用户点选预设才写入地址和推荐模型。打开窗口时直接改 `preset`，不走这个 setter。
+    private var presetBinding: Binding<ProviderPreset> {
+        Binding(
+            get: { preset },
+            set: { newValue in
+                guard newValue != preset else { return }
+                preset = newValue
+                store.applyPreset(newValue)
+            }
+        )
+    }
+
+    /// 按已保存的接口地址对齐预设，已填过的模型名称保持不动。
+    private func syncPresetPicker() {
+        let matched = ProviderPreset.matching(baseURL: store.baseURL)
+        preset = matched
+        let model = matched.modelForDisplay(saved: store.model)
+        if model != store.model {
+            store.model = model
+        }
+    }
+
+    private var loginConsent: some View {
+        HStack(spacing: 4) {
+            Text("登录即表示已阅读")
+                .foregroundStyle(PanelPalette.muted)
+            Button {
+                path.append(SettingsRoute.agreement)
+            } label: {
+                Text("用户协议").underline()
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(PanelPalette.primaryText)
+            Text("和")
+                .foregroundStyle(PanelPalette.muted)
+            Button {
+                path.append(SettingsRoute.privacy)
+            } label: {
+                Text("隐私政策").underline()
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(PanelPalette.primaryText)
+        }
+        .font(.caption)
+        .controlSize(.small)
+    }
+
+    @ViewBuilder
+    private func settingsDestination(_ route: SettingsRoute) -> some View {
+        SettingsBackContainer(title: route.parentTitle(in: path), goBack: {
+            guard !path.isEmpty else { return }
+            path.removeLast()
+        }) {
+            switch route {
+            case .help:
+                HelpView()
+            case .feedback:
+                FeedbackView()
+            case .agreement:
+                LegalDocumentView(title: "用户协议", resource: "user-agreement")
+            case .privacy:
+                LegalDocumentView(title: "隐私政策", resource: "privacy-policy")
+            }
+        }
     }
 
     @ViewBuilder
@@ -165,7 +253,7 @@ struct SettingsView: View {
                         .textFieldStyle(.roundedBorder)
                     Text("每个账号只能领取一次。")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(PanelPalette.muted)
                     Button(trial.isBusy ? "正在领取…" : "领取 ¥2 体验额度") {
                         Task { await trial.redeemInvite() }
                     }
@@ -187,15 +275,17 @@ struct SettingsView: View {
                     }
                     .disabled(trial.isBusy || trial.code.filter(\.isNumber).count != 6)
                 }
+                loginConsent
             }
 
             if !trial.statusMessage.isEmpty {
                 Text(trial.statusMessage)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(PanelPalette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .panelSectionFill()
     }
 
     private var testDisabled: Bool {
@@ -221,7 +311,7 @@ struct SettingsView: View {
                 .font(.callout)
         case .fail(let msg):
             Label(msg, systemImage: "xmark.octagon.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(PanelPalette.error)
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
                 .help(msg)

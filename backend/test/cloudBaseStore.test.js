@@ -60,6 +60,25 @@ function documentDatabase(options = {}) {
   }
 }
 
+test('a feedback submit writes the China-day count onto the account document', async () => {
+  const db = documentDatabase({ exists: true })
+  const store = createCloudBaseStore(db)
+  const now = Date.parse('2026-10-26T01:00:00.000Z')
+  const taken = await store.takeFeedback('uid-9', now, 10)
+  assert.equal(taken.ok, true)
+  assert.equal(db.docs.get('uid-9').feedbackDay, '2026-10-26')
+  assert.equal(db.docs.get('uid-9').feedbackCount, 1)
+  assert.equal(db.docs.get('uid-9').balanceMicroYuan, 0)
+  await store.settle('uid-9', 0)
+  assert.equal(db.docs.get('uid-9').feedbackCount, 1)
+  const blocked = await store.takeFeedback('uid-9', now, 1)
+  assert.equal(blocked.ok, false)
+  assert.equal(blocked.code, 'feedback_daily_limit')
+  await store.releaseFeedback('uid-9', now)
+  assert.equal(db.docs.get('uid-9').feedbackCount, undefined)
+  assert.equal(db.docs.get('uid-9').feedbackDay, undefined)
+})
+
 test('a fresh document database gets both collections before the first account', async () => {
   const db = documentDatabase()
   const store = createCloudBaseStore(db)
@@ -107,6 +126,20 @@ test('a collection permission failure stays a trial_store error and does not wri
     return true
   })
   assert.equal(db.docs.size, 0)
+})
+
+test('trial_accounts, trial_invite, and trial_feedback are created as separate collections', async () => {
+  const names = []
+  const db = {
+    async createCollection(name) { names.push(name) }
+  }
+  const { ensureCollection, COLLECTION, INVITE_COLLECTION } = require('../src/cloudBaseStore')
+  const { FEEDBACK_COLLECTION } = require('../src/feedbackStore')
+  await ensureCollection(db, COLLECTION)
+  await ensureCollection(db, INVITE_COLLECTION)
+  await ensureCollection(db, FEEDBACK_COLLECTION)
+  await ensureCollection(db, COLLECTION)
+  assert.deepEqual(names, ['trial_accounts', 'trial_invite', 'trial_feedback'])
 })
 
 test('a missing collection seen during the first read is created and the account starts empty', async () => {

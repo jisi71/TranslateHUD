@@ -1,9 +1,17 @@
 'use strict'
 
 const { createAccountStoreFromEnv } = require('./accountStore')
-const { handleAccount, handleInviteStatus, handleRedeem, handleTranslate, readEnv } = require('./trialService')
+const { createFeedbackStoreFromEnv } = require('./feedbackStore')
+const {
+  handleAccount,
+  handleInviteStatus,
+  handleRedeem,
+  handleTranslate,
+  readEnv,
+  defaultVerifyUser
+} = require('./trialService')
+const { handleFeedback, FEEDBACK_MESSAGES } = require('./feedbackService')
 const { defaultForward } = require('./upstream')
-const { defaultVerifyUser } = require('./trialService')
 const { MESSAGES } = require('./trialPolicy')
 
 function decodeEventBody(event) {
@@ -42,17 +50,49 @@ async function dispatchUnsafe(event, deps) {
   for (const [key, value] of Object.entries(event.headers || {})) {
     headers[String(key).toLowerCase()] = Array.isArray(value) ? value[0] : value
   }
-  const store = deps.store || createAccountStoreFromEnv()
-  const ctx = {
+  const clean = String(path).split('?')[0]
+  const isFeedback = clean.endsWith('/trial/feedback') || event.action === 'feedback'
+  const shared = {
     headers,
     rawBody: method === 'GET' ? '' : decodeEventBody(event),
-    store,
     verifyUser: deps.verifyUser || defaultVerifyUser,
-    forward: deps.forward || defaultForward,
     env: deps.env || readEnv(),
     now: deps.now || (() => Date.now())
   }
-  const clean = String(path).split('?')[0]
+  if (isFeedback) {
+    try {
+      if (method !== 'POST') {
+        return {
+          statusCode: 405,
+          headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+          body: JSON.stringify({ error: { code: 'method', message: '请用 POST。' } })
+        }
+      }
+      const result = await handleFeedback({
+        ...shared,
+        store: deps.store || createAccountStoreFromEnv(),
+        feedbackStore: deps.feedbackStore || createFeedbackStoreFromEnv()
+      })
+      return {
+        statusCode: result.status,
+        headers: result.headers || { 'Content-Type': 'application/json; charset=utf-8' },
+        body: result.body || ''
+      }
+    } catch (error) {
+      console.error(`feedback dispatch failed code=${(error && (error.causeCode || error.code)) || 'unknown'}`)
+      return {
+        statusCode: 503,
+        headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+        body: JSON.stringify({ error: { code: 'feedback_store', message: FEEDBACK_MESSAGES.store } })
+      }
+    }
+  }
+  const store = deps.store || createAccountStoreFromEnv()
+  const ctx = {
+    ...shared,
+    store,
+    forward: deps.forward || defaultForward
+  }
   const isAccount = clean.endsWith('/trial/account') || (event.action === 'account')
   const isRedeem = clean.endsWith('/trial/redeem') || event.action === 'redeem'
   const isInviteStatus = clean.endsWith('/trial/invite-status') || event.action === 'invite-status'

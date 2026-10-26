@@ -21,9 +21,9 @@ struct TranslationPanel: View {
     @State private var showsContext = false
     @State private var hasCopied = false
 
-    private let background = Color(white: 0.085)
-    private let muted = Color(white: 0.63)
-    private let border = Color(white: 0.18)
+    private let background = PanelPalette.background
+    private let muted = PanelPalette.muted
+    private let border = PanelPalette.border
 
     private var translated: String {
         switch progress.state {
@@ -59,7 +59,7 @@ struct TranslationPanel: View {
             footer
         }
         .fixedSize(horizontal: false, vertical: true)
-        .foregroundStyle(Color(white: 0.94))
+        .foregroundStyle(PanelPalette.primaryText)
         .background(background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(border, lineWidth: 1))
@@ -226,7 +226,7 @@ struct TranslationPanel: View {
         HeightFitting {
             TermExplanationView(progress: termProgress)
                 .padding(12)
-                .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 8))
+                .background(PanelPalette.well, in: RoundedRectangle(cornerRadius: 8))
         }
         .panelSectionRole(.extra)
     }
@@ -309,7 +309,7 @@ struct TranslationPanel: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 8))
+        .background(PanelPalette.quietWell, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(border, lineWidth: 1))
         .accessibilityElement(children: .combine)
     }
@@ -357,8 +357,8 @@ struct TranslationPanel: View {
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 30)
-                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
-                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color(white: 0.25), lineWidth: 1))
+                .background(PanelPalette.chip, in: RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(PanelPalette.controlBorder, lineWidth: 1))
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
@@ -393,7 +393,7 @@ struct TranslationPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             } else if let context {
                 (Text(context.before).foregroundColor(muted)
-                 + Text(original).bold().foregroundColor(.white)
+                 + Text(original).bold().foregroundColor(PanelPalette.emphasis)
                  + Text(context.after).foregroundColor(muted))
                     .font(.system(size: 13))
                     .lineSpacing(4)
@@ -408,7 +408,7 @@ struct TranslationPanel: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 8))
+        .background(PanelPalette.well, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(border, lineWidth: 1))
     }
 
@@ -450,8 +450,8 @@ struct TranslationPanel: View {
 
     private var statusColor: Color {
         switch progress.state {
-        case .timedOut: return .orange
-        case .failed: return Color(red: 0.95, green: 0.5, blue: 0.46)
+        case .timedOut: return PanelPalette.warning
+        case .failed: return PanelPalette.error
         default: return muted
         }
     }
@@ -464,7 +464,7 @@ struct TranslationPanel: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(active ? Color.white : muted)
+        .foregroundStyle(active ? PanelPalette.emphasis : muted)
         .help(help)
         .accessibilityLabel(help)
     }

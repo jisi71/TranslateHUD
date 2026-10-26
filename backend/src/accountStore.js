@@ -9,6 +9,8 @@ const {
   normalizeRecord,
   openAccount,
   readDisplayNo,
+  releaseFeedbackSlot,
+  reserveFeedbackSlot,
   settleCharge
 } = require('./trialPolicy')
 const { decideRedeem, publicInviteStatus } = require('./invite')
@@ -164,6 +166,27 @@ class MemoryAccountStore {
       const next = credit(existing, amount)
       this.users.set(uid, next)
       return next.balanceMicroYuan
+    })
+  }
+
+  async takeFeedback(uid, now = Date.now(), limit = 10) {
+    return this.lock(uid, async () => {
+      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+      const opened = openAccount(existing, now)
+      const decision = reserveFeedbackSlot(opened.record, now, limit)
+      if (!decision.ok) return decision
+      this.users.set(uid, clone(decision.record))
+      return decision
+    })
+  }
+
+  async releaseFeedback(uid, now = Date.now()) {
+    return this.lock(uid, async () => {
+      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+      if (!existing) return null
+      const next = releaseFeedbackSlot(existing, now)
+      this.users.set(uid, clone(next))
+      return next
     })
   }
 }
@@ -334,6 +357,29 @@ class FileAccountStore {
       this.users.set(uid, next)
       await this.persist()
       return next.balanceMicroYuan
+    })
+  }
+
+  async takeFeedback(uid, now = Date.now(), limit = 10) {
+    return this.lock(async () => {
+      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+      const opened = openAccount(existing, now)
+      const decision = reserveFeedbackSlot(opened.record, now, limit)
+      if (!decision.ok) return decision
+      this.users.set(uid, clone(decision.record))
+      await this.persist()
+      return decision
+    })
+  }
+
+  async releaseFeedback(uid, now = Date.now()) {
+    return this.lock(async () => {
+      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+      if (!existing) return null
+      const next = releaseFeedbackSlot(existing, now)
+      this.users.set(uid, clone(next))
+      await this.persist()
+      return next
     })
   }
 }
@@ -534,6 +580,48 @@ class TransactionalAccountStore {
         await tx.save(uid, next)
         await tx.commit()
         return next.balanceMicroYuan
+      } catch (error) {
+        await tx.rollback().catch(() => {})
+        throw error
+      }
+    })
+  }
+
+  async takeFeedback(uid, now = Date.now(), limit = 10) {
+    return this.withRetry(async () => {
+      const tx = await this.begin()
+      try {
+        const existing = await tx.get(uid)
+        const opened = openAccount(existing, now)
+        const decision = reserveFeedbackSlot(opened.record, now, limit)
+        if (!decision.ok) {
+          await tx.rollback().catch(() => {})
+          return decision
+        }
+        if (existing) await tx.save(uid, decision.record)
+        else await tx.create(uid, decision.record)
+        await tx.commit()
+        return decision
+      } catch (error) {
+        await tx.rollback().catch(() => {})
+        throw error
+      }
+    })
+  }
+
+  async releaseFeedback(uid, now = Date.now()) {
+    return this.withRetry(async () => {
+      const tx = await this.begin()
+      try {
+        const existing = await tx.get(uid)
+        if (!existing) {
+          await tx.rollback().catch(() => {})
+          return null
+        }
+        const next = releaseFeedbackSlot(existing, now)
+        await tx.save(uid, next)
+        await tx.commit()
+        return next
       } catch (error) {
         await tx.rollback().catch(() => {})
         throw error

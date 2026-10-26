@@ -2,13 +2,15 @@
 
 const http = require('http')
 const { createAccountStoreFromEnv } = require('./src/accountStore')
+const { createFeedbackStoreFromEnv } = require('./src/feedbackStore')
 const { createRequestListener } = require('./src/httpApp')
 const { readEnv } = require('./src/trialService')
 
 const env = readEnv()
 const store = createAccountStoreFromEnv()
+const feedbackStore = createFeedbackStoreFromEnv()
 const port = Number(process.env.PORT || 8787)
-const server = http.createServer(createRequestListener({ store, env }))
+const server = http.createServer(createRequestListener({ store, feedbackStore, env }))
 
 server.listen(port, () => {
   const keyState = String(env.apiKey || '').trim() ? 'configured' : 'MISSING'

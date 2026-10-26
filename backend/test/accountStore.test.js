@@ -114,6 +114,7 @@ function createConflictDatabase() {
       const seen = new Map()
       let inviteWrite = null
       let seenInvite = null
+      let seenNext = 1
       const tx = {
         async get(uid) {
           if (writes.has(uid)) return writes.get(uid)
@@ -130,10 +131,11 @@ function createConflictDatabase() {
         async getInvite() {
           if (inviteWrite) return { ...inviteWrite }
           seenInvite = invite.redeemedCount
-          return { ...invite }
+          seenNext = invite.nextDisplayNo || 1
+          return { ...invite, nextDisplayNo: invite.nextDisplayNo || 1 }
         },
         async saveInvite(doc) {
-          inviteWrite = { ...doc, __seen: seenInvite }
+          inviteWrite = { ...doc, __seen: seenInvite, __seenNext: seenNext }
         },
         commit() {
           const run = tail.then(() => {
@@ -150,7 +152,10 @@ function createConflictDatabase() {
                 throw error
               }
             }
-            if (inviteWrite && invite.redeemedCount !== inviteWrite.__seen) {
+            if (inviteWrite && (
+              invite.redeemedCount !== inviteWrite.__seen
+              || (invite.nextDisplayNo || 1) !== inviteWrite.__seenNext
+            )) {
               const error = new Error('conflict')
               error.code = 'CONFLICT'
               throw error
@@ -162,12 +167,14 @@ function createConflictDatabase() {
                 giftGranted: record.giftGranted,
                 createdAt: record.createdAt,
                 inviteRedeemedAt: record.inviteRedeemedAt || 0,
+                displayNo: record.displayNo || 0,
                 inflight: record.inflight || []
               })
             }
             if (inviteWrite) {
               invite = {
                 redeemedCount: inviteWrite.redeemedCount,
+                nextDisplayNo: inviteWrite.nextDisplayNo || 1,
                 ...(inviteWrite.maxRedeems ? { maxRedeems: inviteWrite.maxRedeems } : {}),
                 ...(inviteWrite.codes ? { codes: inviteWrite.codes } : {})
               }
@@ -238,20 +245,24 @@ test('a scripted conflict on create reads the winner and does not gift again', a
     if (calls === 1) {
       return {
         async get() { return null },
+        async getInvite() { return { redeemedCount: 0 } },
         async create() {
           const error = new Error('write conflict')
           error.code = 'CONFLICT'
           throw error
         },
         async save() {},
+        async saveInvite() {},
         async commit() {},
         async rollback() {}
       }
     }
     return {
       async get() { return { balanceMicroYuan: 0, giftGranted: true, createdAt: 1 } },
+      async getInvite() { return { redeemedCount: 0, nextDisplayNo: 1 } },
       async create() { throw new Error('should not create') },
       async save() {},
+      async saveInvite() {},
       async commit() {},
       async rollback() {}
     }

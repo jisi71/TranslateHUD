@@ -1,6 +1,6 @@
 'use strict'
 
-const { GIFT_FEN, GIFT_MICRO_YUAN, MESSAGES, decodeSourceHeader, quoteSource } = require('./trialPolicy')
+const { GIFT_FEN, GIFT_MICRO_YUAN, MESSAGES, decodeSourceHeader, formatDisplayId, quoteSource } = require('./trialPolicy')
 const { prepareUpstreamPayload, readUpstreamConfig } = require('./upstream')
 const { costMicroYuanFromUsage, parseUsage, readTrialPrices, settlementFields } = require('./usageBilling')
 const { createSettlingStream, formatSSE } = require('./usageStream')
@@ -88,15 +88,7 @@ async function handleAccount(ctx) {
     return {
       status: 200,
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
-      body: JSON.stringify({
-        userId: identified.uid,
-        balanceMicroYuan: opened.record.balanceMicroYuan,
-        balanceFen: opened.record.balanceFen,
-        giftedNow: false,
-        giftMicroYuan: 0,
-        giftFen: 0,
-        inviteRedeemed: opened.record.giftGranted === true
-      })
+      body: JSON.stringify(accountPayload(identified.uid, opened.record, false))
     }
   } catch (error) {
     return storeFailure(error)
@@ -140,6 +132,8 @@ async function settleUsage(ctx, uid, usage, prices) {
 function accountPayload(uid, record, giftedNow) {
   return {
     userId: uid,
+    displayNo: record.displayNo || 0,
+    displayId: formatDisplayId(record.displayNo),
     balanceMicroYuan: record.balanceMicroYuan,
     balanceFen: record.balanceFen,
     giftedNow: Boolean(giftedNow),

@@ -104,6 +104,8 @@ function normalizeInvite(snap) {
   const invite = { redeemedCount: count }
   if (data.maxRedeems != null && data.maxRedeems !== '') invite.maxRedeems = data.maxRedeems
   if (data.codes != null) invite.codes = data.codes
+  const nextDisplayNo = Math.floor(Number(data.nextDisplayNo))
+  if (Number.isSafeInteger(nextDisplayNo) && nextDisplayNo > 0) invite.nextDisplayNo = nextDisplayNo
   return invite
 }
 
@@ -126,6 +128,36 @@ function initApp() {
     })
   }
   return tcb.init({ env: tcb.SYMBOL_CURRENT_ENV || envId })
+}
+
+// Best-effort list so older accounts can receive smaller numbers. A query
+// failure falls back to numbering only the account being saved.
+async function listAccountEntries(database) {
+  if (!database || typeof database.collection !== 'function') return null
+  const rows = []
+  const pageSize = 100
+  try {
+    for (let offset = 0; offset < 500; offset += pageSize) {
+      let query = database.collection(COLLECTION)
+      if (typeof query.skip === 'function') query = query.skip(offset)
+      if (typeof query.limit === 'function') query = query.limit(pageSize)
+      if (typeof query.get !== 'function') return null
+      const snap = await query.get()
+      const data = Array.isArray(snap && snap.data) ? snap.data : []
+      for (const doc of data) {
+        if (!doc || typeof doc !== 'object') continue
+        const uid = doc._id || doc.id
+        if (!uid) continue
+        const record = normalizeRecord(doc)
+        if (!record) continue
+        rows.push({ uid: String(uid), record })
+      }
+      if (data.length < pageSize) break
+    }
+    return rows
+  } catch {
+    return null
+  }
 }
 
 function createCloudBaseStore(db) {
@@ -161,7 +193,12 @@ function createCloudBaseStore(db) {
         const saved = { redeemedCount: Math.max(0, Math.floor(Number(doc.redeemedCount) || 0)) }
         if (doc.maxRedeems != null && doc.maxRedeems !== '') saved.maxRedeems = doc.maxRedeems
         if (doc.codes != null) saved.codes = doc.codes
+        const nextDisplayNo = Math.floor(Number(doc.nextDisplayNo))
+        if (Number.isSafeInteger(nextDisplayNo) && nextDisplayNo > 0) saved.nextDisplayNo = nextDisplayNo
         await transaction.collection(INVITE_COLLECTION).doc(INVITE_DOC).set(saved)
+      },
+      async listUsers() {
+        return listAccountEntries(database)
       },
       async commit() {
         await transaction.commit()

@@ -2,13 +2,43 @@
 
 const fs = require('fs')
 const path = require('path')
-const { applyCharge, credit, normalizeRecord, openAccount, settleCharge } = require('./trialPolicy')
+const {
+  applyCharge,
+  assignDisplayNumbers,
+  credit,
+  normalizeRecord,
+  openAccount,
+  readDisplayNo,
+  settleCharge
+} = require('./trialPolicy')
 const { decideRedeem, publicInviteStatus } = require('./invite')
 const { acquireSlot, releaseSlot } = require('./inflight')
 
 function clone(record) {
   const normalized = normalizeRecord(record)
   return normalized ? { ...normalized } : null
+}
+
+// Up to 19 other accounts that still need a number, oldest first, plus the
+// account being opened. Callers that cannot list anyone pass null and only
+// the current account is numbered.
+function backfillEntries(listed, uid, record) {
+  const others = Array.isArray(listed) ? listed : []
+  const older = others
+    .filter((entry) => entry && entry.uid != null && String(entry.uid) !== String(uid))
+    .filter((entry) => readDisplayNo(entry.record) <= 0)
+    .sort((a, b) => {
+      const createdA = Number(a.record && a.record.createdAt) || 0
+      const createdB = Number(b.record && b.record.createdAt) || 0
+      if (createdA !== createdB) return createdA - createdB
+      const uidA = String(a.uid)
+      const uidB = String(b.uid)
+      if (uidA < uidB) return -1
+      if (uidA > uidB) return 1
+      return 0
+    })
+    .slice(0, 19)
+  return [...older, { uid: String(uid), record }]
 }
 
 class MemoryAccountStore {
@@ -33,12 +63,21 @@ class MemoryAccountStore {
   }
 
   async ensure(uid, now = Date.now()) {
-    return this.lock(uid, async () => {
-      const existing = this.users.get(uid)
-      const opened = openAccount(existing ? clone(existing) : null, now)
-      if (!existing) this.users.set(uid, clone(opened.record))
-      return { record: clone(opened.record), giftedNow: false }
-    })
+    return this.inviteLock(() => this.lock(uid, async () => {
+      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+      const opened = openAccount(existing, now)
+      const entries = []
+      for (const [id, record] of this.users) {
+        if (id === uid) continue
+        entries.push({ uid: id, record: clone(record) })
+      }
+      entries.push({ uid, record: opened.record })
+      const plan = assignDisplayNumbers(entries, this.invite, uid)
+      for (const update of plan.updates) this.users.set(update.uid, clone(update.record))
+      if (!this.users.has(uid)) this.users.set(uid, clone(opened.record))
+      if (plan.updates.length > 0) this.invite = plan.counter
+      return { record: clone(this.users.get(uid)), giftedNow: false }
+    }))
   }
 
   async inviteStatus(env = process.env) {
@@ -48,12 +87,32 @@ class MemoryAccountStore {
   async redeem(uid, code, now = Date.now(), env = process.env) {
     return this.inviteLock(() => this.lock(uid, async () => {
       const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
-      const decision = decideRedeem({ record: existing, counter: this.invite, code, now, env })
+      const prepared = this.prepareNumber(uid, existing, now)
+      const decision = decideRedeem({ record: prepared.record, counter: prepared.counter, code, now, env })
       if (!decision.ok) return decision
+      for (const update of prepared.others) this.users.set(update.uid, clone(update.record))
       this.users.set(uid, clone(decision.record))
       this.invite = decision.counter
       return decision
     }))
+  }
+
+  prepareNumber(uid, existing, now) {
+    const opened = openAccount(existing, now)
+    if (readDisplayNo(opened.record) > 0) return { record: opened.record, counter: this.invite, others: [] }
+    const entries = []
+    for (const [id, record] of this.users) {
+      if (id === uid) continue
+      entries.push({ uid: id, record: clone(record) })
+    }
+    entries.push({ uid, record: opened.record })
+    const plan = assignDisplayNumbers(entries, this.invite, uid)
+    const mine = plan.updates.find((update) => update.uid === uid)
+    return {
+      record: mine ? mine.record : opened.record,
+      counter: plan.updates.length > 0 ? plan.counter : this.invite,
+      others: plan.updates.filter((update) => update.uid !== uid)
+    }
   }
 
   async acquireInflight(uid, now = Date.now()) {
@@ -163,11 +222,21 @@ class FileAccountStore {
     return this.lock(async () => {
       const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
       const opened = openAccount(existing, now)
-      if (!existing) {
-        this.users.set(uid, clone(opened.record))
-        await this.persist()
+      const entries = []
+      for (const [id, record] of this.users) {
+        if (id === uid) continue
+        entries.push({ uid: id, record: clone(record) })
       }
-      return { record: clone(opened.record), giftedNow: false }
+      entries.push({ uid, record: opened.record })
+      const plan = assignDisplayNumbers(entries, this.invite, uid)
+      if (plan.updates.length === 0 && existing) {
+        return { record: clone(existing), giftedNow: false }
+      }
+      for (const update of plan.updates) this.users.set(update.uid, clone(update.record))
+      if (!this.users.has(uid)) this.users.set(uid, clone(opened.record))
+      this.invite = plan.counter
+      await this.persist()
+      return { record: clone(this.users.get(uid)), giftedNow: false }
     })
   }
 
@@ -178,8 +247,26 @@ class FileAccountStore {
   async redeem(uid, code, now = Date.now(), env = process.env) {
     return this.lock(async () => {
       const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
-      const decision = decideRedeem({ record: existing, counter: this.invite, code, now, env })
+      const opened = openAccount(existing, now)
+      let record = opened.record
+      let counter = this.invite
+      let others = []
+      if (readDisplayNo(record) <= 0) {
+        const entries = []
+        for (const [id, saved] of this.users) {
+          if (id === uid) continue
+          entries.push({ uid: id, record: clone(saved) })
+        }
+        entries.push({ uid, record })
+        const plan = assignDisplayNumbers(entries, counter, uid)
+        const mine = plan.updates.find((update) => update.uid === uid)
+        if (mine) record = mine.record
+        if (plan.updates.length > 0) counter = plan.counter
+        others = plan.updates.filter((update) => update.uid !== uid)
+      }
+      const decision = decideRedeem({ record, counter, code, now, env })
       if (!decision.ok) return decision
+      for (const update of others) this.users.set(update.uid, clone(update.record))
       this.users.set(uid, clone(decision.record))
       this.invite = decision.counter
       await this.persist()
@@ -273,9 +360,40 @@ class TransactionalAccountStore {
       try {
         const existing = await tx.get(uid)
         const opened = openAccount(existing, now)
-        if (!existing) await tx.create(uid, opened.record)
+        if (existing && readDisplayNo(opened.record) > 0) {
+          await tx.rollback().catch(() => {})
+          return { record: clone(opened.record), giftedNow: false }
+        }
+        let listed = null
+        if (typeof tx.listUsers === 'function') {
+          try {
+            listed = await tx.listUsers()
+          } catch {
+            listed = null
+          }
+        }
+        const entries = backfillEntries(listed, uid, opened.record)
+        const fresh = []
+        for (const entry of entries) {
+          if (String(entry.uid) === String(uid)) {
+            fresh.push({ uid: String(uid), record: opened.record })
+            continue
+          }
+          const current = await tx.get(entry.uid)
+          if (!current || readDisplayNo(current) > 0) continue
+          fresh.push({ uid: String(entry.uid), record: current })
+        }
+        const invite = await tx.getInvite()
+        const plan = assignDisplayNumbers(fresh, invite, uid)
+        for (const update of plan.updates) {
+          if (update.uid === String(uid) && !existing) await tx.create(update.uid, update.record)
+          else await tx.save(update.uid, update.record)
+        }
+        if (plan.updates.length === 0 && !existing) await tx.create(uid, opened.record)
+        if (plan.updates.length > 0) await tx.saveInvite(plan.counter)
         await tx.commit()
-        return { record: clone(opened.record), giftedNow: false }
+        const mine = plan.updates.find((update) => update.uid === String(uid))
+        return { record: clone(mine ? mine.record : opened.record), giftedNow: false }
       } catch (error) {
         await tx.rollback().catch(() => {})
         throw error
@@ -302,8 +420,16 @@ class TransactionalAccountStore {
       const tx = await this.begin()
       try {
         const existing = await tx.get(uid)
-        const invite = await tx.getInvite()
-        const decision = decideRedeem({ record: existing, counter: invite, code, now, env })
+        const opened = openAccount(existing, now)
+        let record = opened.record
+        let invite = await tx.getInvite()
+        if (readDisplayNo(record) <= 0) {
+          const plan = assignDisplayNumbers([{ uid: String(uid), record }], invite, uid)
+          const mine = plan.updates.find((update) => update.uid === String(uid))
+          if (mine) record = mine.record
+          if (plan.updates.length > 0) invite = plan.counter
+        }
+        const decision = decideRedeem({ record, counter: invite, code, now, env })
         if (!decision.ok) {
           await tx.rollback().catch(() => {})
           return decision

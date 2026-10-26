@@ -2,11 +2,37 @@ import Foundation
 
 struct TrialAccountSnapshot: Equatable, Sendable {
     var userId: String
+    /// Short account number shown in Settings, such as "00001". Empty until the server sends one.
+    var displayId: String
     var balanceMicroYuan: Int
     var giftedNow: Bool
     var inviteRedeemed: Bool
 
     var balanceFen: Int { TrialPricing.displayFen(microYuan: balanceMicroYuan) }
+}
+
+enum TrialDisplayId {
+    /// At least five digits. 1 is "00001". 100000 stays "100000".
+    static func format(_ number: Int) -> String {
+        guard number > 0 else { return "" }
+        let text = String(number)
+        if text.count >= 5 { return text }
+        return String(repeating: "0", count: 5 - text.count) + text
+    }
+
+    static func parse(_ json: [String: Any]) -> String {
+        if let text = json["displayId"] as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, trimmed.allSatisfy(\.isNumber), let number = Int(trimmed), number > 0 {
+                return format(number)
+            }
+        }
+        if let number = json["displayNo"] as? Int, number > 0 { return format(number) }
+        if let number = json["displayNo"] as? NSNumber, number.intValue > 0 {
+            return format(number.intValue)
+        }
+        return ""
+    }
 }
 
 enum TrialProxyClient {
@@ -64,6 +90,7 @@ enum TrialProxyClient {
         let giftedNow = boolValue(json["giftedNow"])
         return TrialAccountSnapshot(
             userId: userId,
+            displayId: TrialDisplayId.parse(json),
             balanceMicroYuan: balance,
             giftedNow: giftedNow,
             inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow)
@@ -106,6 +133,7 @@ enum TrialProxyClient {
         let giftedNow = boolValue(json["giftedNow"])
         return TrialAccountSnapshot(
             userId: userId,
+            displayId: TrialDisplayId.parse(json),
             balanceMicroYuan: balance,
             giftedNow: giftedNow,
             inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow)

@@ -148,12 +148,11 @@ struct SettingsView: View {
                 LabeledContent("体验余额") {
                     Text(trial.balanceValueText)
                 }
-                if !trial.userId.isEmpty {
+                if !trial.displayId.isEmpty {
                     LabeledContent("账号") {
-                        Text(trial.userId)
-                            .font(.caption)
+                        Text(trial.displayId)
+                            .monospacedDigit()
                             .textSelection(.enabled)
-                            .lineLimit(2)
                     }
                 }
                 if trial.inviteRedeemed {

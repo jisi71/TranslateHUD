@@ -92,6 +92,9 @@ test('the default invite code gifts ¥2 once and a repeat does not', async () =>
     assert.equal(ok.json.inviteRedeemed, true)
     assert.equal(ok.json.balanceMicroYuan, GIFT_MICRO_YUAN)
     assert.equal(ok.json.giftMicroYuan, GIFT_MICRO_YUAN)
+    assert.equal(ok.json.userId, 'uid-1')
+    assert.equal(ok.json.displayNo, 1)
+    assert.equal(ok.json.displayId, '00001')
 
     const again = await request(base, '/v1/trial/redeem', {
       token: 'good-token',

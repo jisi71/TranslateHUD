@@ -20,6 +20,11 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(TrialPricing.yuanString(microYuan: 10), "¥0.00")
         XCTAssertEqual(TrialPricing.yuanString(microYuan: 5_000), "¥0.01")
         XCTAssertEqual(TrialPricing.yuanString(microYuan: 1_999_990), "¥2.00")
+        XCTAssertEqual(TrialDisplayId.format(1), "00001")
+        XCTAssertEqual(TrialDisplayId.format(2), "00002")
+        XCTAssertEqual(TrialDisplayId.format(99999), "99999")
+        XCTAssertEqual(TrialDisplayId.format(100000), "100000")
+        XCTAssertEqual(TrialDisplayId.format(0), "")
     }
 
     func testPhoneNumbersUseCloudBaseFormat() {

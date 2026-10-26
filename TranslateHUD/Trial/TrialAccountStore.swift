@@ -14,6 +14,8 @@ final class TrialAccountStore: ObservableObject {
     @Published private(set) var isLoggedIn = false
     @Published private(set) var maskedPhone = ""
     @Published private(set) var userId = ""
+    /// 设置里给用户看的短号，例如 00001。登录和扣费仍用 userId。
+    @Published private(set) var displayId = ""
     @Published private(set) var balanceMicroYuan: Int?
     /// Fen shown in the UI. Half-up from the micro-yuan ledger, display only.
     var balanceFen: Int? {
@@ -176,6 +178,7 @@ final class TrialAccountStore: ObservableObject {
             balanceState = .loaded
             inviteRedeemed = snapshot.inviteRedeemed
             if !snapshot.userId.isEmpty { userId = snapshot.userId }
+            if !snapshot.displayId.isEmpty { displayId = snapshot.displayId }
             if snapshot.inviteRedeemed {
                 inviteCode = ""
                 statusMessage = "已领取 ¥2.00 体验额度。"
@@ -245,6 +248,7 @@ final class TrialAccountStore: ObservableObject {
             balanceMicroYuan = snapshot.balanceMicroYuan
             balanceState = .loaded
             if !snapshot.userId.isEmpty { userId = snapshot.userId }
+            if !snapshot.displayId.isEmpty { displayId = snapshot.displayId }
             inviteRedeemed = snapshot.inviteRedeemed
             if announceGift {
                 statusMessage = snapshot.inviteRedeemed
@@ -292,6 +296,7 @@ final class TrialAccountStore: ObservableObject {
         accessToken = ""
         refreshToken = ""
         userId = ""
+        displayId = ""
         maskedPhone = ""
         expiresAt = .distantPast
         balanceMicroYuan = nil

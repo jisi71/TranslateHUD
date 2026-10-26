@@ -106,6 +106,83 @@ function sanitizeSlots(slots) {
   return clean
 }
 
+// Shown in the app instead of the CloudBase uid. 1 is "00001". Past 99999 the
+// text grows ("100000") and earlier numbers stay five digits. 0 means unassigned.
+function readDisplayNo(record) {
+  const n = Math.floor(Number(record && record.displayNo))
+  if (!Number.isSafeInteger(n) || n <= 0) return 0
+  return n
+}
+
+function formatDisplayId(displayNo) {
+  const n = Math.floor(Number(displayNo))
+  if (!Number.isSafeInteger(n) || n <= 0) return ''
+  const text = String(n)
+  return text.length >= 5 ? text : text.padStart(5, '0')
+}
+
+function readNextDisplayNo(counter) {
+  const n = Math.floor(Number(counter && counter.nextDisplayNo))
+  if (!Number.isSafeInteger(n) || n <= 0) return 1
+  return n
+}
+
+function withNextDisplayNo(counter, nextDisplayNo) {
+  const base = counter && typeof counter === 'object' ? { ...counter } : { redeemedCount: 0 }
+  base.nextDisplayNo = nextDisplayNo
+  if (!Number.isFinite(Number(base.redeemedCount))) base.redeemedCount = 0
+  return base
+}
+
+function compareAccountOrder(a, b) {
+  const createdA = Number(a.record && a.record.createdAt) || 0
+  const createdB = Number(b.record && b.record.createdAt) || 0
+  if (createdA !== createdB) return createdA - createdB
+  const uidA = String(a.uid)
+  const uidB = String(b.uid)
+  if (uidA < uidB) return -1
+  if (uidA > uidB) return 1
+  return 0
+}
+
+// Give each account without a displayNo the next integer. When several are
+// visible, earlier createdAt gets the smaller number. The account passed as
+// focusUid is always included, even if older accounts would fill the batch.
+// Already assigned numbers are never changed.
+const DISPLAY_BACKFILL_LIMIT = 20
+
+function assignDisplayNumbers(entries, counter, focusUid) {
+  const list = Array.isArray(entries) ? entries : []
+  let next = readNextDisplayNo(counter)
+  let maxAssigned = 0
+  for (const entry of list) {
+    const n = readDisplayNo(entry && entry.record)
+    if (n > maxAssigned) maxAssigned = n
+  }
+  if (next <= maxAssigned) next = maxAssigned + 1
+
+  let missing = list
+    .filter((entry) => entry && entry.uid != null && entry.record && readDisplayNo(entry.record) <= 0)
+    .map((entry) => ({ uid: String(entry.uid), record: normalizeRecord(entry.record) }))
+    .sort(compareAccountOrder)
+  if (missing.length > DISPLAY_BACKFILL_LIMIT) {
+    const focusKey = focusUid == null ? null : String(focusUid)
+    const focus = focusKey ? missing.filter((entry) => entry.uid === focusKey) : []
+    const others = missing
+      .filter((entry) => entry.uid !== focusKey)
+      .slice(0, DISPLAY_BACKFILL_LIMIT - focus.length)
+    missing = [...others, ...focus].sort(compareAccountOrder)
+  }
+
+  const updates = []
+  for (const entry of missing) {
+    const record = ledgerRecord(entry.record.balanceMicroYuan, { ...entry.record, displayNo: next })
+    updates.push({ uid: entry.uid, record })
+    next += 1
+  }
+  return { updates, counter: withNextDisplayNo(counter, next) }
+}
+
 function ledgerRecord(microYuan, record) {
   const balanceMicroYuan = Math.max(0, Math.floor(Number(microYuan) || 0))
   const redeemedAt = record && record.inviteRedeemedAt ? Math.floor(Number(record.inviteRedeemedAt) || 0) : 0
@@ -117,6 +194,7 @@ function ledgerRecord(microYuan, record) {
     giftGranted: !record || record.giftGranted !== false,
     createdAt: record && record.createdAt ? record.createdAt : 0,
     inviteRedeemedAt: redeemedAt > 0 ? redeemedAt : 0,
+    displayNo: readDisplayNo(record),
     inflight: sanitizeSlots(record && record.inflight)
   }
 }
@@ -255,5 +333,9 @@ module.exports = {
   credit,
   settleCharge,
   normalizeRecord,
-  decodeSourceHeader
+  decodeSourceHeader,
+  readDisplayNo,
+  formatDisplayId,
+  assignDisplayNumbers,
+  DISPLAY_BACKFILL_LIMIT
 }

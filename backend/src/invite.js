@@ -73,6 +73,8 @@ function keptConfig(counter) {
   if (maxRedeems) next.maxRedeems = maxRedeems
   const codes = parseCodes(counter && counter.codes)
   if (codes.length) next.codes = codes
+  const nextDisplayNo = positiveInt(counter && counter.nextDisplayNo)
+  if (nextDisplayNo) next.nextDisplayNo = nextDisplayNo
   return next
 }
 

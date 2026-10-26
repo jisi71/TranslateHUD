@@ -101,11 +101,16 @@ test('account call does not gift, and a second call still does not', async () =>
     assert.equal(first.json.giftMicroYuan, 0)
     assert.equal(first.json.inviteRedeemed, false)
     assert.equal(first.json.userId, 'uid-1')
+    assert.equal(first.json.displayNo, 1)
+    assert.equal(first.json.displayId, '00001')
 
     const second = await request(base, '/v1/trial/account', { token: 'good-token', body: {} })
     assert.equal(second.json.giftedNow, false)
     assert.equal(second.json.balanceMicroYuan, 0)
     assert.equal(second.json.inviteRedeemed, false)
+    assert.equal(second.json.displayNo, 1)
+    assert.equal(second.json.displayId, '00001')
+    assert.equal(second.json.userId, 'uid-1')
   } finally {
     server.close()
   }
@@ -596,6 +601,8 @@ test('cloud function dispatch reads the account without gifting', async () => {
   assert.equal(body.balanceFen, 0)
   assert.equal(body.inviteRedeemed, false)
   assert.equal(body.userId, 'uid-9')
+  assert.equal(body.displayNo, 1)
+  assert.equal(body.displayId, '00001')
 })
 
 test('a database failure becomes trial_store and hides the driver message', async () => {

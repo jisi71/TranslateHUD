@@ -3,9 +3,10 @@
 // Creates the document-database collections if they are missing.
 // From backend/: npm install && npm run ensure-collection
 // The running service also does this on the first balance read and the first
-// feedback submit.
+// feedback submit. Failure records use trial_error_events, created here and
+// again on the first error write, not during a balance read.
 
-const { COLLECTION, INVITE_COLLECTION, ensureCollection, initApp } = require('../src/cloudBaseStore')
+const { COLLECTION, ERROR_COLLECTION, INVITE_COLLECTION, ensureCollection, initApp } = require('../src/cloudBaseStore')
 const { FEEDBACK_COLLECTION } = require('../src/feedbackStore')
 
 async function main() {
@@ -13,7 +14,8 @@ async function main() {
   await ensureCollection(db, COLLECTION)
   await ensureCollection(db, INVITE_COLLECTION)
   await ensureCollection(db, FEEDBACK_COLLECTION)
-  console.log('trial_accounts、trial_invite 和 trial_feedback 已就绪')
+  await ensureCollection(db, ERROR_COLLECTION)
+  console.log('trial_accounts、trial_invite、trial_feedback 和 trial_error_events 已就绪')
 }
 
 main().catch((error) => {

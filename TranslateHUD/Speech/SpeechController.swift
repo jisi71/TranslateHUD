@@ -36,6 +36,9 @@ final class SpeechController: NSObject, ObservableObject {
 
     private let synthesizer: AVSpeechSynthesizer
     private var pendingUtterances = Set<ObjectIdentifier>()
+    private var speakGeneration = 0
+    private var utteranceGeneration: [ObjectIdentifier: Int] = [:]
+    private var reportedCancelGeneration: Int?
 
     override init() {
         synthesizer = AVSpeechSynthesizer()
@@ -53,6 +56,7 @@ final class SpeechController: NSObject, ObservableObject {
         }
 
         stop()
+        let generation = speakGeneration
         let settings = SettingsStore.shared
         let utterances = Self.segments(for: value).map { segment in
             let utterance = AVSpeechUtterance(string: segment.text)
@@ -64,15 +68,25 @@ final class SpeechController: NSObject, ObservableObject {
             utterance.rate = Float(settings.speechRate)
             return utterance
         }
-        guard !utterances.isEmpty else { return }
+        guard !utterances.isEmpty else {
+            FailureReporter.report(SpeechFailure.noUtterance, surface: .tts)
+            return
+        }
 
-        pendingUtterances = Set(utterances.map(ObjectIdentifier.init))
+        var generations: [ObjectIdentifier: Int] = [:]
+        for utterance in utterances {
+            generations[ObjectIdentifier(utterance)] = generation
+        }
+        utteranceGeneration = generations
+        pendingUtterances = Set(generations.keys)
         speakingID = id
         utterances.forEach { synthesizer.speak($0) }
     }
 
     func stop() {
+        speakGeneration += 1
         pendingUtterances.removeAll()
+        utteranceGeneration.removeAll()
         speakingID = nil
         if synthesizer.isSpeaking || synthesizer.isPaused {
             synthesizer.stopSpeaking(at: .immediate)
@@ -238,9 +252,15 @@ final class SpeechController: NSObject, ObservableObject {
         (0x00C0...0x024F).contains(scalar.value)
     }
 
-    private func finish(_ utterance: AVSpeechUtterance) {
-        guard pendingUtterances.remove(ObjectIdentifier(utterance)) != nil else { return }
+    private func finish(_ utterance: AVSpeechUtterance, cancelled: Bool) {
+        let id = ObjectIdentifier(utterance)
+        let generation = utteranceGeneration.removeValue(forKey: id)
+        guard pendingUtterances.remove(id) != nil else { return }
         if pendingUtterances.isEmpty { speakingID = nil }
+        guard cancelled, let generation, generation == speakGeneration else { return }
+        guard reportedCancelGeneration != generation else { return }
+        reportedCancelGeneration = generation
+        FailureReporter.report(SpeechFailure.systemCancelled, surface: .tts)
     }
 }
 
@@ -249,13 +269,13 @@ extension SpeechController: AVSpeechSynthesizerDelegate {
         _ synthesizer: AVSpeechSynthesizer,
         didFinish utterance: AVSpeechUtterance
     ) {
-        Task { @MainActor [weak self] in self?.finish(utterance) }
+        Task { @MainActor [weak self] in self?.finish(utterance, cancelled: false) }
     }
 
     nonisolated func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer,
         didCancel utterance: AVSpeechUtterance
     ) {
-        Task { @MainActor [weak self] in self?.finish(utterance) }
+        Task { @MainActor [weak self] in self?.finish(utterance, cancelled: true) }
     }
 }

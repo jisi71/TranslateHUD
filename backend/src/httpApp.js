@@ -12,11 +12,13 @@ const {
 } = require('./trialService')
 const { handleFeedback, FEEDBACK_MESSAGES, MAX_FEEDBACK_BODY } = require('./feedbackService')
 const { MESSAGES } = require('./trialPolicy')
+const { ErrorReportLimiter, handleErrorReport } = require('./errorLog')
 
 function routeOf(urlPath) {
   const clean = String(urlPath || '/').split('?')[0]
   if (clean === '/healthz' || clean.endsWith('/healthz')) return 'health'
   if (clean.endsWith('/trial/invite-status')) return 'invite-status'
+  if (clean.endsWith('/trial/errors')) return 'errors'
   if (clean.endsWith('/trial/redeem')) return 'redeem'
   if (clean.endsWith('/trial/account')) return 'account'
   if (clean.endsWith('/trial/feedback')) return 'feedback'
@@ -62,6 +64,9 @@ function createRequestListener(deps = {}) {
   const bodyLimit = deps.bodyLimit || 48 * 1024
   const feedbackBodyLimit = deps.feedbackBodyLimit || MAX_FEEDBACK_BODY
   const feedbackStore = deps.feedbackStore
+  const errorLog = deps.errorLog || null
+  const errorRateLimiter = deps.errorRateLimiter || new ErrorReportLimiter()
+  const errorBodyLimit = 2 * 1024
 
   return async function listener(req, res) {
     const route = routeOf(req.url || '/')
@@ -101,9 +106,14 @@ function createRequestListener(deps = {}) {
 
     try {
       const isFeedback = route === 'feedback'
+      const isErrors = route === 'errors'
       const rawBody = req.method === 'GET'
         ? ''
-        : await readBody(req, isFeedback ? feedbackBodyLimit : bodyLimit, isFeedback ? 'FEEDBACK_LIMIT' : 'LIMIT')
+        : await readBody(
+          req,
+          isFeedback ? feedbackBodyLimit : (isErrors ? errorBodyLimit : bodyLimit),
+          isFeedback ? 'FEEDBACK_LIMIT' : 'LIMIT'
+        )
       const ctx = {
         headers: req.headers,
         rawBody,
@@ -113,10 +123,13 @@ function createRequestListener(deps = {}) {
         forward,
         env,
         now,
-        signal: abort.signal
+        signal: abort.signal,
+        errorLog,
+        errorRateLimiter
       }
       let result
-      if (route === 'account') result = await handleAccount(ctx)
+      if (route === 'errors') result = await handleErrorReport(ctx)
+      else if (route === 'account') result = await handleAccount(ctx)
       else if (route === 'redeem') result = await handleRedeem(ctx)
       else if (route === 'invite-status') result = await handleInviteStatus(ctx)
       else if (isFeedback) result = await handleFeedback(ctx)

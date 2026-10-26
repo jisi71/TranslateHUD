@@ -11,6 +11,7 @@ enum ScreenshotFlow {
         // 1. 还没拿到原文时，只检查登录、余额是否已用完、以及自己的 API。
         if case .blocked(let title, let message) = TranslationSession.prepare(sourceText: nil) {
             ToastCenter.shared.show(title: title, message: message, duration: 6)
+            FailureReporter.report(TranslationError.service(message), surface: .screenshotOCRTranslate)
             return
         }
 
@@ -23,6 +24,7 @@ enum ScreenshotFlow {
             return
         } catch {
             ToastCenter.shared.show(title: "截图失败", message: ServiceErrorMessage.describe(error), duration: 5)
+            FailureReporter.report(error, surface: .screenshotOCRTranslate)
             return
         }
 
@@ -32,6 +34,7 @@ enum ScreenshotFlow {
             lines = try await OCRService.recognize(image: image)
         } catch {
             ToastCenter.shared.show(title: "文字识别失败", message: ServiceErrorMessage.describe(error))
+            FailureReporter.report(error, surface: .screenshotOCRTranslate)
             return
         }
 
@@ -49,6 +52,7 @@ enum ScreenshotFlow {
 
         // 4. 立刻展示浮窗（loading 状态 + 已识别的原文）
         let progress = TranslationProgress()
+        progress.failureSurface = .screenshotOCRTranslate
         let window = FloatingScreenshotWindow(
             image: image,
             originals: originals,

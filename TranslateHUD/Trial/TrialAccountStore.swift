@@ -111,6 +111,7 @@ final class TrialAccountStore: ObservableObject {
             return
         } catch {
             statusMessage = (error as? LocalizedError)?.errorDescription ?? "验证码没有发出，请稍后再试。"
+            FailureReporter.report(error, surface: .login, path: .trial)
         }
     }
 
@@ -146,6 +147,7 @@ final class TrialAccountStore: ObservableObject {
             return
         } catch {
             statusMessage = (error as? LocalizedError)?.errorDescription ?? "登录没有成功，请稍后再试。"
+            FailureReporter.report(error, surface: .login, path: .trial)
         }
     }
 
@@ -190,6 +192,7 @@ final class TrialAccountStore: ObservableObject {
             let text = (error as? LocalizedError)?.errorDescription ?? "邀请码没有领到，请稍后再试。"
             if text == TrialCopy.authExpired || text == TrialCopy.envMismatch {
                 logout(message: text)
+                FailureReporter.report(error, surface: .inviteRedeem, path: .trial)
                 return
             }
             if text == TrialCopy.inviteClaimed {
@@ -197,7 +200,17 @@ final class TrialAccountStore: ObservableObject {
                 inviteCode = ""
             }
             statusMessage = text
+            FailureReporter.report(error, surface: .inviteRedeem, path: .trial)
         }
+    }
+
+    /// Token for best-effort side requests. Does not refresh and does not log the user out.
+    func freshAccessToken() -> String? {
+        guard isLoggedIn, !accessToken.isEmpty, expiresAt.timeIntervalSinceNow > 30 else { return nil }
+        if TrialToken.disagrees(accessToken: accessToken, refreshToken: refreshToken, envId: TrialConfig.envId) {
+            return nil
+        }
+        return accessToken
     }
 
     func validAccessToken() async throws -> String {
@@ -267,10 +280,12 @@ final class TrialAccountStore: ObservableObject {
             let text = (error as? LocalizedError)?.errorDescription ?? TrialCopy.store
             if text == TrialCopy.authExpired || text == TrialCopy.envMismatch {
                 logout(message: text)
+                FailureReporter.report(error, surface: .login, path: .trial)
                 return
             }
             balanceState = .failed
             statusMessage = text
+            FailureReporter.report(error, surface: .login, path: .trial)
         }
     }
 

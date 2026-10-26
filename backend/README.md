@@ -11,7 +11,7 @@ TranslateHUD 0.4.0 让没有自己 API Key 的人先用手机号试翻译。这�
 - envId：`translatehud-d4gl951eo8bef4702`。这是 TranslateHUD 自己的云开发个人版，不要再用语音记录那个环境。
 - 地域：上海 `ap-shanghai`（短信验证码登录只支持上海）
 - 控制台里的「短信验证码登录」需要在这个新环境里打开，渠道用云开发短信资源包。
-- 账本用云数据库（文档型），集合名 `trial_accounts`。不要改成 PostgreSQL。新环境不用先在控制台手工建这个集合：服务第一次读余额时会自己创建。创建失败时，App 会显示「读取失败」，并可以点「重新读取」。
+- 账本用云数据库（文档型），集合名 `trial_accounts`。不要改成 PostgreSQL。新环境不用先在控制台手工建这个集合：服务第一次读余额时会自己创建。创建失败时，App 会显示「读取失败」，点设置里余额旁边的刷新图标可以再读一次。
 
 微信登录和邮箱登录这次不做。
 
@@ -104,7 +104,7 @@ PORT=8080
 
 云托管需要能访问这个环境的云数据库（文档型）。镜像里会安装 `@cloudbase/node-sdk`。第一次读余额或邀请码次数时，服务会调用 `createCollection('trial_accounts')` 和 `createCollection('trial_invite')`。集合已经存在就跳过。账本文档 ID 仍是腾讯云用户 ID，登录和扣费都用它。App 设置里显示的是短号 `displayId`（第 1 个用户 `00001`），存在账本文档的 `displayNo` 上。发号计数在 `trial_invite` 文档 `config` 的 `nextDisplayNo`。邀请码计数也在这份 `config` 里。不需要先在控制台建集合，也不要改成 PostgreSQL。
 
-数据库报错会变成 `trial_store`，不会把数据库原文交给 App。App 显示：`体验余额暂时读不出来。请在设置里点「重新读取」。`
+数据库报错会变成 `trial_store`，不会把数据库原文交给 App。App 显示：`体验余额暂时读不出来。请在设置里点余额旁的刷新。`
 
 可选：在部署前先建集合（需要本机已经 `npm install`，并在 `.env` 里填好腾讯云密钥）：
 

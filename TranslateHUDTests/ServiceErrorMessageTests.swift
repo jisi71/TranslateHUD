@@ -218,7 +218,7 @@ final class ServiceErrorMessageTests: XCTestCase {
             code: 503,
             body: "{\"error\":{\"code\":\"trial_store\",\"message\":\"\(secret)\"}}"
         )
-        XCTAssertEqual(store, "体验余额暂时读不出来。请在设置里点「重新读取」。")
+        XCTAssertEqual(store, "体验余额暂时读不出来。请在设置里点余额旁的刷新。")
         XCTAssertFalse(store.contains("secret-key"))
         XCTAssertFalse(store.contains("HTTP"))
 

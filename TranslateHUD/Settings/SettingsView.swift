@@ -146,7 +146,25 @@ struct SettingsView: View {
             if trial.isLoggedIn {
                 LabeledContent("手机号", value: trial.maskedPhone.isEmpty ? "已登录" : trial.maskedPhone)
                 LabeledContent("体验余额") {
-                    Text(trial.balanceValueText)
+                    HStack(spacing: 6) {
+                        Text(trial.balanceValueText)
+                        Button {
+                            Task { await trial.refreshFromServer() }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .rotationEffect(.degrees(trial.balanceState == .loading ? 360 : 0))
+                                .animation(
+                                    trial.balanceState == .loading
+                                        ? .linear(duration: 0.8).repeatForever(autoreverses: false)
+                                        : .linear(duration: 0.2),
+                                    value: trial.balanceState == .loading
+                                )
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(trial.balanceState == .loading)
+                        .help("刷新体验余额")
+                        .accessibilityLabel("刷新体验余额")
+                    }
                 }
                 if !trial.displayId.isEmpty {
                     LabeledContent("账号") {
@@ -170,13 +188,7 @@ struct SettingsView: View {
                     }
                     .disabled(trial.isBusy || trial.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                HStack {
-                    Button(trial.balanceState == .loading ? "正在读取…" : "重新读取") {
-                        Task { await trial.refreshFromServer() }
-                    }
-                    .disabled(trial.balanceState == .loading)
-                    Button("退出登录") { trial.logout() }
-                }
+                Button("退出登录") { trial.logout() }
             } else {
                 TextField("手机号", text: $trial.phone)
                     .textFieldStyle(.roundedBorder)

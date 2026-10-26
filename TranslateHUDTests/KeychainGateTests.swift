@@ -3,6 +3,8 @@ import XCTest
 
 final class KeychainGateTests: XCTestCase {
     private func isolate(_ body: (UserDefaults, String, RecordingKeychain) throws -> Void) rethrows {
+        KeychainGate.resetUserDeniedAccessForTests()
+        defer { KeychainGate.resetUserDeniedAccessForTests() }
         let name = "KeychainGateTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
@@ -299,7 +301,7 @@ final class KeychainGateTests: XCTestCase {
         }
     }
 
-    func testTrialLegacyDeviceMigratesASavedSessionWithoutRewritingIt() {
+    func testTrialLegacyDeviceCollapsesIntoOneItemAndLaterLaunchesReadOnce() {
         isolate { defaults, domain, keychain in
             defaults.set("device", forKey: "trial.deviceId")
             keychain.items[TrialKeychain.Account.access] = "access"
@@ -315,15 +317,20 @@ final class KeychainGateTests: XCTestCase {
             XCTAssertEqual(session.userId, "user")
             XCTAssertEqual(session.maskedPhone, "138****8000")
             XCTAssertEqual(session.expiresAt, Date(timeIntervalSince1970: 1_700_000_000))
-            XCTAssertEqual(keychain.lookups, TrialKeychain.Account.all)
-            XCTAssertTrue(keychain.sets.isEmpty)
+            XCTAssertEqual(keychain.lookups, [TrialKeychain.Account.session] + TrialKeychain.Account.legacy)
+            XCTAssertEqual(keychain.sets, [TrialKeychain.Account.session])
             XCTAssertTrue(keychain.deletes.isEmpty)
             XCTAssertTrue(defaults.bool(forKey: KeychainGate.trialSessionFlag))
 
             let nextLaunch = TrialKeychain.restore(defaults: defaults, domain: domain, keychain: keychain)
             XCTAssertTrue(nextLaunch.isLoggedIn)
-            XCTAssertEqual(keychain.lookups.count, TrialKeychain.Account.all.count * 2)
-            XCTAssertTrue(keychain.sets.isEmpty)
+            XCTAssertEqual(nextLaunch.maskedPhone, "138****8000")
+            XCTAssertEqual(nextLaunch.accessToken, "access")
+            XCTAssertEqual(
+                keychain.lookups,
+                [TrialKeychain.Account.session] + TrialKeychain.Account.legacy + [TrialKeychain.Account.session]
+            )
+            XCTAssertEqual(keychain.sets, [TrialKeychain.Account.session])
             XCTAssertTrue(keychain.deletes.isEmpty)
         }
     }
@@ -334,11 +341,12 @@ final class KeychainGateTests: XCTestCase {
             let session = TrialKeychain.restore(defaults: defaults, domain: domain, keychain: keychain)
             XCTAssertTrue(session.didRead)
             XCTAssertFalse(session.isLoggedIn)
-            XCTAssertEqual(keychain.lookups.count, TrialKeychain.Account.all.count)
+            XCTAssertEqual(keychain.lookups, [TrialKeychain.Account.session] + TrialKeychain.Account.legacy)
+            XCTAssertTrue(keychain.sets.isEmpty)
             XCTAssertFalse(defaults.bool(forKey: KeychainGate.trialSessionFlag))
 
             _ = TrialKeychain.restore(defaults: defaults, domain: domain, keychain: keychain)
-            XCTAssertEqual(keychain.lookups.count, TrialKeychain.Account.all.count)
+            XCTAssertEqual(keychain.lookups.count, TrialKeychain.Account.legacy.count + 1)
         }
     }
 
@@ -353,18 +361,14 @@ final class KeychainGateTests: XCTestCase {
                 defaults: defaults,
                 keychain: keychain
             )
-            XCTAssertEqual(keychain.sets, [
-                TrialKeychain.Account.access,
-                TrialKeychain.Account.refresh,
-                TrialKeychain.Account.userId,
-                TrialKeychain.Account.expires
-            ])
+            XCTAssertEqual(keychain.sets, [TrialKeychain.Account.session])
             XCTAssertTrue(keychain.deletes.isEmpty)
             XCTAssertTrue(defaults.bool(forKey: KeychainGate.trialSessionFlag))
-            XCTAssertEqual(keychain.items[TrialKeychain.Account.access], "access")
+            XCTAssertNotNil(keychain.items[TrialKeychain.Account.session])
+            XCTAssertNil(keychain.items[TrialKeychain.Account.access])
 
             TrialKeychain.clear(defaults: defaults, keychain: keychain)
-            XCTAssertEqual(keychain.deletes, TrialKeychain.Account.all)
+            XCTAssertEqual(keychain.deletes, TrialKeychain.Account.storedAccounts)
             XCTAssertTrue(keychain.items.isEmpty)
             XCTAssertFalse(defaults.bool(forKey: KeychainGate.trialSessionFlag))
 
@@ -399,10 +403,16 @@ final class KeychainGateTests: XCTestCase {
             let session = TrialKeychain.restore(defaults: defaults, domain: domain, keychain: keychain)
             XCTAssertTrue(session.didRead)
             XCTAssertFalse(session.isLoggedIn)
+            XCTAssertEqual(keychain.lookups, [TrialKeychain.Account.session])
             XCTAssertTrue(defaults.bool(forKey: KeychainGate.trialSessionFlag))
             XCTAssertEqual(keychain.items[TrialKeychain.Account.access], "access")
             XCTAssertTrue(keychain.deletes.isEmpty)
             XCTAssertTrue(keychain.sets.isEmpty)
+            XCTAssertTrue(KeychainGate.userDeniedAccessThisSession)
+
+            let lookups = keychain.lookups.count
+            _ = TrialKeychain.restore(defaults: defaults, domain: domain, keychain: keychain)
+            XCTAssertEqual(keychain.lookups.count, lookups)
         }
     }
 
@@ -438,6 +448,182 @@ final class KeychainGateTests: XCTestCase {
         }
     }
 
+    func testClearedAPIKeyIsNotReadOnTheNextLaunch() {
+        isolate { defaults, domain, keychain in
+            let store = secret(defaults: defaults, domain: domain, keychain: keychain)
+            store.update("sk-live")
+            store.update("")
+            XCTAssertEqual(store.value, "")
+            XCTAssertFalse(store.hasSecret)
+            XCTAssertFalse(defaults.bool(forKey: KeychainGate.apiKeyFlag))
+            XCTAssertNil(keychain.items[KeychainGate.apiKeyAccount])
+            XCTAssertEqual(keychain.deletes, [KeychainGate.apiKeyAccount])
+
+            let lookups = keychain.lookups.count
+            let next = secret(defaults: defaults, domain: domain, keychain: keychain)
+            XCTAssertEqual(next.value, "")
+            XCTAssertFalse(next.hasSecret)
+            XCTAssertEqual(keychain.lookups.count, lookups)
+            XCTAssertEqual(keychain.sets, [KeychainGate.apiKeyAccount])
+        }
+    }
+
+    func testLoggedOutAndClearedKeyDoesNotTouchTheKeychain() {
+        isolate { defaults, domain, keychain in
+            defaults.set(false, forKey: KeychainGate.apiKeyFlag)
+            defaults.set(false, forKey: KeychainGate.trialSessionFlag)
+            keychain.items[KeychainGate.apiKeyAccount] = "sk-hidden"
+            keychain.items[TrialKeychain.Account.session] = "{\"accessToken\":\"a\"}"
+            for account in TrialKeychain.Account.legacy {
+                keychain.items[account] = "left-behind"
+            }
+            let store = secret(defaults: defaults, domain: domain, keychain: keychain)
+            let session = TrialKeychain.restore(defaults: defaults, domain: domain, keychain: keychain)
+            XCTAssertEqual(store.value, "")
+            XCTAssertFalse(session.didRead)
+            XCTAssertFalse(session.isLoggedIn)
+            XCTAssertTrue(keychain.lookups.isEmpty)
+            XCTAssertTrue(keychain.sets.isEmpty)
+            XCTAssertTrue(keychain.deletes.isEmpty)
+            XCTAssertEqual(keychain.items[KeychainGate.apiKeyAccount], "sk-hidden")
+        }
+    }
+
+    func testClearedAPIKeyIsNotReadWhileASavedTrialSessionIsReadOnce() throws {
+        try isolate { defaults, domain, keychain in
+            try TrialKeychain.write(
+                accessToken: "access",
+                refreshToken: "refresh",
+                userId: "user",
+                maskedPhone: "138****8000",
+                expiresAt: Date(timeIntervalSince1970: 1_700_000_100),
+                defaults: defaults,
+                keychain: keychain
+            )
+            defaults.set(false, forKey: KeychainGate.apiKeyFlag)
+            keychain.items[KeychainGate.apiKeyAccount] = "sk-deleted"
+            let store = secret(defaults: defaults, domain: domain, keychain: keychain)
+            let session = TrialKeychain.restore(defaults: defaults, domain: domain, keychain: keychain)
+            XCTAssertEqual(store.value, "")
+            XCTAssertFalse(store.hasSecret)
+            XCTAssertTrue(session.isLoggedIn)
+            XCTAssertEqual(session.maskedPhone, "138****8000")
+            XCTAssertEqual(session.expiresAt, Date(timeIntervalSince1970: 1_700_000_100))
+            XCTAssertEqual(keychain.lookups, [TrialKeychain.Account.session])
+            XCTAssertEqual(keychain.sets, [TrialKeychain.Account.session])
+            XCTAssertTrue(keychain.deletes.isEmpty)
+            XCTAssertEqual(keychain.items[KeychainGate.apiKeyAccount], "sk-deleted")
+        }
+    }
+
+    func testDeniedAPIKeyReadDoesNotWriteTheOldKeyBack() {
+        isolate { defaults, domain, keychain in
+            defaults.set(true, forKey: KeychainGate.apiKeyFlag)
+            keychain.items[KeychainGate.apiKeyAccount] = "sk-keep"
+            keychain.unavailableKeys = [KeychainGate.apiKeyAccount]
+            let store = secret(defaults: defaults, domain: domain, keychain: keychain)
+            XCTAssertEqual(store.value, "")
+            XCTAssertFalse(store.hasSecret)
+            store.update("")
+            store.update("   ")
+            XCTAssertEqual(keychain.lookups, [KeychainGate.apiKeyAccount])
+            XCTAssertTrue(keychain.sets.isEmpty)
+            XCTAssertTrue(keychain.deletes.isEmpty)
+            XCTAssertEqual(keychain.items[KeychainGate.apiKeyAccount], "sk-keep")
+            XCTAssertTrue(defaults.bool(forKey: KeychainGate.apiKeyFlag))
+
+            keychain.unavailableKeys = []
+            store.update("sk-new")
+            XCTAssertEqual(store.value, "sk-new")
+            XCTAssertEqual(keychain.sets, [KeychainGate.apiKeyAccount])
+            XCTAssertEqual(keychain.items[KeychainGate.apiKeyAccount], "sk-new")
+        }
+    }
+
+    func testDenyingOneLegacyTrialItemStopsTheRest() {
+        isolate { defaults, domain, keychain in
+            defaults.set(true, forKey: KeychainGate.trialSessionFlag)
+            defaults.set(true, forKey: KeychainGate.apiKeyFlag)
+            keychain.items[TrialKeychain.Account.access] = "access"
+            keychain.items[TrialKeychain.Account.refresh] = "refresh"
+            keychain.items[TrialKeychain.Account.userId] = "user"
+            keychain.items[TrialKeychain.Account.phone] = "138****8000"
+            keychain.items[TrialKeychain.Account.expires] = "1700000000"
+            keychain.items[KeychainGate.apiKeyAccount] = "sk-keep"
+            keychain.unavailableKeys = [TrialKeychain.Account.userId]
+            let session = TrialKeychain.restore(defaults: defaults, domain: domain, keychain: keychain)
+            XCTAssertTrue(session.didRead)
+            XCTAssertFalse(session.isLoggedIn)
+            XCTAssertEqual(session.accessToken, "")
+            XCTAssertEqual(keychain.lookups, [
+                TrialKeychain.Account.session,
+                TrialKeychain.Account.access,
+                TrialKeychain.Account.refresh,
+                TrialKeychain.Account.userId
+            ])
+            XCTAssertTrue(defaults.bool(forKey: KeychainGate.trialSessionFlag))
+            XCTAssertTrue(keychain.sets.isEmpty)
+            XCTAssertTrue(keychain.deletes.isEmpty)
+            XCTAssertTrue(KeychainGate.userDeniedAccessThisSession)
+
+            let lookups = keychain.lookups.count
+            _ = TrialKeychain.restore(defaults: defaults, domain: domain, keychain: keychain)
+            let store = secret(defaults: defaults, domain: domain, keychain: keychain)
+            store.update("")
+            XCTAssertEqual(store.value, "")
+            XCTAssertEqual(keychain.lookups.count, lookups)
+            XCTAssertEqual(keychain.items[KeychainGate.apiKeyAccount], "sk-keep")
+            XCTAssertTrue(keychain.sets.isEmpty)
+            XCTAssertTrue(keychain.deletes.isEmpty)
+            XCTAssertTrue(defaults.bool(forKey: KeychainGate.apiKeyFlag))
+        }
+    }
+
+    func testDenyingTheSessionItemDoesNotReadLegacyItems() {
+        isolate { defaults, domain, keychain in
+            defaults.set(true, forKey: KeychainGate.trialSessionFlag)
+            keychain.items[TrialKeychain.Account.session] = "{\"accessToken\":\"access\"}"
+            keychain.items[TrialKeychain.Account.access] = "access"
+            keychain.items[TrialKeychain.Account.refresh] = "refresh"
+            keychain.items[TrialKeychain.Account.userId] = "user"
+            keychain.unavailableKeys = [TrialKeychain.Account.session]
+            let session = TrialKeychain.restore(defaults: defaults, domain: domain, keychain: keychain)
+            XCTAssertFalse(session.isLoggedIn)
+            XCTAssertEqual(keychain.lookups, [TrialKeychain.Account.session])
+            XCTAssertTrue(defaults.bool(forKey: KeychainGate.trialSessionFlag))
+            XCTAssertTrue(keychain.sets.isEmpty)
+            XCTAssertTrue(keychain.deletes.isEmpty)
+            XCTAssertEqual(keychain.items[TrialKeychain.Account.access], "access")
+        }
+    }
+
+    func testAPIKeyDenialDoesNotReadTrialItems() throws {
+        try isolate { defaults, domain, keychain in
+            try TrialKeychain.write(
+                accessToken: "access",
+                refreshToken: "refresh",
+                userId: "user",
+                maskedPhone: "138****8000",
+                expiresAt: Date(timeIntervalSince1970: 1_700_000_100),
+                defaults: defaults,
+                keychain: keychain
+            )
+            defaults.set(true, forKey: KeychainGate.apiKeyFlag)
+            keychain.items[KeychainGate.apiKeyAccount] = "sk-keep"
+            keychain.unavailableKeys = [KeychainGate.apiKeyAccount]
+            let store = secret(defaults: defaults, domain: domain, keychain: keychain)
+            let session = TrialKeychain.restore(defaults: defaults, domain: domain, keychain: keychain)
+            XCTAssertEqual(store.value, "")
+            XCTAssertFalse(session.isLoggedIn)
+            XCTAssertEqual(keychain.lookups, [KeychainGate.apiKeyAccount])
+            XCTAssertEqual(keychain.sets, [TrialKeychain.Account.session])
+            XCTAssertTrue(keychain.deletes.isEmpty)
+            XCTAssertEqual(keychain.items[KeychainGate.apiKeyAccount], "sk-keep")
+            XCTAssertTrue(defaults.bool(forKey: KeychainGate.apiKeyFlag))
+            XCTAssertTrue(defaults.bool(forKey: KeychainGate.trialSessionFlag))
+        }
+    }
+
     func testNonEmptyKeychainWriteDoesNotStartByDeleting() {
         XCTAssertEqual(KeychainHelper.writeSteps(for: ""), .delete)
         XCTAssertEqual(KeychainHelper.writeSteps(for: "sk-live"), .updateOrCreate)
@@ -452,10 +638,11 @@ private final class RecordingKeychain: KeychainStoring {
     private(set) var deletes: [String] = []
     var failLookups = false
     var failSets = false
+    var unavailableKeys: Set<String> = []
 
     func lookup(_ key: String) -> KeychainLookup {
         lookups.append(key)
-        if failLookups { return .unavailable }
+        if failLookups || unavailableKeys.contains(key) { return .unavailable }
         if let value = items[key] { return .found(value) }
         return .missing
     }

@@ -132,9 +132,9 @@ final class TrialAccountStore: ObservableObject {
                 verificationId: verificationId,
                 isExistingUser: isExistingUser
             )
-            try persist(session)
-            maskedPhone = PhoneNumberCN.mask(pendingPhone)
-            try? SystemKeychain().set(maskedPhone, forKey: TrialKeychain.Account.phone)
+            let masked = PhoneNumberCN.mask(pendingPhone)
+            try persist(session, maskedPhone: masked)
+            maskedPhone = masked
             code = ""
             self.verificationId = nil
             AppLog.info("体验账号登录成功")
@@ -269,11 +269,13 @@ final class TrialAccountStore: ObservableObject {
         }
     }
 
-    private func persist(_ session: CloudBaseSession) throws {
+    private func persist(_ session: CloudBaseSession, maskedPhone: String? = nil) throws {
+        let phone = maskedPhone ?? self.maskedPhone
         try TrialKeychain.write(
             accessToken: session.accessToken,
             refreshToken: session.refreshToken,
             userId: session.userId,
+            maskedPhone: phone,
             expiresAt: session.expiresAt,
             defaults: .standard,
             keychain: SystemKeychain()

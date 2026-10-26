@@ -28,6 +28,12 @@ backend/node_modules/
 backend/functions/trial/src/
 Config/Secrets.xcconfig
 
+# Sparkle EdDSA 私钥。公钥在 Config/Sparkle.xcconfig，可以提交。
+sparkle_eddsa_private_key
+Config/sparkle-private-key
+__pycache__/
+*.pyc
+
 # 系统
 .DS_Store
 *.swp

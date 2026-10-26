@@ -139,6 +139,8 @@ struct SettingsView: View {
             }
             .panelSectionFill()
 
+            UpdateSettingsSection()
+
             Section {
                 NavigationLink("帮助", value: SettingsRoute.help)
             }

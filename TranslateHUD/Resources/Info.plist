@@ -34,5 +34,21 @@
 	<string>$(CLOUDBASE_REGION)</string>
 	<key>TrialProxyBaseURL</key>
 	<string>$(TRIAL_PROXY_BASE_URL)</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh-Hans</string>
+	</array>
+	<key>SUFeedURL</key>
+	<string>$(TRANSLATEHUD_UPDATE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_ED_KEY)</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+	<key>TranslateHUDUpdatesEnabled</key>
+	<string>$(TRANSLATEHUD_UPDATES_ENABLED)</string>
 </dict>
 </plist>

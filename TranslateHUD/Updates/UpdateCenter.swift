@@ -2,6 +2,8 @@ import AppKit
 import Sparkle
 
 /// 公证版才创建 Sparkle。本机包走 checkForUpdates 时只说明原因，不访问更新地址。
+/// 更新的是当前这个包：包标识保持 com.qi.TranslateHUD，Sparkle 原地替换 .app。
+/// 辅助功能和屏幕录制能否沿用，取决于发版脚本钉住的同一支 Developer ID。
 @MainActor
 final class UpdateCenter: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate {
     static let shared = UpdateCenter()

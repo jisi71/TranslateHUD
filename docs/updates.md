@@ -15,6 +15,27 @@ Sparkle 2.10.1 负责下载、校验和安装。订阅地址写在工程设置�
 
 请把软件放在「应用程序」文件夹里再更新。如果是从下载目录直接打开的，macOS 不让它替换自己。
 
+## 更新后不用重新授权
+
+在线更新之后，用户不用重新打开「辅助功能」和「屏幕录制」。
+
+系统认的是这三件事，不是版本号：
+
+- 包标识一直是 `com.qi.TranslateHUD`
+- 签名一直是同一支 Developer ID Application（同一个 Team ID）
+- Sparkle 原地替换「应用程序」里的 `TranslateHUD.app`，不另外装一个新名字的 App
+
+第一次打开公证版时，这两项权限仍要手动开一次。那是第一次安装，不是后来的更新。从旧的 ad-hoc 包换成公证版，也要重新授权一次。换完之后，同一支公证身份的更新不用再授权。
+
+下面几种情况会让系统把它当成新 App，用户必须重新授权。发版脚本会挡住前两种：
+
+- 换了 Apple Team ID
+- 改了包标识
+- 更新包改用 ad-hoc，或改用 `TranslateHUD Local Sign`
+- 用 `scripts/install-local.sh` 盖掉已经装好的公证版。本机证书和公证证书不是同一支签名，脚本还会在签名要求变化时清掉这两项旧授权
+
+Team ID 写在 `Config/DeveloperTeamID`。第一次带更新功能的公证前填上并提交。填的必须是现在公测公证包上的那一个 Team ID，不要新开一支 Developer ID。以后 `scripts/developer-id-release.sh` 发现签名不是这一支、包标识变了，或证书变成 ad-hoc / `TranslateHUD Local Sign`，就停止，不会把那样的包写进订阅。
+
 ## 第一次必须手动装一次
 
 现在已经装上的版本里没有更新功能，不会自己变成新版本。

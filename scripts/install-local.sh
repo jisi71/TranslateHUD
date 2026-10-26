@@ -131,6 +131,9 @@ run_install_command rm -rf "$INSTALL_APP"
 run_install_command mv "$STAGING_APP" "$INSTALL_APP"
 codesign --verify --deep --strict "$INSTALL_APP"
 
+# Local-certificate path only. This reset must never be copied into the
+# Developer ID updater: notarized updates keep com.qi.TranslateHUD and the
+# same Team ID, and Sparkle replaces the app in place so TCC stays granted.
 # A permission row from an old ad-hoc build can remain visibly enabled while
 # failing the stable app's signing requirement. Reset only when the designated
 # requirement changes, then let the user approve the new identity once.

@@ -65,6 +65,16 @@ else
     echo "  公钥: 还没有。先在 Mac 上运行 scripts/sparkle-generate-keys.sh"
 fi
 echo "  私钥: $PRIVATE_SOURCE"
+BUNDLE_ID="$(sparkle_bundle_identifier)"
+PINNED_TEAM="$(sparkle_pinned_team_id)"
+echo "  包标识: $BUNDLE_ID（更新时不能改）"
+if [[ -z "$PINNED_TEAM" ]]; then
+    echo "  Team ID: 还没写进 Config/DeveloperTeamID。正式打包会停在这里。"
+elif sparkle_team_id_is_valid "$PINNED_TEAM"; then
+    echo "  Team ID: $PINNED_TEAM（以后每次公证都要用这同一支）"
+else
+    echo "  Team ID: Config/DeveloperTeamID 里的值不是 10 位。"
+fi
 if [[ "${TRANSLATEHUD_NOTARIZE:-}" == "1" ]]; then
     echo "  公证: 会提交"
 else
@@ -75,7 +85,30 @@ echo "  不会创建 GitHub Release。"
 if [[ "$DRY_RUN" -eq 1 ]]; then
     echo ""
     echo "这是预览，没有编译，也没有签名。"
+    echo "在线更新会用 Sparkle 原地替换「应用程序」里的 TranslateHUD.app。"
+    echo "包标识和 Team ID 保持不变时，辅助功能和屏幕录制不用重新授权。"
     exit 0
+fi
+
+if [[ -n "$PINNED_TEAM" ]] && ! sparkle_team_id_is_valid "$PINNED_TEAM"; then
+    echo "Config/DeveloperTeamID 必须是 10 位 Team ID，不能写别的。"
+    exit 1
+fi
+if [[ -z "$PINNED_TEAM" ]]; then
+    echo "请先把 Team ID 写进 Config/DeveloperTeamID 并提交。"
+    echo "在线更新必须一直用同一支 Developer ID Application，以及同一个包标识 $BUNDLE_ID。"
+    echo "换 Team、换包标识，或改发 ad-hoc / 本机签名包，用户就要重新授权「辅助功能」和「屏幕录制」。"
+    exit 1
+fi
+if [[ "${DEVELOPER_ID_TEAM_ID:-}" != "$PINNED_TEAM" ]]; then
+    echo "DEVELOPER_ID_TEAM_ID 必须等于 Config/DeveloperTeamID（$PINNED_TEAM）。"
+    echo "不能换 Team。换了之后，用户要重新授权辅助功能和屏幕录制。"
+    exit 1
+fi
+if [[ "${DEVELOPER_ID_APP:-}" == "-" || "${DEVELOPER_ID_APP:-}" != *"Developer ID Application"* || "$DEVELOPER_ID_APP" != *"($PINNED_TEAM)"* ]]; then
+    echo "更新包必须用 Developer ID Application（$PINNED_TEAM）签名。"
+    echo "不能改用 ad-hoc、本机证书，或另一支 Team。"
+    exit 1
 fi
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -197,6 +230,30 @@ if [[ ! -d "$APP/Contents/Frameworks/Sparkle.framework" ]]; then
 fi
 
 INFO="$APP/Contents/Info.plist"
+ACTUAL_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO")"
+if [[ "$ACTUAL_BUNDLE_ID" != "$BUNDLE_ID" ]]; then
+    echo "包标识是 $ACTUAL_BUNDLE_ID，必须保持 $BUNDLE_ID。"
+    echo "改了包标识，系统会把它当成新 App，辅助功能和屏幕录制要重新授权。"
+    exit 1
+fi
+ACTUAL_TEAM="$(printf '%s\n' "$SIGNATURE" | sed -n 's/^TeamIdentifier=//p' | head -1)"
+if [[ "$ACTUAL_TEAM" == "not set" || -z "$ACTUAL_TEAM" || "$ACTUAL_TEAM" != "$PINNED_TEAM" ]]; then
+    echo "签出来的 Team ID 是「${ACTUAL_TEAM:-空}」，钉住的是 $PINNED_TEAM。"
+    echo "ad-hoc 或另一支证书不能当更新包。用户会要重新授权辅助功能和屏幕录制。"
+    exit 1
+fi
+if printf '%s\n' "$SIGNATURE" | grep -Eq 'Signature=adhoc|Authority=TranslateHUD Local Sign'; then
+    echo "这个包不是公证用的 Developer ID 签名，已停止。"
+    exit 1
+fi
+set +e
+REQUIREMENT="$(codesign -d --requirements - "$APP" 2>&1)"
+set -e
+if [[ "$REQUIREMENT" != *"identifier \"$BUNDLE_ID\""* || "$REQUIREMENT" != *"$PINNED_TEAM"* ]]; then
+    echo "签名要求没有同时钉住包标识和 Team ID。系统会把它当成另一个 App。"
+    printf '%s\n' "$REQUIREMENT"
+    exit 1
+fi
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO")"
 BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO")"
 ENABLED="$(/usr/libexec/PlistBuddy -c 'Print :TranslateHUDUpdatesEnabled' "$INFO")"
@@ -316,6 +373,8 @@ echo "  版本 ${VERSION}（构建号 ${BUILD}）"
 echo "  安装包 releases/${ZIP_NAME}"
 echo "  订阅地址 ${FEED_URL}"
 echo "  下载地址 ${DOWNLOAD_URL}"
+echo "  包标识 ${BUNDLE_ID}，Team ID ${PINNED_TEAM}"
+echo "  Sparkle 会原地替换已安装的 TranslateHUD.app。这两项不变，辅助功能和屏幕录制不用重新授权。"
 echo ""
 echo "发给用户时，把下面两个文件传到同一个 GitHub Release（标签 v${VERSION}），不要传私钥："
 echo "  releases/${ZIP_NAME}"

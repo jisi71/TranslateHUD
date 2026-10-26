@@ -19,7 +19,90 @@ grep -q 'SUPublicEDKey' "$ROOT/TranslateHUD/Resources/Info.plist"
 grep -q 'TranslateHUDUpdatesEnabled' "$ROOT/TranslateHUD/Resources/Info.plist"
 grep -q 'exactVersion: 2.10.1' "$ROOT/project.yml"
 grep -q '2.10.1' "$ROOT/scripts/sparkle-version"
+grep -q 'PRODUCT_BUNDLE_IDENTIFIER: com.qi.TranslateHUD' "$ROOT/project.yml"
+grep -q 'com.qi.TranslateHUD' "$ROOT/scripts/sparkle-tools.sh"
+grep -q 'Config/DeveloperTeamID' "$ROOT/scripts/developer-id-release.sh"
+grep -q '辅助功能' "$ROOT/docs/updates.md"
+grep -q '原地替换' "$ROOT/docs/updates.md"
 test ! -e "$ROOT/sparkle_eddsa_private_key"
+
+# shellcheck disable=SC1091
+source "$ROOT/scripts/sparkle-tools.sh"
+test "$(sparkle_bundle_identifier)" = "com.qi.TranslateHUD"
+test -z "$(sparkle_pinned_team_id "$ROOT/Config/DeveloperTeamID")"
+printf '%s\n' '# comment' '' 'AB12CD34EF' > "$TMP/team"
+test "$(sparkle_pinned_team_id "$TMP/team")" = "AB12CD34EF"
+sparkle_team_id_is_valid "AB12CD34EF"
+if sparkle_team_id_is_valid "not-a-team"; then
+    echo "短 Team ID 不应通过"
+    exit 1
+fi
+
+TEAM_FILE="$ROOT/Config/DeveloperTeamID"
+cp "$TEAM_FILE" "$TMP/DeveloperTeamID.orig"
+restore_team_file() {
+    if [[ -f "$TMP/DeveloperTeamID.orig" ]]; then
+        cp "$TMP/DeveloperTeamID.orig" "$TEAM_FILE"
+    fi
+}
+trap 'restore_team_file; rm -rf "$TMP"' EXIT
+
+expect_release_refusal() {
+    local needle="$1"
+    shift
+    if "$@" >"$TMP/release-out" 2>&1; then
+        echo "打包不应该继续: $needle"
+        cat "$TMP/release-out"
+        exit 1
+    fi
+    if ! grep -q "$needle" "$TMP/release-out"; then
+        echo "拒绝原因里没有: $needle"
+        cat "$TMP/release-out"
+        exit 1
+    fi
+}
+
+# 没有钉住 Team 时，正式打包必须拒绝。预览可以看地址。
+expect_release_refusal "请先把 Team ID 写进 Config/DeveloperTeamID" \
+    env DEVELOPER_ID_APP="Developer ID Application: Name (AB12CD34EF)" \
+        DEVELOPER_ID_TEAM_ID="AB12CD34EF" \
+        bash "$ROOT/scripts/developer-id-release.sh"
+
+printf '%s\n' 'not-a-team' > "$TEAM_FILE"
+expect_release_refusal "必须是 10 位 Team ID" \
+    env DEVELOPER_ID_APP="Developer ID Application: Name (AB12CD34EF)" \
+        DEVELOPER_ID_TEAM_ID="AB12CD34EF" \
+        bash "$ROOT/scripts/developer-id-release.sh"
+
+printf '%s\n' '# pinned for the notarized channel' 'AB12CD34EF' > "$TEAM_FILE"
+expect_release_refusal "必须等于 Config/DeveloperTeamID" \
+    env DEVELOPER_ID_APP="Developer ID Application: Name (ZZZZZZZZZZ)" \
+        DEVELOPER_ID_TEAM_ID="ZZZZZZZZZZ" \
+        bash "$ROOT/scripts/developer-id-release.sh"
+expect_release_refusal "必须用 Developer ID Application" \
+    env DEVELOPER_ID_APP="-" \
+        DEVELOPER_ID_TEAM_ID="AB12CD34EF" \
+        bash "$ROOT/scripts/developer-id-release.sh"
+expect_release_refusal "必须用 Developer ID Application" \
+    env DEVELOPER_ID_APP="TranslateHUD Local Sign" \
+        DEVELOPER_ID_TEAM_ID="AB12CD34EF" \
+        bash "$ROOT/scripts/developer-id-release.sh"
+expect_release_refusal "必须用 Developer ID Application" \
+    env DEVELOPER_ID_APP="Developer ID Application: Name (ZZZZZZZZZZ)" \
+        DEVELOPER_ID_TEAM_ID="AB12CD34EF" \
+        bash "$ROOT/scripts/developer-id-release.sh"
+
+bash "$ROOT/scripts/developer-id-release.sh" --dry-run >"$TMP/release-out"
+grep -q '原地替换' "$TMP/release-out"
+grep -q 'AB12CD34EF' "$TMP/release-out"
+grep -q '辅助功能' "$TMP/release-out"
+
+restore_team_file
+if ! cmp -s "$TMP/DeveloperTeamID.orig" "$TEAM_FILE"; then
+    echo "Config/DeveloperTeamID 没有恢复"
+    exit 1
+fi
+rm -f "$TMP/DeveloperTeamID.orig"
 
 python3 - <<PY
 import importlib.util

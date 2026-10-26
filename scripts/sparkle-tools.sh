@@ -71,6 +71,32 @@ sparkle_key_inside_repo() {
     esac
 }
 
+# 在线更新必须一直用这个 bundle id。改掉之后，辅助功能和屏幕录制要重新授权。
+sparkle_bundle_identifier() {
+    printf '%s' "com.qi.TranslateHUD"
+}
+
+# Config/DeveloperTeamID 里第一条不是注释的内容。文件可以只有注释。
+sparkle_pinned_team_id() {
+    local file="${1:-$(sparkle_repo_root)/Config/DeveloperTeamID}"
+    if [[ ! -f "$file" ]]; then
+        return 0
+    fi
+    awk '
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]*$/ { next }
+        {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+            print
+            exit
+        }
+    ' "$file"
+}
+
+sparkle_team_id_is_valid() {
+    [[ "${1:-}" =~ ^[A-Z0-9]{10}$ ]]
+}
+
 sparkle_redact() {
     python3 -c '
 import re, sys

@@ -24,6 +24,11 @@ grep -q 'com.qi.TranslateHUD' "$ROOT/scripts/sparkle-tools.sh"
 grep -q 'Config/DeveloperTeamID' "$ROOT/scripts/developer-id-release.sh"
 grep -q '辅助功能' "$ROOT/docs/updates.md"
 grep -q '原地替换' "$ROOT/docs/updates.md"
+grep -q '没有单独的推送通知' "$ROOT/docs/updates.md"
+grep -q '检查更新…' "$ROOT/TranslateHUD/Updates/UpdateMenu.swift"
+grep -q 'static let readyTitle = "更新"' "$ROOT/TranslateHUD/Updates/UpdateMenu.swift"
+grep -q 'arrow.down.circle.fill' "$ROOT/TranslateHUD/Updates/UpdateMenu.swift"
+grep -q 'UpdateActionButton()' "$ROOT/TranslateHUD/App/TranslateHUDApp.swift"
 test ! -e "$ROOT/sparkle_eddsa_private_key"
 
 # shellcheck disable=SC1091

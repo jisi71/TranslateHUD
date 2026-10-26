@@ -139,16 +139,7 @@ struct SettingsView: View {
             }
             .panelSectionFill()
 
-            Section("软件更新") {
-                Button("检查更新…") {
-                    UpdateCenter.shared.checkForUpdates()
-                }
-                Text(UpdatePolicy.current.statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(PanelPalette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .panelSectionFill()
+            UpdateSettingsSection()
 
             Section {
                 NavigationLink("帮助", value: SettingsRoute.help)

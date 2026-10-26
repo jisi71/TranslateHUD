@@ -173,11 +173,7 @@ struct SettingsView: View {
                             .textSelection(.enabled)
                     }
                 }
-                if trial.inviteRedeemed {
-                    Text("已领取体验额度。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if trial.balanceState != .loading {
+                if !trial.inviteRedeemed, trial.balanceState != .loading {
                     TextField("邀请码", text: $trial.inviteCode)
                         .textFieldStyle(.roundedBorder)
                     Text("每个账号只能领取一次。")

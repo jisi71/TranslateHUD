@@ -7,6 +7,8 @@ struct TrialAccountSnapshot: Equatable, Sendable {
     var balanceMicroYuan: Int
     var giftedNow: Bool
     var inviteRedeemed: Bool
+    /// Micro-yuan credited by this redeem. Zero when the call did not grant.
+    var giftMicroYuan: Int
 
     var balanceFen: Int { TrialPricing.displayFen(microYuan: balanceMicroYuan) }
 }
@@ -93,7 +95,8 @@ enum TrialProxyClient {
             displayId: TrialDisplayId.parse(json),
             balanceMicroYuan: balance,
             giftedNow: giftedNow,
-            inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow)
+            inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow),
+            giftMicroYuan: giftAmount(json)
         )
     }
 
@@ -136,7 +139,8 @@ enum TrialProxyClient {
             displayId: TrialDisplayId.parse(json),
             balanceMicroYuan: balance,
             giftedNow: giftedNow,
-            inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow)
+            inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow),
+            giftMicroYuan: giftAmount(json)
         )
     }
 }
@@ -145,6 +149,12 @@ private func inviteRedeemed(_ json: [String: Any], giftedNow: Bool) -> Bool {
     if json["inviteRedeemed"] != nil { return boolValue(json["inviteRedeemed"]) }
     if json["giftGranted"] != nil { return boolValue(json["giftGranted"]) }
     return giftedNow
+}
+
+private func giftAmount(_ json: [String: Any]) -> Int {
+    if let micro = intValue(json["giftMicroYuan"]), micro > 0 { return micro }
+    if let fen = intValue(json["giftFen"]), fen > 0 { return fen * TrialPricing.microYuanPerFen }
+    return 0
 }
 
 private func microBalance(_ json: [String: Any]) -> Int? {

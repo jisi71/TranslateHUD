@@ -181,7 +181,8 @@ final class TrialAccountStore: ObservableObject {
             if !snapshot.displayId.isEmpty { displayId = snapshot.displayId }
             if snapshot.inviteRedeemed {
                 inviteCode = ""
-                statusMessage = "已领取 ¥2.00 体验额度。"
+                let granted = snapshot.giftMicroYuan > 0 ? snapshot.giftMicroYuan : TrialPricing.giftMicroYuan
+                statusMessage = TrialCopy.inviteGranted(microYuan: granted)
             }
         } catch is CancellationError {
             return
@@ -254,7 +255,7 @@ final class TrialAccountStore: ObservableObject {
                 statusMessage = snapshot.inviteRedeemed
                     ? "已登录。"
                     : "已登录。在下面输入邀请码，可领取 ¥2.00 体验额度。"
-            } else if statusMessage == TrialCopy.inviteClaimed || statusMessage == "已领取 ¥2.00 体验额度。" {
+            } else if statusMessage == TrialCopy.inviteClaimed || TrialCopy.isInviteGranted(statusMessage) {
                 statusMessage = snapshot.inviteRedeemed ? statusMessage : ""
             } else {
                 statusMessage = ""

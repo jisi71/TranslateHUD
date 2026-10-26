@@ -25,6 +25,10 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(TrialDisplayId.format(99999), "99999")
         XCTAssertEqual(TrialDisplayId.format(100000), "100000")
         XCTAssertEqual(TrialDisplayId.format(0), "")
+        XCTAssertEqual(TrialCopy.inviteGranted(microYuan: 2_000_000), "已领取 ¥2.00 体验额度。")
+        XCTAssertEqual(TrialCopy.inviteGranted(microYuan: 150 * 10_000), "已领取 ¥1.50 体验额度。")
+        XCTAssertTrue(TrialCopy.isInviteGranted("已领取 ¥2.00 体验额度。"))
+        XCTAssertFalse(TrialCopy.isInviteGranted("已领取体验额度。"))
     }
 
     func testPhoneNumbersUseCloudBaseFormat() {

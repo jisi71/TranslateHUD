@@ -34,7 +34,7 @@ python3 -m http.server 8080
 
 首页介绍片要等真实视频。计划内容是功能、界面，以及一点设计取舍。文件到位后再放到 `website/assets/`，并换掉 `index.html` 里的占位块。在那之前不要填一个猜测的视频地址。
 
-功能区里，选区、框选、朗读和名词解释是页面里拼出来的浮窗，不是系统截图。框选用的海报是 `ocr-demo-poster-alps-ski.jpg`。介绍片还没有。必要权限和下载准备里的辅助功能、录屏与系统录音用的是真实系统设置截图：`accessibility-clean.png`、`screen-recording-clean.png`。图里 TranslateHUD 的开关是打开的，其他应用已隐藏。`permission-message.png` 是应用内提示，只用在更新说明里。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
+功能区里，选区、框选、朗读和名词解释是页面里拼出来的浮窗，不是系统截图。框选用的海报是 `ocr-demo-poster-alps-ski.jpg`。介绍片还没有。必要权限和下载准备里的辅助功能、录屏与系统录音用的是真实系统设置截图：`accessibility-clean.png`、`screen-recording-clean.png`。整张列表做了高斯模糊，再把 TranslateHUD 那一行（图标、名字、打开的开关）贴回原位。`permission-message.png` 是应用内提示，只用在更新说明里。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
 
 - `translation-panel.png`
 - `permission-message.png`

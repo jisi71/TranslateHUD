@@ -1114,7 +1114,7 @@ html[data-lang="en"] .pair-src-en {
   border-radius: 16px;
 }
 
-.perm-list p,
+.perm-card p,
 .install li,
 .release li {
   color: var(--muted-warm);
@@ -1128,37 +1128,42 @@ html[data-lang="en"] .pair-src-en {
   margin-top: 28px;
 }
 
-.perm-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.perm-grid {
   display: grid;
-  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  align-items: stretch;
+  margin-top: 28px;
 }
 
-.perm-list li,
+.perm-card,
 .install {
   background: #fff;
   border-radius: 24px;
   box-shadow: var(--shadow);
 }
 
-.perm-list li {
-  padding: 26px 26px 22px;
+.perm-card {
+  min-width: 0;
+  padding: 26px 22px 18px;
 }
 
-.perm-list h3 {
+.perm-card h3 {
   margin: 0 0 8px;
   font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
 
-.perm-list p,
+.perm-card p,
 .install li {
   margin: 0;
   font-size: 16px;
   line-height: 1.6;
+}
+
+.perm-card figure {
+  margin: 16px 0 0;
 }
 
 .plain-shot {
@@ -1172,21 +1177,7 @@ html[data-lang="en"] .pair-src-en {
   justify-content: center;
 }
 
-.perm-shots {
-  display: grid;
-  gap: 16px;
-  align-content: start;
-}
-
-.perm-shots figure {
-  margin: 0;
-  background: #fff;
-  border-radius: 24px;
-  padding: 14px 14px 12px;
-  box-shadow: var(--shadow);
-}
-
-.perm-shots img,
+.perm-card img,
 .setup-stage img {
   display: block;
   width: 100%;
@@ -1194,7 +1185,7 @@ html[data-lang="en"] .pair-src-en {
   border-radius: 12px;
 }
 
-.perm-shots figcaption {
+.perm-card figcaption {
   margin: 10px 4px 0;
   color: var(--muted-warm);
   font-size: 13px;
@@ -1446,6 +1437,7 @@ html[data-lang="en"] .pair-src-en {
   .feature,
   .feature-flip,
   .split,
+  .perm-grid,
   .setup-visual-step {
     grid-template-columns: 1fr;
   }

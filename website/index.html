@@ -401,57 +401,53 @@
             <span class="lang-en">Required permissions</span>
           </h2>
         </div>
-        <div class="split">
-          <ul class="perm-list">
-            <li>
-              <h3>
-                <span class="lang-zh">辅助功能</span>
-                <span class="lang-en">Accessibility</span>
-              </h3>
-              <p>
-                <span class="lang-zh">用来读取其他应用里选中的文字。没有它，选区翻译不能工作，快捷键也会提示你去打开。路径是「系统设置 → 隐私与安全性 → 辅助功能」。</span>
-                <span class="lang-en">This lets TranslateHUD read selected text in other apps. Without it, selection translation cannot run, and the shortcut asks you to turn it on. The path is System Settings → Privacy &amp; Security → Accessibility.</span>
-              </p>
-            </li>
-            <li>
-              <h3>
-                <span class="lang-zh">录屏与系统录音</span>
-                <span class="lang-en">Screen &amp; System Audio Recording</span>
-              </h3>
-              <p>
-                <span class="lang-zh">用来截取你框出的区域，再识别里面的文字。没有它，截图会失败。路径是「系统设置 → 隐私与安全性 → 录屏与系统录音」。打开之后如果仍然不行，退出 TranslateHUD 再打开一次。</span>
-                <span class="lang-en">This lets TranslateHUD capture the region you drag, then read the text in it. Without it, screenshots fail. The path is System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording. If it still fails after you allow it, quit TranslateHUD and open it again.</span>
-              </p>
-            </li>
-          </ul>
-          <div class="perm-shots">
+        <div class="perm-grid">
+          <article class="perm-card">
+            <h3>
+              <span class="lang-zh">辅助功能</span>
+              <span class="lang-en">Accessibility</span>
+            </h3>
+            <p>
+              <span class="lang-zh">用来读取其他应用里选中的文字。没有它，选区翻译不能工作，快捷键也会提示你去打开。路径是「系统设置 → 隐私与安全性 → 辅助功能」。</span>
+              <span class="lang-en">This lets TranslateHUD read selected text in other apps. Without it, selection translation cannot run, and the shortcut asks you to turn it on. The path is System Settings → Privacy &amp; Security → Accessibility.</span>
+            </p>
             <figure>
               <img
                 src="assets/accessibility-clean.png"
                 width="1452"
-                height="987"
-                alt="系统设置的辅助功能。TranslateHUD 的开关已打开，其他应用已隐藏。"
-                data-alt-zh="系统设置的辅助功能。TranslateHUD 的开关已打开，其他应用已隐藏。"
-                data-alt-en="System Settings, Accessibility. TranslateHUD’s switch is on. Other apps are hidden.">
+                height="1266"
+                alt="系统设置的辅助功能。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
+                data-alt-zh="系统设置的辅助功能。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
+                data-alt-en="System Settings, Accessibility. TranslateHUD’s icon, name, and on switch are sharp. Other apps are gaussian-blurred.">
               <figcaption>
-                <span class="lang-zh">辅助功能。TranslateHUD 已打开，其他应用已隐藏。</span>
-                <span class="lang-en">Accessibility. TranslateHUD is on. Other apps are hidden.</span>
+                <span class="lang-zh">辅助功能。TranslateHUD 已打开，其他应用已模糊。</span>
+                <span class="lang-en">Accessibility. TranslateHUD is on. Other apps are blurred.</span>
               </figcaption>
             </figure>
+          </article>
+          <article class="perm-card">
+            <h3>
+              <span class="lang-zh">录屏与系统录音</span>
+              <span class="lang-en">Screen &amp; System Audio Recording</span>
+            </h3>
+            <p>
+              <span class="lang-zh">用来截取你框出的区域，再识别里面的文字。没有它，截图会失败。路径是「系统设置 → 隐私与安全性 → 录屏与系统录音」。打开之后如果仍然不行，退出 TranslateHUD 再打开一次。</span>
+              <span class="lang-en">This lets TranslateHUD capture the region you drag, then read the text in it. Without it, screenshots fail. The path is System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording. If it still fails after you allow it, quit TranslateHUD and open it again.</span>
+            </p>
             <figure>
               <img
                 src="assets/screen-recording-clean.png"
                 width="1450"
-                height="989"
-                alt="系统设置的录屏与系统录音。TranslateHUD 的开关已打开，其他应用已隐藏。"
-                data-alt-zh="系统设置的录屏与系统录音。TranslateHUD 的开关已打开，其他应用已隐藏。"
-                data-alt-en="System Settings, Screen &amp; System Audio Recording. TranslateHUD’s switch is on. Other apps are hidden.">
+                height="1268"
+                alt="系统设置的录屏与系统录音。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
+                data-alt-zh="系统设置的录屏与系统录音。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
+                data-alt-en="System Settings, Screen &amp; System Audio Recording. TranslateHUD’s icon, name, and on switch are sharp. Other apps are gaussian-blurred.">
               <figcaption>
-                <span class="lang-zh">录屏与系统录音。TranslateHUD 已打开，其他应用已隐藏。</span>
-                <span class="lang-en">Screen &amp; System Audio Recording. TranslateHUD is on. Other apps are hidden.</span>
+                <span class="lang-zh">录屏与系统录音。TranslateHUD 已打开，其他应用已模糊。</span>
+                <span class="lang-en">Screen &amp; System Audio Recording. TranslateHUD is on. Other apps are blurred.</span>
               </figcaption>
             </figure>
-          </div>
+          </article>
         </div>
       </section>
 
@@ -490,13 +486,13 @@
               <img
                 src="assets/accessibility-clean.png"
                 width="1452"
-                height="987"
-                alt="系统设置的辅助功能。TranslateHUD 的开关已打开，其他应用已隐藏。"
-                data-alt-zh="系统设置的辅助功能。TranslateHUD 的开关已打开，其他应用已隐藏。"
-                data-alt-en="System Settings, Accessibility. TranslateHUD’s switch is on. Other apps are hidden.">
+                height="1266"
+                alt="系统设置的辅助功能。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
+                data-alt-zh="系统设置的辅助功能。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
+                data-alt-en="System Settings, Accessibility. TranslateHUD’s icon, name, and on switch are sharp. Other apps are gaussian-blurred.">
               <figcaption>
-                <span class="lang-zh">系统设置 → 隐私与安全性 → 辅助功能。开关是打开的，其他应用已隐藏。</span>
-                <span class="lang-en">System Settings → Privacy &amp; Security → Accessibility. The switch is on, and other apps are hidden.</span>
+                <span class="lang-zh">系统设置 → 隐私与安全性 → 辅助功能。开关是打开的，其他应用已模糊。</span>
+                <span class="lang-en">System Settings → Privacy &amp; Security → Accessibility. The switch is on, and other apps are blurred.</span>
               </figcaption>
             </figure>
           </li>
@@ -516,13 +512,13 @@
               <img
                 src="assets/screen-recording-clean.png"
                 width="1450"
-                height="989"
-                alt="系统设置的录屏与系统录音。TranslateHUD 的开关已打开，其他应用已隐藏。"
-                data-alt-zh="系统设置的录屏与系统录音。TranslateHUD 的开关已打开，其他应用已隐藏。"
-                data-alt-en="System Settings, Screen &amp; System Audio Recording. TranslateHUD’s switch is on. Other apps are hidden.">
+                height="1268"
+                alt="系统设置的录屏与系统录音。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
+                data-alt-zh="系统设置的录屏与系统录音。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
+                data-alt-en="System Settings, Screen &amp; System Audio Recording. TranslateHUD’s icon, name, and on switch are sharp. Other apps are gaussian-blurred.">
               <figcaption>
-                <span class="lang-zh">系统设置 → 隐私与安全性 → 录屏与系统录音。开关是打开的，其他应用已隐藏。</span>
-                <span class="lang-en">System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording. The switch is on, and other apps are hidden.</span>
+                <span class="lang-zh">系统设置 → 隐私与安全性 → 录屏与系统录音。开关是打开的，其他应用已模糊。</span>
+                <span class="lang-en">System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording. The switch is on, and other apps are blurred.</span>
               </figcaption>
             </figure>
           </li>

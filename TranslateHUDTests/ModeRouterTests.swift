@@ -18,4 +18,20 @@ final class ModeRouterTests: XCTestCase {
         XCTAssertFalse(ModeRouter.routesToScreenshot(.failed("copy failed"), whenNoSelection: true))
         XCTAssertFalse(ModeRouter.routesToScreenshot(.cancelled, whenNoSelection: true))
     }
+
+    func testSameShortcutRoutesImageOrUnreadablePasteboardToScreenshot() {
+        let unreadable = SelectionFetchResult.noReadableText(SelectionFetchResult.noReadableTextMessage)
+        XCTAssertTrue(ModeRouter.routesToScreenshot(unreadable, whenNoSelection: true))
+    }
+
+    func testSeparateSelectionShortcutKeepsUnreadablePasteboardAsFailure() {
+        let unreadable = SelectionFetchResult.noReadableText(SelectionFetchResult.noReadableTextMessage)
+        XCTAssertFalse(ModeRouter.routesToScreenshot(unreadable, whenNoSelection: false))
+    }
+
+    func testReadableTextStaysOnSelectionRoute() {
+        let selection = SelectionFetcher.Selection(text: "hello", screenRectTopLeft: nil)
+        XCTAssertFalse(ModeRouter.routesToScreenshot(.found(selection), whenNoSelection: true))
+        XCTAssertFalse(ModeRouter.routesToScreenshot(.found(selection), whenNoSelection: false))
+    }
 }

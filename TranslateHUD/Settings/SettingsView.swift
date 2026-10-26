@@ -59,7 +59,7 @@ struct SettingsView: View {
                         Text(lang.displayName).tag(lang)
                     }
                 }
-                Text("中文和英文会自动对调。")
+                Text("简体中文和 English 会按原文自动对调；其他语言保持不变。")
                     .font(.caption)
                     .foregroundStyle(PanelPalette.muted)
             }

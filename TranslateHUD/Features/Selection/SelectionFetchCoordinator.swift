@@ -28,7 +28,10 @@ enum AXSelectionProbe: Equatable, Sendable {
 enum PasteboardSelectionProbe: Equatable, Sendable {
     case found(SelectionFetcher.Selection)
     case timedOut
+    /// `changeCount` moved, but no readable string or image type arrived before timeout.
     case dataUnavailable
+    /// `changeCount` moved to an image (or image plus other non-text types) and no readable string.
+    case image
     case eventPostFailed
     case applicationChanged
 }
@@ -40,7 +43,13 @@ enum SelectionFetchResult: Equatable, Sendable {
     case applicationChanged
     case timedOut
     case failed(String)
+    /// Cmd+C replaced the pasteboard with an image or other contents that have no readable text.
+    /// Same-key routing opens the screenshot picker. A separate selection shortcut shows `message`.
+    case noReadableText(String)
     case cancelled
+
+    /// Separate-key selection shows this. Same-key mode opens the screenshot picker instead.
+    static let noReadableTextMessage = "剪贴板未提供可读取的文字，请重新选中可复制文本，或使用截图翻译。"
 }
 
 @MainActor
@@ -93,7 +102,7 @@ struct SelectionFetchCoordinator {
         switch pasteboardResult {
         case .found(let selection): return .found(selection)
         case .applicationChanged: return .applicationChanged
-        case .timedOut, .dataUnavailable, .eventPostFailed: break
+        case .timedOut, .dataUnavailable, .image, .eventPostFailed: break
         }
 
         guard !Task.isCancelled else { return .cancelled }
@@ -114,7 +123,8 @@ struct SelectionFetchCoordinator {
             // distinguish “no selection” from a slow/unsupported Cmd+C path.
             if confirmedEmptyProbeCount == 3, !sawUnavailableProbe { return .confirmedEmpty }
             return .timedOut
-        case .dataUnavailable: return .failed("剪贴板未提供可读取的文字，请重新选中可复制文本，或使用截图翻译。")
+        case .dataUnavailable, .image:
+            return .noReadableText(SelectionFetchResult.noReadableTextMessage)
         case .eventPostFailed: return .failed("未能触发复制操作，请检查辅助功能权限，重新选中文字后再试。")
         case .found, .applicationChanged:
             return .failed("读取选区未完成，请重新选中文字后再试；若持续失败，可使用截图翻译。")

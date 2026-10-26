@@ -29,6 +29,15 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(TrialCopy.inviteGranted(microYuan: 150 * 10_000), "已领取 ¥1.50 体验额度。")
         XCTAssertTrue(TrialCopy.isInviteGranted("已领取 ¥2.00 体验额度。"))
         XCTAssertFalse(TrialCopy.isInviteGranted("已领取体验额度。"))
+        XCTAssertEqual(RefreshIconMotion.restingDegrees, 0)
+        XCTAssertEqual(RefreshIconMotion.turnedDegrees, 50)
+        XCTAssertEqual(RefreshIconMotion.stiffness, 250)
+        XCTAssertEqual(RefreshIconMotion.damping, 25)
+        XCTAssertEqual(RefreshIconMotion.degrees(loading: false, loadingTowardTurn: false, hovered: false, pressed: false), 0)
+        XCTAssertEqual(RefreshIconMotion.degrees(loading: false, loadingTowardTurn: false, hovered: true, pressed: false), 50)
+        XCTAssertEqual(RefreshIconMotion.degrees(loading: false, loadingTowardTurn: false, hovered: false, pressed: true), 50)
+        XCTAssertEqual(RefreshIconMotion.degrees(loading: true, loadingTowardTurn: true, hovered: false, pressed: false), 50)
+        XCTAssertEqual(RefreshIconMotion.degrees(loading: true, loadingTowardTurn: false, hovered: true, pressed: true), 0)
     }
 
     func testPhoneNumbersUseCloudBaseFormat() {

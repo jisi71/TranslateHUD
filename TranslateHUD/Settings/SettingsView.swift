@@ -148,22 +148,9 @@ struct SettingsView: View {
                 LabeledContent("体验余额") {
                     HStack(spacing: 6) {
                         Text(trial.balanceValueText)
-                        Button {
+                        TrialBalanceRefreshButton(loading: trial.balanceState == .loading) {
                             Task { await trial.refreshFromServer() }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .rotationEffect(.degrees(trial.balanceState == .loading ? 360 : 0))
-                                .animation(
-                                    trial.balanceState == .loading
-                                        ? .linear(duration: 0.8).repeatForever(autoreverses: false)
-                                        : .linear(duration: 0.2),
-                                    value: trial.balanceState == .loading
-                                )
                         }
-                        .buttonStyle(.borderless)
-                        .disabled(trial.balanceState == .loading)
-                        .help("刷新体验余额")
-                        .accessibilityLabel("刷新体验余额")
                     }
                 }
                 if !trial.displayId.isEmpty {
@@ -259,5 +246,82 @@ struct SettingsView: View {
                 testStatus = .fail(ServiceErrorMessage.describe(error))
             }
         }
+    }
+}
+
+/// Refresh icon motion aligned with animate-ui / lucide RefreshCw:
+/// rest at 0°, spring to about 50°, then spring back. Not a spinning loader.
+enum RefreshIconMotion {
+    static let restingDegrees = 0.0
+    static let turnedDegrees = 50.0
+    static let stiffness = 250.0
+    static let damping = 25.0
+    /// Long enough for the spring to arrive before the next turn.
+    static let pulseNanoseconds: UInt64 = 550_000_000
+
+    static var spring: Animation {
+        .interpolatingSpring(mass: 1, stiffness: stiffness, damping: damping)
+    }
+
+    static func degrees(loading: Bool, loadingTowardTurn: Bool, hovered: Bool, pressed: Bool) -> Double {
+        if loading { return loadingTowardTurn ? turnedDegrees : restingDegrees }
+        if hovered || pressed { return turnedDegrees }
+        return restingDegrees
+    }
+}
+
+private struct TrialBalanceRefreshButton: View {
+    var loading: Bool
+    var action: () -> Void
+
+    @State private var hovered = false
+    @State private var loadingTowardTurn = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.clockwise")
+        }
+        .buttonStyle(RefreshIconButtonStyle(
+            hovered: hovered,
+            loading: loading,
+            loadingTowardTurn: loadingTowardTurn
+        ))
+        .disabled(loading)
+        .onHover { hovered = $0 }
+        .help("刷新体验余额")
+        .accessibilityLabel("刷新体验余额")
+        .onChange(of: loading) { _, isLoading in
+            if !isLoading {
+                hovered = false
+                loadingTowardTurn = false
+            }
+        }
+        .task(id: loading) {
+            guard loading else { return }
+            loadingTowardTurn = true
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: RefreshIconMotion.pulseNanoseconds)
+                if Task.isCancelled { return }
+                loadingTowardTurn.toggle()
+            }
+        }
+    }
+}
+
+private struct RefreshIconButtonStyle: ButtonStyle {
+    var hovered: Bool
+    var loading: Bool
+    var loadingTowardTurn: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        let degrees = RefreshIconMotion.degrees(
+            loading: loading,
+            loadingTowardTurn: loadingTowardTurn,
+            hovered: hovered,
+            pressed: configuration.isPressed
+        )
+        configuration.label
+            .rotationEffect(.degrees(degrees))
+            .animation(RefreshIconMotion.spring, value: degrees)
     }
 }

@@ -48,6 +48,11 @@ test('help pages do not link to a website or an email address', () => {
     assert.equal(text.includes('可通过上述邮箱索取'), true)
   }
   assert.equal(agreement.includes('运营者住所地（北京市）'), true)
+  assert.equal(agreement.includes('齐亚浩（个人）（以下简称「我们」）运营'), true)
+  assert.equal(privacy.includes('齐亚浩（个人）（以下简称「我们」）运营 TranslateHUD'), true)
+  assert.equal(privacy.includes('若某版本实际上未收集上述信息，则以实际行为为准，我们不会超范围收集。'), true)
+  assert.equal(privacy.includes('并限制访问权限。'), true)
+  assert.equal(privacy.includes('限制员工访问权限'), false)
   assert.match(privacy, /隐私政策/)
   assert.match(privacy, /腾讯云开发/)
   assert.match(privacy, /意见反馈/)

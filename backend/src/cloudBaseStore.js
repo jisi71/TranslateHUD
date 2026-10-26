@@ -75,6 +75,8 @@ function collectionPromises(database) {
   return byName
 }
 
+// Keyed by collection name. trial_accounts, trial_invite, and trial_feedback
+// share one database handle, and a single cached promise would skip the rest.
 function ensureCollection(database, name = COLLECTION) {
   const byName = collectionPromises(database)
   let pending = byName.get(name)

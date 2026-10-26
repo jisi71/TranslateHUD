@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var testStatus: TestStatus = .idle
     @StateObject private var speechPreview = SpeechController()
     @State private var voiceRefreshToken = 0
+    @State private var path = NavigationPath()
 
     enum TestStatus {
         case idle
@@ -18,6 +19,7 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        NavigationStack(path: $path) {
         ScrollView {
         Form {
             trialSection
@@ -132,12 +134,55 @@ struct SettingsView: View {
                     KeyboardShortcuts.Recorder(for: .triggerSelection)
                 }
             }
+
+            Section {
+                NavigationLink("帮助", value: SettingsRoute.help)
+            }
         }
         .formStyle(.grouped)
         }
-        .frame(width: 560, height: 720)
         .navigationTitle("TranslateHUD 设置")
+        .navigationDestination(for: SettingsRoute.self) { route in
+            settingsDestination(route)
+        }
         .onDisappear { speechPreview.stop() }
+        }
+        .frame(width: 560, height: 720)
+    }
+
+    private var loginConsent: some View {
+        HStack(spacing: 4) {
+            Text("登录即表示已阅读")
+                .foregroundStyle(.secondary)
+            Button {
+                path.append(SettingsRoute.agreement)
+            } label: {
+                Text("用户协议").underline()
+            }
+            .buttonStyle(.borderless)
+            Text("和")
+                .foregroundStyle(.secondary)
+            Button {
+                path.append(SettingsRoute.privacy)
+            } label: {
+                Text("隐私政策").underline()
+            }
+            .buttonStyle(.borderless)
+        }
+        .font(.caption)
+        .controlSize(.small)
+    }
+
+    @ViewBuilder
+    private func settingsDestination(_ route: SettingsRoute) -> some View {
+        switch route {
+        case .help:
+            HelpView()
+        case .agreement:
+            LegalDocumentView(title: "用户协议", resource: "user-agreement")
+        case .privacy:
+            LegalDocumentView(title: "隐私政策", resource: "privacy-policy")
+        }
     }
 
     @ViewBuilder
@@ -187,6 +232,7 @@ struct SettingsView: View {
                     }
                     .disabled(trial.isBusy || trial.code.filter(\.isNumber).count != 6)
                 }
+                loginConsent
             }
 
             if !trial.statusMessage.isEmpty {

@@ -147,6 +147,7 @@ npx --yes @cloudbase/cli functions:deploy trial --config cloudbaserc.json
 - `POST /v1/trial/redeem`：登录后提交邀请码，领 ¥2.00。请求头带云开发 access token
 - `GET /v1/trial/invite-status`：不用登录。给官网看邀请码和剩余次数
 - `POST /v1/chat/completions`：翻译。请求头带用户的云开发 access token，以及 `X-TranslateHUD-Source`
+- `POST /v1/trial/feedback`：问题反馈。见下面一节。云函数请求体通常比云托管小，带图片时请走云托管。
 
 如果 CLI 报事务写法不对，对照当前 `@cloudbase/node-sdk` 的 `startTransaction` / `doc().set()`。逻辑在 `src/cloudBaseStore.js`。
 
@@ -187,6 +188,33 @@ GET https://你的服务域名/v1/trial/invite-status
 - `剩余可兑换次数：` + `remaining`
 
 默认就是「输入邀请码：translatehud-200 新用户得2元使用额度」。`remaining` 用接口里的数，不要写死。`exhausted` 为 true 时，次数已经用尽。响应里没有翻译密钥，也没有额外的内部邀请码。
+
+## 问题反馈
+
+设置 → 帮助 → 问题反馈。用户填写标题、描述，可以附上最多 4 张图片。不填写邮箱，服务也不会发邮件。
+
+已登录时，请求带上云开发 access token。服务校验通过后，在文档里写下云开发用户 ID（`accountId`，登录凭证里的 sub）。设置里「账号」显示的是短号 `displayId`，不是这串 ID。没登录也可以提交：`anonymous` 为 true，`accountId` 为空。两种情况都会记下应用版本；App 还会带上本机生成的 `deviceId`。请求里如果出现邮箱字段，服务直接丢掉，不写入文档。
+
+接口是 `POST /v1/trial/feedback`，和体验额度用同一个服务地址。没有新增必填的环境变量。正式环境仍然是 `TRIAL_STORE=cloudbase`。本地 `TRIAL_STORE=file` 时，反馈写在账本旁边的 `feedback.json`，图片在同目录的 `feedback-files/`。可选 `FEEDBACK_DATA_FILE` 单独指定这个 json 的路径。
+
+云数据库（文档型）集合名是 `trial_feedback`。和 `trial_accounts` 一样，第一次提交时服务会自己 `createCollection`。集合已经存在就跳过。不需要另外建索引。也可以提前执行：
+
+```bash
+cd backend
+npm install
+npm run ensure-collection
+```
+
+这行命令会同时准备 `trial_accounts`、`trial_invite` 和 `trial_feedback`。
+
+Yahao 在云开发控制台查看（环境 `translatehud-d4gl951eo8bef4702`，上海）：
+
+1. 打开「文档型数据库」，进入集合 `trial_feedback`。
+2. 每条文档有 `title`、`body`、`images`、`createdAt`、`appVersion`、`accountId`、`anonymous`、`deviceId`。
+3. `images` 里每一项有 `fileId`（`cloud://` 开头的文件 ID）、`cloudPath` 和 `contentType`。
+4. 打开「云存储」，按 `cloudPath` 找图片。路径都以 `feedback/` 开头。图片由服务端用管理端 SDK 上传，App 不直连存储。这个环境的云存储需要是开着的。
+
+文档写失败时，已经传上去的图片会尽量删掉。数据库报错不会把驱动原文交给 App。App 显示：`提交没有成功，请稍后再试。`
 
 ## App 怎么连
 

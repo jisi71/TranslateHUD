@@ -109,6 +109,20 @@ test('a collection permission failure stays a trial_store error and does not wri
   assert.equal(db.docs.size, 0)
 })
 
+test('trial_accounts, trial_invite, and trial_feedback are created as separate collections', async () => {
+  const names = []
+  const db = {
+    async createCollection(name) { names.push(name) }
+  }
+  const { ensureCollection, COLLECTION, INVITE_COLLECTION } = require('../src/cloudBaseStore')
+  const { FEEDBACK_COLLECTION } = require('../src/feedbackStore')
+  await ensureCollection(db, COLLECTION)
+  await ensureCollection(db, INVITE_COLLECTION)
+  await ensureCollection(db, FEEDBACK_COLLECTION)
+  await ensureCollection(db, COLLECTION)
+  assert.deepEqual(names, ['trial_accounts', 'trial_invite', 'trial_feedback'])
+})
+
 test('a missing collection seen during the first read is created and the account starts empty', async () => {
   const db = documentDatabase({ exists: true, failGets: 1 })
   const store = createCloudBaseStore(db)

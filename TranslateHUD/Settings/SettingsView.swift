@@ -249,24 +249,26 @@ struct SettingsView: View {
     }
 }
 
-/// Refresh icon motion aligned with animate-ui / lucide RefreshCw:
-/// rest at 0°, spring to about 50°, then spring back. Not a spinning loader.
-enum RefreshIconMotion {
-    static let restingDegrees = 0.0
-    static let turnedDegrees = 50.0
-    static let stiffness = 250.0
-    static let damping = 25.0
-    /// Long enough for the spring to arrive before the next turn.
-    static let pulseNanoseconds: UInt64 = 550_000_000
+/// animate-ui RotateCw default: one 360° turn, 0.8s easeInOut, around the ring center.
+enum RotateCwMotion {
+    static let viewBox = 24.0
+    static let anchorX = 12.0
+    static let anchorY = 12.0
+    static let fromDegrees = 0.0
+    static let toDegrees = 360.0
+    static let duration = 0.8
+    static let side = 16.0
+    static let strokeWidthInViewBox = 2.0
 
-    static var spring: Animation {
-        .interpolatingSpring(mass: 1, stiffness: stiffness, damping: damping)
+    static var animation: Animation { .easeInOut(duration: duration) }
+
+    static func lineWidth(forSide side: Double) -> CGFloat {
+        CGFloat(side / viewBox * strokeWidthInViewBox)
     }
 
-    static func degrees(loading: Bool, loadingTowardTurn: Bool, hovered: Bool, pressed: Bool) -> Double {
-        if loading { return loadingTowardTurn ? turnedDegrees : restingDegrees }
-        if hovered || pressed { return turnedDegrees }
-        return restingDegrees
+    /// Maps a viewBox point into the square icon. (12, 12) lands on the frame center.
+    static func framePoint(viewBoxX: Double, viewBoxY: Double, side: Double) -> (x: Double, y: Double) {
+        (viewBoxX / viewBox * side, viewBoxY / viewBox * side)
     }
 }
 
@@ -274,54 +276,79 @@ private struct TrialBalanceRefreshButton: View {
     var loading: Bool
     var action: () -> Void
 
-    @State private var hovered = false
-    @State private var loadingTowardTurn = false
+    @State private var turns = 0
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: "arrow.clockwise")
+        Button {
+            turns += 1
+            action()
+        } label: {
+            RotateCwShape()
+                .stroke(style: StrokeStyle(
+                    lineWidth: RotateCwMotion.lineWidth(forSide: RotateCwMotion.side),
+                    lineCap: .round,
+                    lineJoin: .round
+                ))
+                .frame(width: CGFloat(RotateCwMotion.side), height: CGFloat(RotateCwMotion.side))
+                .rotationEffect(.degrees(Double(turns) * RotateCwMotion.toDegrees), anchor: .center)
+                .animation(RotateCwMotion.animation, value: turns)
         }
-        .buttonStyle(RefreshIconButtonStyle(
-            hovered: hovered,
-            loading: loading,
-            loadingTowardTurn: loadingTowardTurn
-        ))
+        .buttonStyle(.borderless)
         .disabled(loading)
-        .onHover { hovered = $0 }
         .help("刷新体验余额")
         .accessibilityLabel("刷新体验余额")
-        .onChange(of: loading) { _, isLoading in
-            if !isLoading {
-                hovered = false
-                loadingTowardTurn = false
-            }
-        }
-        .task(id: loading) {
-            guard loading else { return }
-            loadingTowardTurn = true
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: RefreshIconMotion.pulseNanoseconds)
-                if Task.isCancelled { return }
-                loadingTowardTurn.toggle()
-            }
-        }
     }
 }
 
-private struct RefreshIconButtonStyle: ButtonStyle {
-    var hovered: Bool
-    var loading: Bool
-    var loadingTowardTurn: Bool
+/// Lucide RotateCw in viewBox 0 0 24 24. The ring center is (12, 12), which is the
+/// center of this square, so rotationEffect(anchor: .center) spins the ring, not a glyph box.
+private struct RotateCwShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let side = min(rect.width, rect.height)
+        let scale = side / RotateCwMotion.viewBox
+        let originX = rect.midX - RotateCwMotion.anchorX * scale
+        let originY = rect.midY - RotateCwMotion.anchorY * scale
+        func map(_ x: Double, _ y: Double) -> CGPoint {
+            CGPoint(x: originX + x * scale, y: originY + y * scale)
+        }
 
-    func makeBody(configuration: Configuration) -> some View {
-        let degrees = RefreshIconMotion.degrees(
-            loading: loading,
-            loadingTowardTurn: loadingTowardTurn,
-            hovered: hovered,
-            pressed: configuration.isPressed
+        var path = Path()
+        path.move(to: map(21, 12))
+        addClockwiseRing(to: &path, map: map)
+        path.addCurve(
+            to: map(18.74, 5.74),
+            control1: map(14.52, 3),
+            control2: map(16.93, 4)
         )
-        configuration.label
-            .rotationEffect(.degrees(degrees))
-            .animation(RefreshIconMotion.spring, value: degrees)
+        path.addLine(to: map(21, 8))
+        path.move(to: map(21, 3))
+        path.addLine(to: map(21, 8))
+        path.addLine(to: map(16, 8))
+        return path
+    }
+
+    /// 270° clockwise ring from the right side (21, 12) to the top (12, 3).
+    private func addClockwiseRing(to path: inout Path, map: (Double, Double) -> CGPoint) {
+        let radius = 9.0
+        let kappa = radius * 4.0 / 3.0 * tan(.pi / 8)
+        func point(_ degrees: Double) -> (Double, Double) {
+            let radians = degrees * .pi / 180
+            return (12 + radius * cos(radians), 12 + radius * sin(radians))
+        }
+        func tangent(_ degrees: Double) -> (Double, Double) {
+            let radians = degrees * .pi / 180
+            return (-sin(radians), cos(radians))
+        }
+        for start in [0.0, 90.0, 180.0] {
+            let from = point(start)
+            let to = point(start + 90)
+            let fromTangent = tangent(start)
+            let toTangent = tangent(start + 90)
+            path.addCurve(
+                to: map(to.0, to.1),
+                control1: map(from.0 + fromTangent.0 * kappa, from.1 + fromTangent.1 * kappa),
+                control2: map(to.0 - toTangent.0 * kappa, to.1 - toTangent.1 * kappa)
+            )
+        }
     }
 }

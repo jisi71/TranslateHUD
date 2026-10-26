@@ -769,55 +769,81 @@ html[data-lang="en"] .lang-zh {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 3px;
-  height: 36px;
+  height: 32px;
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .waveform span {
   display: block;
-  flex: 1 1 3px;
-  width: auto;
-  max-width: 4px;
+  flex: 0 1 3px;
+  width: 3px;
+  min-width: 2px;
   border-radius: 99px;
-  background: #0a84ff;
+  background: #8eb8f2;
   transform-origin: center;
-  animation: speech-wave 1.15s ease-in-out infinite;
+  animation-name: speech-wave-a;
+  animation-duration: 2.1s;
+  animation-timing-function: cubic-bezier(0.45, 0.02, 0.35, 1);
+  animation-iteration-count: infinite;
+  animation-delay: calc(var(--i) * -0.23s);
 }
 
-.waveform span:nth-child(odd) {
-  background: #7eb6ff;
+.waveform span:nth-child(3n) {
+  background: #b7d4fb;
 }
 
-.waveform span:nth-child(1) { height: 8px; animation-delay: 0s; }
-.waveform span:nth-child(2) { height: 14px; animation-delay: 0.08s; }
-.waveform span:nth-child(3) { height: 22px; animation-delay: 0.16s; }
-.waveform span:nth-child(4) { height: 16px; animation-delay: 0.05s; }
-.waveform span:nth-child(5) { height: 30px; animation-delay: 0.2s; }
-.waveform span:nth-child(6) { height: 12px; animation-delay: 0.12s; }
-.waveform span:nth-child(7) { height: 24px; animation-delay: 0.24s; }
-.waveform span:nth-child(8) { height: 34px; animation-delay: 0.04s; }
-.waveform span:nth-child(9) { height: 18px; animation-delay: 0.18s; }
-.waveform span:nth-child(10) { height: 28px; animation-delay: 0.1s; }
-.waveform span:nth-child(11) { height: 11px; animation-delay: 0.22s; }
-.waveform span:nth-child(12) { height: 22px; animation-delay: 0.14s; }
-.waveform span:nth-child(13) { height: 15px; animation-delay: 0.06s; }
-.waveform span:nth-child(14) { height: 9px; animation-delay: 0.16s; }
-.waveform span:nth-child(15) { height: 20px; animation-delay: 0.09s; }
-.waveform span:nth-child(16) { height: 32px; animation-delay: 0.19s; }
-.waveform span:nth-child(17) { height: 13px; animation-delay: 0.03s; }
-.waveform span:nth-child(18) { height: 26px; animation-delay: 0.15s; }
-.waveform span:nth-child(19) { height: 18px; animation-delay: 0.23s; }
-.waveform span:nth-child(20) { height: 36px; animation-delay: 0.07s; }
-.waveform span:nth-child(21) { height: 14px; animation-delay: 0.17s; }
-.waveform span:nth-child(22) { height: 24px; animation-delay: 0.11s; }
-.waveform span:nth-child(23) { height: 10px; animation-delay: 0.21s; }
-.waveform span:nth-child(24) { height: 16px; animation-delay: 0.02s; }
+.waveform span:nth-child(3n + 1) {
+  background: #6aa4ea;
+}
 
-@keyframes speech-wave {
-  0%, 100% { transform: scaleY(0.4); }
-  50% { transform: scaleY(1); }
+.waveform span:nth-child(even) {
+  animation-name: speech-wave-b;
+}
+
+.waveform span:nth-child(1) { --i: 0; height: 7px; animation-duration: 1.85s; }
+.waveform span:nth-child(2) { --i: 3; height: 13px; animation-duration: 2.35s; }
+.waveform span:nth-child(3) { --i: 1; height: 18px; animation-duration: 1.7s; }
+.waveform span:nth-child(4) { --i: 6; height: 10px; animation-duration: 2.6s; }
+.waveform span:nth-child(5) { --i: 2; height: 24px; animation-duration: 2.05s; }
+.waveform span:nth-child(6) { --i: 8; height: 15px; animation-duration: 1.62s; }
+.waveform span:nth-child(7) { --i: 4; height: 9px; animation-duration: 2.48s; }
+.waveform span:nth-child(8) { --i: 11; height: 21px; animation-duration: 1.92s; }
+.waveform span:nth-child(9) { --i: 5; height: 28px; animation-duration: 2.72s; }
+.waveform span:nth-child(10) { --i: 9; height: 14px; animation-duration: 1.78s; }
+.waveform span:nth-child(11) { --i: 7; height: 19px; animation-duration: 2.22s; }
+.waveform span:nth-child(12) { --i: 13; height: 11px; animation-duration: 1.58s; }
+.waveform span:nth-child(13) { --i: 10; height: 26px; animation-duration: 2.4s; }
+.waveform span:nth-child(14) { --i: 2; height: 16px; animation-duration: 1.96s; }
+.waveform span:nth-child(15) { --i: 14; height: 8px; animation-duration: 2.15s; }
+.waveform span:nth-child(16) { --i: 6; height: 22px; animation-duration: 1.68s; }
+.waveform span:nth-child(17) { --i: 12; height: 30px; animation-duration: 2.55s; }
+.waveform span:nth-child(18) { --i: 4; height: 12px; animation-duration: 1.88s; }
+.waveform span:nth-child(19) { --i: 15; height: 18px; animation-duration: 2.28s; }
+.waveform span:nth-child(20) { --i: 8; height: 7px; animation-duration: 1.74s; }
+.waveform span:nth-child(21) { --i: 11; height: 25px; animation-duration: 2.62s; }
+.waveform span:nth-child(22) { --i: 1; height: 14px; animation-duration: 2.08s; }
+.waveform span:nth-child(23) { --i: 9; height: 20px; animation-duration: 1.66s; }
+.waveform span:nth-child(24) { --i: 5; height: 11px; animation-duration: 2.32s; }
+
+@keyframes speech-wave-a {
+  0% { transform: scaleY(0.34); animation-timing-function: cubic-bezier(0.37, 0, 0.2, 1); }
+  17% { transform: scaleY(0.76); animation-timing-function: cubic-bezier(0.4, 0.02, 0.3, 1); }
+  36% { transform: scaleY(0.42); animation-timing-function: cubic-bezier(0.22, 0.08, 0.28, 1); }
+  54% { transform: scaleY(1); animation-timing-function: cubic-bezier(0.42, 0, 0.22, 1); }
+  73% { transform: scaleY(0.48); animation-timing-function: cubic-bezier(0.33, 0.04, 0.4, 1); }
+  88% { transform: scaleY(0.68); animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  100% { transform: scaleY(0.34); }
+}
+
+@keyframes speech-wave-b {
+  0% { transform: scaleY(0.66); animation-timing-function: cubic-bezier(0.33, 0, 0.18, 1); }
+  23% { transform: scaleY(0.3); animation-timing-function: cubic-bezier(0.25, 0.06, 0.32, 1); }
+  44% { transform: scaleY(0.9); animation-timing-function: cubic-bezier(0.4, 0, 0.24, 1); }
+  66% { transform: scaleY(0.4); animation-timing-function: cubic-bezier(0.3, 0.04, 0.38, 1); }
+  84% { transform: scaleY(0.72); animation-timing-function: cubic-bezier(0.42, 0, 0.55, 1); }
+  100% { transform: scaleY(0.66); }
 }
 
 .hud-glyph.is-on {

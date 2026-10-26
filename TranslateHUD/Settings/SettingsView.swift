@@ -9,7 +9,7 @@ struct SettingsView: View {
     @State private var testStatus: TestStatus = .idle
     @StateObject private var speechPreview = SpeechController()
     @State private var voiceRefreshToken = 0
-    @State private var path = NavigationPath()
+    @State private var path: [SettingsRoute] = []
 
     enum TestStatus {
         case idle
@@ -200,13 +200,20 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func settingsDestination(_ route: SettingsRoute) -> some View {
-        switch route {
-        case .help:
-            HelpView()
-        case .agreement:
-            LegalDocumentView(title: "用户协议", resource: "user-agreement")
-        case .privacy:
-            LegalDocumentView(title: "隐私政策", resource: "privacy-policy")
+        SettingsBackContainer(title: route.parentTitle(in: path), goBack: {
+            guard !path.isEmpty else { return }
+            path.removeLast()
+        }) {
+            switch route {
+            case .help:
+                HelpView()
+            case .feedback:
+                FeedbackView()
+            case .agreement:
+                LegalDocumentView(title: "用户协议", resource: "user-agreement")
+            case .privacy:
+                LegalDocumentView(title: "隐私政策", resource: "privacy-policy")
+            }
         }
     }
 

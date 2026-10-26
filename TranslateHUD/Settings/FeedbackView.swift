@@ -17,43 +17,52 @@ struct FeedbackView: View {
             Section {
                 TextField("标题", text: $title)
                     .textFieldStyle(.roundedBorder)
-                TextField("问题描述", text: $bodyText, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(5...12)
-            }
-            Section {
+                TextEditor(text: $bodyText)
+                    .font(.body)
+                    .frame(height: 72)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .overlay(alignment: .topLeading) {
+                        if bodyText.isEmpty {
+                            Text("问题描述")
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 8)
+                                .padding(.leading, 5)
+                                .allowsHitTesting(false)
+                        }
+                    }
                 ForEach(attachments) { item in
                     HStack(spacing: 8) {
                         Image(nsImage: item.preview)
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 44, height: 44)
+                            .frame(width: 36, height: 36)
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                         Text(item.filename)
                             .font(.caption)
                             .lineLimit(1)
-                        Spacer()
+                        Spacer(minLength: 8)
                         Button("移除") { remove(item.id) }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.borderless)
                             .disabled(submitting)
                     }
                 }
-                Button("添加图片") { picking = true }
-                    .disabled(submitting || attachments.count >= FeedbackLimits.maxImages)
-                Text("可以不附图片，最多 4 张。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Section {
+                HStack {
+                    Button("添加图片") { picking = true }
+                        .disabled(submitting || attachments.count >= FeedbackLimits.maxImages)
+                    Text("可不加，最多 4 张")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button(submitting ? "正在提交…" : "提交") {
+                        Task { await submit() }
+                    }
+                    .disabled(submitting || !trial.isLoggedIn)
+                }
                 if !trial.isLoggedIn {
                     Text(FeedbackCopy.needLogin)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Button(submitting ? "正在提交…" : "提交") {
-                    Task { await submit() }
-                }
-                .disabled(submitting || !trial.isLoggedIn)
                 if !statusText.isEmpty {
                     Text(statusText)
                         .font(.caption)
@@ -63,7 +72,6 @@ struct FeedbackView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("问题反馈")
         .disabled(submitting)
         .fileImporter(
             isPresented: $picking,

@@ -126,9 +126,16 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         let views = Self.approvalViews(for: responder)
         // 点到的是输入框本身或它里面的子视图才算。不能把整窗的容器当成点击输入框，
         // 否则点一下空白处就会批准自动聚焦。
-        if let hit = pendingClickView,
-           views.contains(where: { hit === $0 || hit.isDescendant(of: $0) }) {
-            return true
+        if let hit = pendingClickView {
+            if views.contains(where: { hit === $0 || hit.isDescendant(of: $0) }) {
+                return true
+            }
+            // 点的是链接或按钮时，不要因为新页面的输入框刚好盖住那个位置就聚焦。
+            if !Self.containsTextInput(hit) {
+                return false
+            }
+        } else {
+            return false
         }
         guard let location = pendingClickLocation else { return false }
         for view in views where view.window === self {
@@ -145,6 +152,15 @@ final class SettingsWindow: NSWindow, NSWindowDelegate {
         return Self.approvalViews(for: responder).contains { view in
             view === approved || view.isDescendant(of: approved) || approved.isDescendant(of: view)
         }
+    }
+
+    private static func containsTextInput(_ view: NSView) -> Bool {
+        var current: NSView? = view
+        while let view = current {
+            if isTextInput(view) { return true }
+            current = view.superview
+        }
+        return false
     }
 
     static func isTextInput(_ responder: NSResponder?) -> Bool {

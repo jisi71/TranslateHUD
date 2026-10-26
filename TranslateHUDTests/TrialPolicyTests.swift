@@ -95,6 +95,16 @@ final class TrialPolicyTests: XCTestCase {
             return XCTFail("expected a block")
         }
         XCTAssertTrue(message.contains("API Key"))
+        XCTAssertTrue(message.contains("体验额度已用完"))
+    }
+
+    func testAnAccountThatHasNotRedeemedIsAskedForAnInviteCode() {
+        let input = sampleTrial(balanceFen: 0, source: "你好", inviteRedeemed: false)
+        guard case .block(let title, let message) = TranslationRoute.gate(input) else {
+            return XCTFail("expected a block")
+        }
+        XCTAssertEqual(title, "还没有体验额度")
+        XCTAssertEqual(message, "还没有体验额度。请在设置里输入邀请码领取，或填写你自己的 API Key。")
     }
 
     func testTrialReceiptParsesTheProxyFields() {
@@ -223,7 +233,12 @@ final class TrialPolicyTests: XCTestCase {
         return "\(part(["alg": "none"])).\(part(payload)).sig"
     }
 
-    private func sampleTrial(balanceFen: Int?, source: String?, balanceMicroYuan: Int? = nil) -> TranslationRouteInput {
+    private func sampleTrial(
+        balanceFen: Int?,
+        source: String?,
+        balanceMicroYuan: Int? = nil,
+        inviteRedeemed: Bool = true
+    ) -> TranslationRouteInput {
         TranslationRouteInput(
             hasOwnAPIKey: false,
             baseURL: "https://api.openai.com/v1",
@@ -231,7 +246,8 @@ final class TrialPolicyTests: XCTestCase {
             proxyBaseURL: "https://proxy.example/v1",
             balanceFen: balanceFen,
             balanceMicroYuan: balanceMicroYuan,
-            sourceText: source
+            sourceText: source,
+            inviteRedeemed: inviteRedeemed
         )
     }
 }

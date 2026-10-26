@@ -3,6 +3,8 @@
 const fs = require('fs')
 const path = require('path')
 const { applyCharge, credit, normalizeRecord, openAccount, settleCharge } = require('./trialPolicy')
+const { decideRedeem, publicInviteStatus } = require('./invite')
+const { acquireSlot, releaseSlot } = require('./inflight')
 
 function clone(record) {
   const normalized = normalizeRecord(record)
@@ -13,6 +15,8 @@ class MemoryAccountStore {
   constructor() {
     this.users = new Map()
     this.chains = new Map()
+    this.invite = { redeemedCount: 0 }
+    this.inviteChain = Promise.resolve()
   }
 
   lock(uid, fn) {
@@ -22,12 +26,55 @@ class MemoryAccountStore {
     return run
   }
 
+  inviteLock(fn) {
+    const run = this.inviteChain.then(fn, fn)
+    this.inviteChain = run.then(() => {}, () => {})
+    return run
+  }
+
   async ensure(uid, now = Date.now()) {
     return this.lock(uid, async () => {
       const existing = this.users.get(uid)
       const opened = openAccount(existing ? clone(existing) : null, now)
-      if (opened.giftedNow) this.users.set(uid, clone(opened.record))
-      return { record: clone(opened.record), giftedNow: opened.giftedNow }
+      if (!existing) this.users.set(uid, clone(opened.record))
+      return { record: clone(opened.record), giftedNow: false }
+    })
+  }
+
+  async inviteStatus(env = process.env) {
+    return this.inviteLock(async () => publicInviteStatus(this.invite, env))
+  }
+
+  async redeem(uid, code, now = Date.now(), env = process.env) {
+    return this.inviteLock(() => this.lock(uid, async () => {
+      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+      const decision = decideRedeem({ record: existing, counter: this.invite, code, now, env })
+      if (!decision.ok) return decision
+      this.users.set(uid, clone(decision.record))
+      this.invite = decision.counter
+      return decision
+    }))
+  }
+
+  async acquireInflight(uid, now = Date.now()) {
+    return this.lock(uid, async () => {
+      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+      const decision = acquireSlot(existing, now)
+      if (decision.record && (decision.ok || decision.record.inflight !== (existing && existing.inflight))) {
+        if (existing || decision.ok) this.users.set(uid, clone(decision.record))
+      }
+      return decision
+    })
+  }
+
+  async releaseInflight(uid, slotId) {
+    if (!slotId) return null
+    return this.lock(uid, async () => {
+      const existing = this.users.get(uid)
+      if (!existing) return null
+      const next = releaseSlot(existing, slotId)
+      if (next) this.users.set(uid, clone(next))
+      return next
     })
   }
 
@@ -66,6 +113,7 @@ class FileAccountStore {
   constructor(filePath) {
     this.filePath = filePath
     this.users = new Map()
+    this.invite = { redeemedCount: 0 }
     this.chain = Promise.resolve()
     this.ready = this.load()
   }
@@ -97,24 +145,73 @@ class FileAccountStore {
       const normalized = clone(record)
       if (normalized) this.users.set(uid, normalized)
     }
+    if (parsed.invite && typeof parsed.invite === 'object') {
+      const count = Math.max(0, Math.floor(Number(parsed.invite.redeemedCount) || 0))
+      this.invite = { ...parsed.invite, redeemedCount: count }
+    }
   }
 
   async persist() {
     const users = {}
     for (const [uid, record] of this.users) users[uid] = clone(record)
     const tmp = `${this.filePath}.${process.pid}.tmp`
-    await fs.promises.writeFile(tmp, JSON.stringify({ users }), 'utf8')
+    await fs.promises.writeFile(tmp, JSON.stringify({ users, invite: this.invite }), 'utf8')
     await fs.promises.rename(tmp, this.filePath)
   }
 
   async ensure(uid, now = Date.now()) {
     return this.lock(async () => {
-      const opened = openAccount(this.users.has(uid) ? clone(this.users.get(uid)) : null, now)
-      if (opened.giftedNow) {
+      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+      const opened = openAccount(existing, now)
+      if (!existing) {
         this.users.set(uid, clone(opened.record))
         await this.persist()
       }
-      return { record: clone(opened.record), giftedNow: opened.giftedNow }
+      return { record: clone(opened.record), giftedNow: false }
+    })
+  }
+
+  async inviteStatus(env = process.env) {
+    return this.lock(async () => publicInviteStatus(this.invite, env))
+  }
+
+  async redeem(uid, code, now = Date.now(), env = process.env) {
+    return this.lock(async () => {
+      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+      const decision = decideRedeem({ record: existing, counter: this.invite, code, now, env })
+      if (!decision.ok) return decision
+      this.users.set(uid, clone(decision.record))
+      this.invite = decision.counter
+      await this.persist()
+      return decision
+    })
+  }
+
+  async acquireInflight(uid, now = Date.now()) {
+    return this.lock(async () => {
+      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+      const decision = acquireSlot(existing, now)
+      if (decision.record && (decision.ok || JSON.stringify(decision.record.inflight) !== JSON.stringify(existing && existing.inflight))) {
+        if (existing || decision.ok) {
+          this.users.set(uid, clone(decision.record))
+          await this.persist()
+        }
+      }
+      return decision
+    })
+  }
+
+  async releaseInflight(uid, slotId) {
+    if (!slotId) return null
+    return this.lock(async () => {
+      const existing = this.users.get(uid)
+      if (!existing) return null
+      const next = releaseSlot(existing, slotId)
+      if (next) {
+        this.users.set(uid, clone(next))
+        await this.persist()
+      }
+      return next
     })
   }
 
@@ -176,9 +273,87 @@ class TransactionalAccountStore {
       try {
         const existing = await tx.get(uid)
         const opened = openAccount(existing, now)
-        if (opened.giftedNow) await tx.create(uid, opened.record)
+        if (!existing) await tx.create(uid, opened.record)
         await tx.commit()
-        return { record: clone(opened.record), giftedNow: opened.giftedNow }
+        return { record: clone(opened.record), giftedNow: false }
+      } catch (error) {
+        await tx.rollback().catch(() => {})
+        throw error
+      }
+    })
+  }
+
+  async inviteStatus(env = process.env) {
+    return this.withRetry(async () => {
+      const tx = await this.begin()
+      try {
+        const invite = await tx.getInvite()
+        await tx.rollback().catch(() => {})
+        return publicInviteStatus(invite, env)
+      } catch (error) {
+        await tx.rollback().catch(() => {})
+        throw error
+      }
+    })
+  }
+
+  async redeem(uid, code, now = Date.now(), env = process.env) {
+    return this.withRetry(async () => {
+      const tx = await this.begin()
+      try {
+        const existing = await tx.get(uid)
+        const invite = await tx.getInvite()
+        const decision = decideRedeem({ record: existing, counter: invite, code, now, env })
+        if (!decision.ok) {
+          await tx.rollback().catch(() => {})
+          return decision
+        }
+        if (existing) await tx.save(uid, decision.record)
+        else await tx.create(uid, decision.record)
+        await tx.saveInvite(decision.counter)
+        await tx.commit()
+        return decision
+      } catch (error) {
+        await tx.rollback().catch(() => {})
+        throw error
+      }
+    })
+  }
+
+  async acquireInflight(uid, now = Date.now()) {
+    return this.withRetry(async () => {
+      const tx = await this.begin()
+      try {
+        const existing = await tx.get(uid)
+        const decision = acquireSlot(existing, now)
+        const changed = decision.record && JSON.stringify((decision.record && decision.record.inflight) || []) !== JSON.stringify((existing && existing.inflight) || [])
+        if (decision.ok || changed) {
+          if (existing) await tx.save(uid, decision.record)
+          else if (decision.ok) await tx.create(uid, decision.record)
+        }
+        await tx.commit()
+        return decision
+      } catch (error) {
+        await tx.rollback().catch(() => {})
+        throw error
+      }
+    })
+  }
+
+  async releaseInflight(uid, slotId) {
+    if (!slotId) return null
+    return this.withRetry(async () => {
+      const tx = await this.begin()
+      try {
+        const existing = await tx.get(uid)
+        if (!existing) {
+          await tx.rollback().catch(() => {})
+          return null
+        }
+        const next = releaseSlot(existing, slotId)
+        await tx.save(uid, next)
+        await tx.commit()
+        return next
       } catch (error) {
         await tx.rollback().catch(() => {})
         throw error

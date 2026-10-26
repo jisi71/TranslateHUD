@@ -221,6 +221,19 @@ final class ServiceErrorMessageTests: XCTestCase {
         XCTAssertEqual(store, "体验余额暂时读不出来。请在设置里点「重新读取」。")
         XCTAssertFalse(store.contains("secret-key"))
         XCTAssertFalse(store.contains("HTTP"))
+
+        XCTAssertEqual(
+            ServiceErrorMessage.http(code: 429, body: "{\"error\":{\"code\":\"trial_concurrency\",\"message\":\"\(secret)\"}}"),
+            "同时进行的翻译太多了（同一账号最多 3 个）。请等当前翻译结束后再试。"
+        )
+        XCTAssertEqual(
+            ServiceErrorMessage.http(code: 403, body: "{\"error\":{\"code\":\"trial_invite_exhausted\",\"message\":\"\(secret)\"}}"),
+            "邀请码次数用尽"
+        )
+        XCTAssertFalse(
+            ServiceErrorMessage.http(code: 403, body: "{\"error\":{\"code\":\"trial_invite_exhausted\",\"message\":\"\(secret)\"}}")
+                .contains("secret")
+        )
     }
 
     private func attach<V: View>(host: NSHostingController<V>, size: NSSize, name: String) throws {

@@ -1,12 +1,22 @@
 'use strict'
 
 const { defaultForward } = require('./upstream')
-const { defaultVerifyUser, handleAccount, handleTranslate, readEnv } = require('./trialService')
+const {
+  PUBLIC_HEADERS,
+  defaultVerifyUser,
+  handleAccount,
+  handleInviteStatus,
+  handleRedeem,
+  handleTranslate,
+  readEnv
+} = require('./trialService')
 const { MESSAGES } = require('./trialPolicy')
 
 function routeOf(urlPath) {
   const clean = String(urlPath || '/').split('?')[0]
   if (clean === '/healthz' || clean.endsWith('/healthz')) return 'health'
+  if (clean.endsWith('/trial/invite-status')) return 'invite-status'
+  if (clean.endsWith('/trial/redeem')) return 'redeem'
   if (clean.endsWith('/trial/account')) return 'account'
   if (clean.endsWith('/chat/completions')) return 'translate'
   return null
@@ -50,7 +60,15 @@ function createRequestListener(deps = {}) {
       res.end(JSON.stringify({ ok: true }))
       return
     }
-    if (req.method !== 'POST' && !(route === 'account' && req.method === 'GET')) {
+    if (route === 'invite-status' && req.method === 'OPTIONS') {
+      res.writeHead(204, PUBLIC_HEADERS)
+      res.end()
+      return
+    }
+    const methodOk = req.method === 'POST'
+      || (route === 'account' && req.method === 'GET')
+      || (route === 'invite-status' && req.method === 'GET')
+    if (!methodOk) {
       res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' })
       res.end(JSON.stringify({ error: { code: 'method', message: '请用 POST。' } }))
       return
@@ -59,9 +77,11 @@ function createRequestListener(deps = {}) {
     // req "close" also fires when the body has been read, while the response
     // is still open. Aborting there cancels every upstream call. Only stop
     // the upstream when the client goes away before the response finishes.
+    let releaseInflight = async () => {}
     const abort = new AbortController()
     res.on('close', () => {
       if (!res.writableEnded) abort.abort()
+      releaseInflight().catch(() => {})
     })
 
     try {
@@ -76,8 +96,16 @@ function createRequestListener(deps = {}) {
         now,
         signal: abort.signal
       }
-      const result = route === 'account' ? await handleAccount(ctx) : await handleTranslate(ctx)
-      if (result.aborted || res.writableEnded) return
+      let result
+      if (route === 'account') result = await handleAccount(ctx)
+      else if (route === 'redeem') result = await handleRedeem(ctx)
+      else if (route === 'invite-status') result = await handleInviteStatus(ctx)
+      else result = await handleTranslate(ctx)
+      if (typeof result.release === 'function') releaseInflight = result.release
+      if (result.aborted || res.writableEnded) {
+        await releaseInflight()
+        return
+      }
       res.writeHead(result.status, result.headers || { 'Content-Type': 'application/json; charset=utf-8' })
       if (result.stream) {
         result.stream.on('error', () => {

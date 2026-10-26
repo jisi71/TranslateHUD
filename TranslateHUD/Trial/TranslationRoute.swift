@@ -10,6 +10,8 @@ struct TranslationRouteInput: Equatable {
     var balanceMicroYuan: Int? = nil
     /// Nil when the text is not known yet, for example before a screenshot is recognized.
     var sourceText: String?
+    /// False until this account has received the ¥2 invite gift or an older automatic gift.
+    var inviteRedeemed: Bool = true
 }
 
 enum TranslationEndpoint: Equatable {
@@ -76,13 +78,19 @@ enum TranslationRoute {
             if count <= 0 {
                 return .block(title: "没有可翻译的文字", message: TrialCopy.empty)
             }
-            if trialBalanceIsEmpty(input) {
-                return .block(title: "体验额度已用完", message: TrialCopy.balanceExhausted)
-            }
-        } else if trialBalanceIsEmpty(input) {
-            return .block(title: "体验额度已用完", message: TrialCopy.balanceExhausted)
+            if let blocked = blockedForEmptyTrial(input) { return blocked }
+        } else if let blocked = blockedForEmptyTrial(input) {
+            return blocked
         }
         return .allowTrial
+    }
+
+    private static func blockedForEmptyTrial(_ input: TranslationRouteInput) -> TranslationGate? {
+        guard trialBalanceIsEmpty(input) else { return nil }
+        if input.inviteRedeemed {
+            return .block(title: "体验额度已用完", message: TrialCopy.balanceExhausted)
+        }
+        return .block(title: "还没有体验额度", message: TrialCopy.inviteRequired)
     }
 
     /// A displayed ¥0.00 can still be a sub-fen remainder. Only a precise balance

@@ -427,7 +427,8 @@ struct TranslationPanel: View {
             proxyBaseURL: trial.effectiveProxyBaseURL,
             balanceFen: trial.balanceFen,
             balanceMicroYuan: trial.balanceMicroYuan,
-            sourceText: nil
+            sourceText: nil,
+            inviteRedeemed: trial.inviteRedeemed
         )
     }
 

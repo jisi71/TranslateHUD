@@ -156,6 +156,21 @@ struct SettingsView: View {
                             .lineLimit(2)
                     }
                 }
+                if trial.inviteRedeemed {
+                    Text("已领取体验额度。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if trial.balanceState != .loading {
+                    TextField("邀请码", text: $trial.inviteCode)
+                        .textFieldStyle(.roundedBorder)
+                    Text("每个账号只能领取一次。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button(trial.isBusy ? "正在领取…" : "领取 ¥2 体验额度") {
+                        Task { await trial.redeemInvite() }
+                    }
+                    .disabled(trial.isBusy || trial.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
                 HStack {
                     Button(trial.balanceState == .loading ? "正在读取…" : "重新读取") {
                         Task { await trial.refreshFromServer() }

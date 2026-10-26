@@ -36,12 +36,12 @@ test('500 graphemes are allowed and 501 are rejected with the product message', 
   assert.equal(rejected.message.includes('字'.repeat(50)), false)
 })
 
-test('gift is applied once and a legacy fen balance migrates to micro-yuan', () => {
+test('opening an account does not gift, and a legacy fen balance migrates to micro-yuan', () => {
   const first = openAccount(null, 1000)
-  assert.equal(first.giftedNow, true)
-  assert.equal(first.record.balanceMicroYuan, GIFT_MICRO_YUAN)
-  assert.equal(first.record.balanceFen, GIFT_FEN)
-  assert.equal(first.record.giftGranted, true)
+  assert.equal(first.giftedNow, false)
+  assert.equal(first.record.balanceMicroYuan, 0)
+  assert.equal(first.record.balanceFen, 0)
+  assert.equal(first.record.giftGranted, false)
 
   const legacy = openAccount({ balanceFen: 150, giftGranted: true, createdAt: 1000 }, 2000)
   assert.equal(legacy.giftedNow, false)

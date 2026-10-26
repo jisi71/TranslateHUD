@@ -20,6 +20,12 @@ function modelJSON(content, usage = { prompt_tokens: 1, completion_tokens: 1, to
   })
 }
 
+async function grant(store, uid = 'uid-1') {
+  const saved = await store.redeem(uid, 'translatehud-200', 1, {})
+  assert.equal(saved.ok, true)
+  return saved
+}
+
 function listen(store, options = {}) {
   const calls = []
   const env = {
@@ -83,22 +89,23 @@ async function request(base, path, { token, source, body, method } = {}) {
   return { status: response.status, text, json, headers: response.headers }
 }
 
-test('first account call gifts ¥2 once and the second call does not', async () => {
+test('account call does not gift, and a second call still does not', async () => {
   const store = new MemoryAccountStore()
   const { server, base } = await listen(store)
   try {
     const first = await request(base, '/v1/trial/account', { token: 'good-token', body: {} })
     assert.equal(first.status, 200)
-    assert.equal(first.json.giftedNow, true)
-    assert.equal(first.json.balanceMicroYuan, GIFT_MICRO_YUAN)
-    assert.equal(first.json.balanceFen, GIFT_FEN)
-    assert.equal(first.json.giftMicroYuan, GIFT_MICRO_YUAN)
+    assert.equal(first.json.giftedNow, false)
+    assert.equal(first.json.balanceMicroYuan, 0)
+    assert.equal(first.json.balanceFen, 0)
+    assert.equal(first.json.giftMicroYuan, 0)
+    assert.equal(first.json.inviteRedeemed, false)
     assert.equal(first.json.userId, 'uid-1')
 
     const second = await request(base, '/v1/trial/account', { token: 'good-token', body: {} })
     assert.equal(second.json.giftedNow, false)
-    assert.equal(second.json.balanceMicroYuan, GIFT_MICRO_YUAN)
-    assert.equal(second.json.balanceFen, GIFT_FEN)
+    assert.equal(second.json.balanceMicroYuan, 0)
+    assert.equal(second.json.inviteRedeemed, false)
   } finally {
     server.close()
   }
@@ -106,6 +113,7 @@ test('first account call gifts ¥2 once and the second call does not', async () 
 
 test('trial translation bills the source, hides the server key, and lowers the balance', async () => {
   const store = new MemoryAccountStore()
+  await grant(store)
   const { server, base, calls } = await listen(store)
   try {
     const result = await request(base, '/v1/chat/completions', {
@@ -176,7 +184,7 @@ test('over 500 graphemes is rejected, the upstream is not called, and nothing is
 
 test('a zero balance does not call the upstream', async () => {
   const store = new MemoryAccountStore()
-  await store.ensure('uid-1', 1)
+  await grant(store)
   await store.charge('uid-1', GIFT_MICRO_YUAN)
   const { server, base, calls } = await listen(store)
   try {
@@ -199,7 +207,7 @@ test('a zero balance does not call the upstream', async () => {
 
 test('a short balance still calls the upstream and settlement stops at zero', async () => {
   const store = new MemoryAccountStore()
-  await store.ensure('uid-1', 1)
+  await grant(store)
   await store.charge('uid-1', GIFT_MICRO_YUAN - MICRO_YUAN_PER_FEN)
   const { server, base, calls } = await listen(store, {
     forward: async () => ({
@@ -237,6 +245,7 @@ test('a short balance still calls the upstream and settlement stops at zero', as
 
 test('a finished response without usage is not billed', async () => {
   const store = new MemoryAccountStore()
+  await grant(store)
   const { server, base, calls } = await listen(store, {
     forward: async () => ({
       status: 200,
@@ -263,6 +272,7 @@ test('a finished response without usage is not billed', async () => {
 
 test('one cache-hit token is not forced up to 1 fen', async () => {
   const store = new MemoryAccountStore()
+  await grant(store)
   const { server, base, calls } = await listen(store, {
     forward: async () => ({
       status: 200,
@@ -294,7 +304,7 @@ test('one cache-hit token is not forced up to 1 fen', async () => {
 
 test('a sub-fen remainder still starts a call and the ledger keeps the remainder', async () => {
   const store = new MemoryAccountStore()
-  await store.ensure('uid-1', 1)
+  await grant(store)
   await store.charge('uid-1', GIFT_MICRO_YUAN - 100)
   const { server, base, calls } = await listen(store)
   try {
@@ -340,6 +350,7 @@ test('a bad token price refuses before the upstream call and does not gift', asy
 
 test('upstream failure does not charge', async () => {
   const store = new MemoryAccountStore()
+  await grant(store)
   const { server, base } = await listen(store, {
     forward: async () => ({ status: 500, text: '{"error":{"message":"secret upstream"}}' })
   })
@@ -362,6 +373,7 @@ test('upstream failure does not charge', async () => {
 
 test('reading the request body does not cancel the upstream call', async () => {
   const store = new MemoryAccountStore()
+  await grant(store)
   let abortedDuringCall = true
   const { server, base } = await listen(store, {
     forward: async ({ signal }) => {
@@ -391,6 +403,7 @@ test('reading the request body does not cancel the upstream call', async () => {
 
 test('closing the client before usage arrives does not charge', async () => {
   const store = new MemoryAccountStore()
+  await grant(store)
   const stream = new PassThrough()
   const { server, base } = await listen(store, {
     forward: async () => {
@@ -436,6 +449,7 @@ test('closing the client before usage arrives does not charge', async () => {
 
 test('streaming proxy lets the client read the first chunk before the upstream finishes', async () => {
   const store = new MemoryAccountStore()
+  await grant(store)
   let release
   const gate = new Promise((resolve) => { release = resolve })
   const stream = new PassThrough()
@@ -505,6 +519,7 @@ test('streaming proxy lets the client read the first chunk before the upstream f
 
 test('a finished stream without usage does not charge', async () => {
   const store = new MemoryAccountStore()
+  await grant(store)
   const stream = new PassThrough()
   const { server, base } = await listen(store, {
     forward: async () => {
@@ -553,7 +568,7 @@ test('missing translation key refuses before charging', async () => {
   }
 })
 
-test('cloud function dispatch gifts once through the same account handler', async () => {
+test('cloud function dispatch reads the account without gifting', async () => {
   const { dispatch } = require('../src/cloudEntry')
   const store = new MemoryAccountStore()
   const env = {
@@ -576,9 +591,10 @@ test('cloud function dispatch gifts once through the same account handler', asyn
   })
   assert.equal(result.statusCode, 200)
   const body = JSON.parse(result.body)
-  assert.equal(body.giftedNow, true)
-  assert.equal(body.balanceMicroYuan, GIFT_MICRO_YUAN)
-  assert.equal(body.balanceFen, GIFT_FEN)
+  assert.equal(body.giftedNow, false)
+  assert.equal(body.balanceMicroYuan, 0)
+  assert.equal(body.balanceFen, 0)
+  assert.equal(body.inviteRedeemed, false)
   assert.equal(body.userId, 'uid-9')
 })
 

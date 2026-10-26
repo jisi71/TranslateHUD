@@ -414,28 +414,43 @@
             </li>
             <li>
               <h3>
-                <span class="lang-zh">屏幕录制</span>
-                <span class="lang-en">Screen Recording</span>
+                <span class="lang-zh">录屏与系统录音</span>
+                <span class="lang-en">Screen &amp; System Audio Recording</span>
               </h3>
               <p>
-                <span class="lang-zh">用来截取你框出的区域，再识别里面的文字。没有它，截图会失败。路径是「系统设置 → 隐私与安全性 → 屏幕录制」。打开之后如果仍然不行，退出 TranslateHUD 再打开一次。</span>
-                <span class="lang-en">This lets TranslateHUD capture the region you drag, then read the text in it. Without it, screenshots fail. The path is System Settings → Privacy &amp; Security → Screen Recording. If it still fails after you allow it, quit TranslateHUD and open it again.</span>
+                <span class="lang-zh">用来截取你框出的区域，再识别里面的文字。没有它，截图会失败。路径是「系统设置 → 隐私与安全性 → 录屏与系统录音」。打开之后如果仍然不行，退出 TranslateHUD 再打开一次。</span>
+                <span class="lang-en">This lets TranslateHUD capture the region you drag, then read the text in it. Without it, screenshots fail. The path is System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording. If it still fails after you allow it, quit TranslateHUD and open it again.</span>
               </p>
             </li>
           </ul>
-          <figure class="plain-shot">
-            <img
-              src="assets/permission-message.png"
-              width="720"
-              height="194"
-              alt="应用内的屏幕录制权限说明，提示到系统设置的隐私与安全性中打开屏幕录制，并在授权后重新启动。"
-              data-alt-zh="应用内的屏幕录制权限说明，提示到系统设置的隐私与安全性中打开屏幕录制，并在授权后重新启动。"
-              data-alt-en="The in-app screen-recording message. It says to enable Screen Recording under Privacy &amp; Security, then relaunch after granting access.">
-            <figcaption>
-              <span class="lang-zh">这是应用里的提示，不是「系统设置」的界面。屏幕录制那一页还需要一张真实的系统设置截图。</span>
-              <span class="lang-en">This is an in-app prompt, not System Settings. A real screenshot of the Screen Recording page is still needed.</span>
-            </figcaption>
-          </figure>
+          <div class="perm-shots">
+            <figure>
+              <img
+                src="assets/settings-accessibility.png"
+                width="1450"
+                height="989"
+                alt="系统设置的辅助功能。TranslateHUD 的开关已打开，列表里其他应用是模糊的。"
+                data-alt-zh="系统设置的辅助功能。TranslateHUD 的开关已打开，列表里其他应用是模糊的。"
+                data-alt-en="System Settings, Accessibility. TranslateHUD’s switch is on. Other apps in the list are blurred.">
+              <figcaption>
+                <span class="lang-zh">辅助功能。TranslateHUD 已打开，旁边其他应用做了模糊。</span>
+                <span class="lang-en">Accessibility. TranslateHUD is on. Other apps beside it are blurred.</span>
+              </figcaption>
+            </figure>
+            <figure>
+              <img
+                src="assets/settings-screen-recording.png"
+                width="1452"
+                height="987"
+                alt="系统设置的录屏与系统录音。TranslateHUD 的开关已打开，列表里其他应用是模糊的。"
+                data-alt-zh="系统设置的录屏与系统录音。TranslateHUD 的开关已打开，列表里其他应用是模糊的。"
+                data-alt-en="System Settings, Screen &amp; System Audio Recording. TranslateHUD’s switch is on. Other apps in the list are blurred.">
+              <figcaption>
+                <span class="lang-zh">录屏与系统录音。TranslateHUD 已打开，旁边其他应用做了模糊。</span>
+                <span class="lang-en">Screen &amp; System Audio Recording. TranslateHUD is on. Other apps beside it are blurred.</span>
+              </figcaption>
+            </figure>
+          </div>
         </div>
       </section>
 
@@ -471,19 +486,16 @@
               </p>
             </div>
             <figure class="setup-stage">
-              <div class="shot-slot">
-                <p class="slot-kicker">
-                  <span class="lang-zh">截图位</span>
-                  <span class="lang-en">Screenshot slot</span>
-                </p>
-                <p class="slot-path">
-                  <span class="lang-zh">系统设置 → 隐私与安全性 → 辅助功能</span>
-                  <span class="lang-en">System Settings → Privacy &amp; Security → Accessibility</span>
-                </p>
-              </div>
+              <img
+                src="assets/settings-accessibility.png"
+                width="1450"
+                height="989"
+                alt="系统设置的辅助功能。TranslateHUD 的开关已打开，列表里其他应用是模糊的。"
+                data-alt-zh="系统设置的辅助功能。TranslateHUD 的开关已打开，列表里其他应用是模糊的。"
+                data-alt-en="System Settings, Accessibility. TranslateHUD’s switch is on. Other apps in the list are blurred.">
               <figcaption>
-                <span class="lang-zh">等真实的系统设置截图。仓库里还没有这一页的图。</span>
-                <span class="lang-en">Waiting for a real System Settings screenshot. That picture is not in the repo yet.</span>
+                <span class="lang-zh">系统设置 → 隐私与安全性 → 辅助功能。开关是打开的，其他应用已模糊。</span>
+                <span class="lang-en">System Settings → Privacy &amp; Security → Accessibility. The switch is on, and other apps are blurred.</span>
               </figcaption>
             </figure>
           </li>
@@ -491,28 +503,25 @@
             <div class="setup-copy">
               <p class="step-no">3</p>
               <h3>
-                <span class="lang-zh">打开屏幕录制</span>
-                <span class="lang-en">Turn on Screen Recording</span>
+                <span class="lang-zh">打开录屏与系统录音</span>
+                <span class="lang-en">Turn on Screen &amp; System Audio Recording</span>
               </h3>
               <p>
-                <span class="lang-zh">同一处打开「屏幕录制」。没有它，框选会失败。授权后如果仍然不行，退出再打开。</span>
-                <span class="lang-en">In the same place, allow Screen Recording. Without it, region capture fails. If it still fails, quit and open TranslateHUD again.</span>
+                <span class="lang-zh">同一处打开「录屏与系统录音」。没有它，框选会失败。授权后如果仍然不行，退出再打开。</span>
+                <span class="lang-en">In the same place, allow Screen &amp; System Audio Recording. Without it, region capture fails. If it still fails, quit and open TranslateHUD again.</span>
               </p>
             </div>
             <figure class="setup-stage">
-              <div class="shot-slot">
-                <p class="slot-kicker">
-                  <span class="lang-zh">截图位</span>
-                  <span class="lang-en">Screenshot slot</span>
-                </p>
-                <p class="slot-path">
-                  <span class="lang-zh">系统设置 → 隐私与安全性 → 屏幕录制</span>
-                  <span class="lang-en">System Settings → Privacy &amp; Security → Screen Recording</span>
-                </p>
-              </div>
+              <img
+                src="assets/settings-screen-recording.png"
+                width="1452"
+                height="987"
+                alt="系统设置的录屏与系统录音。TranslateHUD 的开关已打开，列表里其他应用是模糊的。"
+                data-alt-zh="系统设置的录屏与系统录音。TranslateHUD 的开关已打开，列表里其他应用是模糊的。"
+                data-alt-en="System Settings, Screen &amp; System Audio Recording. TranslateHUD’s switch is on. Other apps in the list are blurred.">
               <figcaption>
-                <span class="lang-zh">等真实的系统设置截图。应用内提示不是这一页，所以没有放在这里。</span>
-                <span class="lang-en">Waiting for a real System Settings screenshot. The in-app tip is a different screen, so it is not used here.</span>
+                <span class="lang-zh">系统设置 → 隐私与安全性 → 录屏与系统录音。开关是打开的，其他应用已模糊。</span>
+                <span class="lang-en">System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording. The switch is on, and other apps are blurred.</span>
               </figcaption>
             </figure>
           </li>

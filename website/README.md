@@ -34,11 +34,16 @@ python3 -m http.server 8080
 
 首页介绍片要等真实视频。计划内容是功能、界面，以及一点设计取舍。文件到位后再放到 `website/assets/`，并换掉 `index.html` 里的占位块。在那之前不要填一个猜测的视频地址。
 
-功能区里，选区、框选、朗读和名词解释是页面里拼出来的浮窗，不是系统截图。框选用的海报是 `ocr-demo-poster-alps-ski.jpg`。介绍片还没有。「系统设置」里辅助功能、屏幕录制的界面也还没有，下载准备里这两项只写路径，并留了截图位，没有做成系统窗口的样子。`permission-message.png` 是应用内提示，用在权限说明里，不充当系统设置截图。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
+功能区里，选区、框选、朗读和名词解释是页面里拼出来的浮窗，不是系统截图。框选用的海报是 `ocr-demo-poster-alps-ski.jpg`。介绍片还没有。必要权限和下载准备里的辅助功能、录屏与系统录音用的是真实系统设置截图：`settings-accessibility.png`、`settings-screen-recording.png`。图里只有 TranslateHUD 是清晰的，并且开关打开；其他应用做了模糊。`permission-message.png` 是应用内提示，只用在更新说明里。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
 
 - `translation-panel.png`
 - `permission-message.png`
 - `quota-message.png`
+
+系统设置这两张不在 `docs/screenshots/` 里，是单独放进 `website/assets/` 的：
+
+- `settings-accessibility.png`
+- `settings-screen-recording.png`
 
 图标来自 `TranslateHUD/Resources/Assets.xcassets` 的 `AppIcon-512.png`。换图时请同时替换这里的副本。
 
@@ -55,4 +60,4 @@ Open <http://127.0.0.1:8080>. Release notes: <http://127.0.0.1:8080/changelog/>.
 
 Point GitHub Pages or Vercel at the `website/` directory as the site root. Do not publish the repository `docs/` folder as the site. On Vercel, set Root Directory to `website`, Framework Preset to Other, and leave the build command empty.
 
-The download URL is the published v0.3.1 universal zip above. There is no notarized v0.3.2 asset, and the intro video has no file yet. System Settings screenshots for Accessibility and Screen Recording are also missing. Those setup steps are short paths plus labeled slots, not imitation system windows. `permission-message.png` is the in-app tip only.
+The download URL is the published v0.3.1 universal zip above. There is no notarized v0.3.2 asset, and the intro video has no file yet. Accessibility and Screen & System Audio Recording use real System Settings screenshots in Required permissions and in Download and prepare. Only TranslateHUD is sharp, with the switch on; other apps are blurred. `permission-message.png` is the in-app tip and appears only in the release notes.

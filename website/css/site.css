@@ -648,6 +648,7 @@ html[data-lang="en"] .lang-zh {
   height: 90%;
   aspect-ratio: 3 / 4;
   border-radius: 16px;
+  overflow: hidden;
 }
 
 .poster-frame img {
@@ -655,27 +656,46 @@ html[data-lang="en"] .lang-zh {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center 8%;
   border-radius: 16px;
   box-shadow: 0 18px 36px rgba(29, 42, 68, 0.16);
+  transform: scale(2.2);
+  transform-origin: 50% 16%;
 }
 
 .capture-marquee {
   position: absolute;
-  left: 8%;
-  right: 10%;
-  top: 46%;
-  height: 24%;
-  background: rgba(0, 122, 255, 0.22);
+  left: 7%;
+  right: auto;
+  top: auto;
+  bottom: 16%;
+  width: max-content;
+  max-width: 78%;
+  height: auto;
+  padding: 8px 14px 22px;
+  background: rgba(0, 122, 255, 0.2);
   box-shadow: inset 0 0 0 2px #007aff;
   border-radius: 2px;
 }
 
+.poster-line {
+  margin: 0;
+  color: #10283f;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85),
+    0 0 10px rgba(255, 255, 255, 0.75);
+}
+
 .capture-cursor {
   position: absolute;
-  right: -6px;
-  bottom: -8px;
-  width: 28px;
-  height: 28px;
+  right: 2px;
+  bottom: 2px;
+  width: 26px;
+  height: 26px;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
 }
 

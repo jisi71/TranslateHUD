@@ -36,12 +36,17 @@ test('help pages do not link to a website or an email address', () => {
   }
   const agreement = read(pages[0])
   const privacy = read(pages[1])
-  assert.match(agreement, /用户协议/)
-  assert.match(agreement, /问题反馈/)
+  const placeholders = ['【更新日期】', '【生效日期】', '【运营主体全称】', '【联系邮箱】', '【邮寄地址】']
+  for (const token of placeholders) {
+    assert.equal(agreement.includes(token), true, token)
+    assert.equal(privacy.includes(token), true, token)
+  }
+  assert.equal(agreement.includes('【运营主体住所地】'), true)
   assert.equal(agreement.includes('草案'), false)
   assert.match(privacy, /隐私政策/)
   assert.match(privacy, /腾讯云开发/)
-  assert.match(privacy, /feedback/)
+  assert.match(privacy, /意见反馈/)
+  assert.match(privacy, /设备与日志（如实际收集请保留；若暂未收集可删本条）/)
   assert.equal(privacy.includes('草案'), false)
   const help = read('TranslateHUD/Settings/HelpView.swift')
   assert.match(help, /问题反馈/)

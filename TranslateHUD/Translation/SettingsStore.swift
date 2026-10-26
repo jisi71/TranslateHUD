@@ -101,7 +101,8 @@ final class SettingsStore: ObservableObject {
     }
 
     func applyPreset(_ preset: ProviderPreset) {
-        if !preset.baseURL.isEmpty { baseURL = preset.baseURL }
-        if !preset.suggestedModel.isEmpty { model = preset.suggestedModel }
+        let next = preset.applying(toBaseURL: baseURL, model: model)
+        if next.baseURL != baseURL { baseURL = next.baseURL }
+        if next.model != model { model = next.model }
     }
 }

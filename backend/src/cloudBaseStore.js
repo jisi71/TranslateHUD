@@ -75,6 +75,8 @@ function collectionPromises(database) {
   return byName
 }
 
+// Keyed by collection name. trial_accounts, trial_invite, and trial_feedback
+// share one database handle, and a single cached promise would skip the rest.
 function ensureCollection(database, name = COLLECTION) {
   const byName = collectionPromises(database)
   let pending = byName.get(name)
@@ -237,7 +239,9 @@ function createCloudBaseStore(db) {
     releaseInflight: (uid, slotId) => run('releaseInflight', [uid, slotId]),
     charge: (uid, costMicroYuan) => run('charge', [uid, costMicroYuan]),
     settle: (uid, costMicroYuan) => run('settle', [uid, costMicroYuan]),
-    refund: (uid, microYuan) => run('refund', [uid, microYuan])
+    refund: (uid, microYuan) => run('refund', [uid, microYuan]),
+    takeFeedback: (uid, now, limit) => run('takeFeedback', [uid, now, limit]),
+    releaseFeedback: (uid, now) => run('releaseFeedback', [uid, now])
   }
 }
 

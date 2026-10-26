@@ -48,11 +48,19 @@ final class FeedbackAndLegalTests: XCTestCase {
         XCTAssertFalse(message.contains("@"))
         XCTAssertEqual(
             FeedbackClient.failureMessage(data: #"{"error":{"code":"feedback_auth","message":"\#(secret)"}}"#.data(using: .utf8)!),
-            "登录已失效。请重新登录后再提交，或退出登录后直接提交。"
+            "登录已失效。请重新登录后再提交反馈。"
+        )
+        XCTAssertEqual(
+            FeedbackClient.failureMessage(data: #"{"error":{"code":"feedback_login","message":"\#(secret)"}}"#.data(using: .utf8)!),
+            "请先登录后再提交反馈。"
+        )
+        XCTAssertEqual(
+            FeedbackClient.failureMessage(data: #"{"error":{"code":"feedback_daily_limit","message":"\#(secret)"}}"#.data(using: .utf8)!),
+            "今日反馈次数已达上限。"
         )
     }
 
-    func testSubmitPostsWithoutATokenWhenLoggedOut() async throws {
+    func testSubmitWithoutATokenDoesNotPost() async {
         FeedbackHTTPStub.requests = []
         FeedbackHTTPStub.bodies = []
         FeedbackHTTPStub.responder = { _ in
@@ -62,20 +70,18 @@ final class FeedbackAndLegalTests: XCTestCase {
         configuration.protocolClasses = [FeedbackHTTPStub.self]
         let session = URLSession(configuration: configuration)
         let draft = FeedbackDraft(title: "标题", body: "正文", appVersion: "0.4.0", deviceId: "device-1", images: [])
-        try await FeedbackClient.submit(
-            proxyBase: "https://example.test/v1",
-            accessToken: nil,
-            draft: draft,
-            session: session
-        )
-        let request = try XCTUnwrap(FeedbackHTTPStub.requests.first)
-        XCTAssertEqual(request.url?.path, "/v1/trial/feedback")
-        XCTAssertEqual(request.httpMethod, "POST")
-        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
-        let payload = try XCTUnwrap(FeedbackHTTPStub.bodies.first)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
-        XCTAssertEqual(json["title"] as? String, "标题")
-        XCTAssertNil(json["email"])
+        do {
+            try await FeedbackClient.submit(
+                proxyBase: "https://example.test/v1",
+                accessToken: nil,
+                draft: draft,
+                session: session
+            )
+            XCTFail("logged-out submit should stop before the network")
+        } catch let error as FeedbackClientError {
+            XCTAssertEqual(error.message, "请先登录后再提交反馈。")
+        }
+        XCTAssertTrue(FeedbackHTTPStub.requests.isEmpty)
     }
 
     func testLoggedInSubmitSendsTheBearerToken() async throws {

@@ -183,10 +183,69 @@ function assignDisplayNumbers(entries, counter, focusUid) {
   return { updates, counter: withNextDisplayNo(counter, next) }
 }
 
+const DEFAULT_FEEDBACK_DAILY_LIMIT = 10
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000
+
+function readFeedbackDay(record) {
+  const day = String(record && record.feedbackDay || '').trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : ''
+}
+
+function readFeedbackCount(record) {
+  const n = Math.floor(Number(record && record.feedbackCount))
+  if (!Number.isSafeInteger(n) || n <= 0) return 0
+  return Math.min(n, 100000)
+}
+
+// Calendar day in China (UTC+8, no daylight saving). 16:00 UTC is the next day.
+function feedbackDayKey(now) {
+  const ms = Number(now)
+  const instant = Number.isFinite(ms) ? ms : Date.now()
+  const shifted = new Date(instant + SHANGHAI_OFFSET_MS)
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(shifted.getUTCDate()).padStart(2, '0')
+  return `${shifted.getUTCFullYear()}-${month}-${day}`
+}
+
+function feedbackDailyLimit(env) {
+  const raw = env && env.FEEDBACK_DAILY_LIMIT
+  if (raw == null || String(raw).trim() === '') return DEFAULT_FEEDBACK_DAILY_LIMIT
+  const n = Math.floor(Number(raw))
+  if (!Number.isSafeInteger(n) || n < 1 || n > 1000) return DEFAULT_FEEDBACK_DAILY_LIMIT
+  return n
+}
+
+function reserveFeedbackSlot(record, now, limit) {
+  const current = record ? normalizeRecord(record) : null
+  if (!current) return { ok: false, status: 503, code: 'feedback_store' }
+  const cap = feedbackDailyLimit({ FEEDBACK_DAILY_LIMIT: limit })
+  const day = feedbackDayKey(now)
+  const count = current.feedbackDay === day ? current.feedbackCount : 0
+  if (count >= cap) return { ok: false, status: 429, code: 'feedback_daily_limit' }
+  const next = ledgerRecord(current.balanceMicroYuan, {
+    ...current,
+    feedbackDay: day,
+    feedbackCount: count + 1
+  })
+  return { ok: true, record: next, count: count + 1, day }
+}
+
+function releaseFeedbackSlot(record, now) {
+  const current = record ? normalizeRecord(record) : null
+  if (!current) return null
+  const day = feedbackDayKey(now)
+  if (current.feedbackDay !== day || current.feedbackCount <= 0) return current
+  return ledgerRecord(current.balanceMicroYuan, {
+    ...current,
+    feedbackDay: day,
+    feedbackCount: current.feedbackCount - 1
+  })
+}
+
 function ledgerRecord(microYuan, record) {
   const balanceMicroYuan = Math.max(0, Math.floor(Number(microYuan) || 0))
   const redeemedAt = record && record.inviteRedeemedAt ? Math.floor(Number(record.inviteRedeemedAt) || 0) : 0
-  return {
+  const saved = {
     balanceMicroYuan,
     balanceFen: displayFen(balanceMicroYuan),
     // Missing giftGranted means an older auto-gift. Those accounts already
@@ -197,6 +256,13 @@ function ledgerRecord(microYuan, record) {
     displayNo: readDisplayNo(record),
     inflight: sanitizeSlots(record && record.inflight)
   }
+  const feedbackDay = readFeedbackDay(record)
+  const feedbackCount = readFeedbackCount(record)
+  if (feedbackDay && feedbackCount > 0) {
+    saved.feedbackDay = feedbackDay
+    saved.feedbackCount = feedbackCount
+  }
+  return saved
 }
 
 // Post-success settlement. costMicroYuan is the precise ledger amount.
@@ -337,5 +403,10 @@ module.exports = {
   readDisplayNo,
   formatDisplayId,
   assignDisplayNumbers,
-  DISPLAY_BACKFILL_LIMIT
+  DISPLAY_BACKFILL_LIMIT,
+  DEFAULT_FEEDBACK_DAILY_LIMIT,
+  feedbackDayKey,
+  feedbackDailyLimit,
+  reserveFeedbackSlot,
+  releaseFeedbackSlot
 }

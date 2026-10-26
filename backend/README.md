@@ -191,11 +191,13 @@ GET https://你的服务域名/v1/trial/invite-status
 
 ## 问题反馈
 
-设置 → 帮助 → 问题反馈。用户填写标题、描述，可以附上最多 4 张图片。不填写邮箱，服务也不会发邮件。
+设置 → 帮助 → 问题反馈。用户填写标题、描述，可以附上最多 4 张图片。不填写邮箱，服务也不会发邮件。必须先登录。未登录时 App 不让提交，服务返回 `feedback_login`，文案是「请先登录后再提交反馈。」登录失效是 `feedback_auth`，文案是「登录已失效。请重新登录后再提交反馈。」
 
-已登录时，请求带上云开发 access token。服务校验通过后，在文档里写下云开发用户 ID（`accountId`，登录凭证里的 sub）。设置里「账号」显示的是短号 `displayId`，不是这串 ID。没登录也可以提交：`anonymous` 为 true，`accountId` 为空。两种情况都会记下应用版本；App 还会带上本机生成的 `deviceId`。请求里如果出现邮箱字段，服务直接丢掉，不写入文档。
+请求带上云开发 access token。服务校验通过后，在文档里写下云开发用户 ID（`accountId`，登录凭证里的 sub），`anonymous` 为 false。设置里「账号」显示的是短号 `displayId`，不是这串 ID。文档还会记下应用版本和本机生成的 `deviceId`。请求里如果出现邮箱字段，服务直接丢掉，不写入文档。
 
-接口是 `POST /v1/trial/feedback`，和体验额度用同一个服务地址。没有新增必填的环境变量。正式环境仍然是 `TRIAL_STORE=cloudbase`。本地 `TRIAL_STORE=file` 时，反馈写在账本旁边的 `feedback.json`，图片在同目录的 `feedback-files/`。可选 `FEEDBACK_DATA_FILE` 单独指定这个 json 的路径。
+每个账号每个北京时间自然日（UTC+8）默认最多提交 10 次。环境变量 `FEEDBACK_DAILY_LIMIT` 可以改这个数（1 到 1000，空或无效则用 10）。次数记在账本文档上：`feedbackDay`（`YYYY-MM-DD`）和 `feedbackCount`。余额结算不会把这两个字段清掉。当天次数用尽返回 `feedback_daily_limit`，文案是「今日反馈次数已达上限。」反馈正文写失败时，这次占用的次数会退回。
+
+接口是 `POST /v1/trial/feedback`，和体验额度用同一个服务地址。正式环境仍然是 `TRIAL_STORE=cloudbase`。本地 `TRIAL_STORE=file` 时，反馈写在账本旁边的 `feedback.json`，图片在同目录的 `feedback-files/`，次数写在账本 json 里。可选 `FEEDBACK_DATA_FILE` 单独指定反馈 json 的路径。
 
 云数据库（文档型）集合名是 `trial_feedback`。和 `trial_accounts` 一样，第一次提交时服务会自己 `createCollection`。集合已经存在就跳过。不需要另外建索引。也可以提前执行：
 

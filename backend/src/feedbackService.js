@@ -1,6 +1,6 @@
 'use strict'
 
-const { graphemeLength } = require('./trialPolicy')
+const { feedbackDailyLimit, graphemeLength } = require('./trialPolicy')
 
 const MAX_TITLE = 80
 const MAX_BODY = 2000
@@ -24,7 +24,9 @@ const FEEDBACK_MESSAGES = {
   imageLarge: '有图片太大了，请换一张小一点的。',
   tooLarge: '这次提交太大了，请少传几张图片。',
   store: '提交没有成功，请稍后再试。',
-  auth: '登录已失效。请重新登录后再提交，或退出登录后直接提交。',
+  login: '请先登录后再提交反馈。',
+  auth: '登录已失效。请重新登录后再提交反馈。',
+  dailyLimit: '今日反馈次数已达上限。',
   badJson: '提交内容无法读取，请稍后再试。'
 }
 
@@ -99,11 +101,11 @@ function decodeImage(entry) {
 
 async function resolveIdentity(ctx) {
   const token = bearerToken(ctx.headers || {})
-  if (!token) return { anonymous: true, accountId: '' }
+  if (!token) return { error: errorResult(401, 'feedback_login', FEEDBACK_MESSAGES.login) }
   try {
     const user = await ctx.verifyUser({ gateway: ctx.env.gateway, token })
     if (!user || !user.uid) return { error: errorResult(401, 'feedback_auth', FEEDBACK_MESSAGES.auth) }
-    return { anonymous: false, accountId: String(user.uid) }
+    return { accountId: String(user.uid) }
   } catch {
     return { error: errorResult(401, 'feedback_auth', FEEDBACK_MESSAGES.auth) }
   }
@@ -134,6 +136,9 @@ async function acceptFeedback(ctx) {
 
   const identity = await resolveIdentity(ctx)
   if (identity.error) return identity.error
+  if (!ctx.store || typeof ctx.store.takeFeedback !== 'function' || typeof ctx.store.releaseFeedback !== 'function') {
+    return errorResult(503, 'feedback_store', FEEDBACK_MESSAGES.store)
+  }
 
   const title = cleanText(payload.title, false)
   const body = cleanText(payload.body, true)
@@ -154,6 +159,13 @@ async function acceptFeedback(ctx) {
   }
 
   const now = typeof ctx.now === 'function' ? ctx.now() : Date.now()
+  const reserved = await ctx.store.takeFeedback(identity.accountId, now, feedbackDailyLimit(ctx.env || {}))
+  if (!reserved || !reserved.ok) {
+    if (reserved && reserved.code === 'feedback_daily_limit') {
+      return errorResult(429, 'feedback_daily_limit', FEEDBACK_MESSAGES.dailyLimit)
+    }
+    return errorResult(503, 'feedback_store', FEEDBACK_MESSAGES.store)
+  }
   const createdAt = new Date(now).toISOString()
   // Email, phone, and any other contact field on the request are ignored.
   const record = {
@@ -162,11 +174,18 @@ async function acceptFeedback(ctx) {
     createdAt,
     appVersion: clip(payload.appVersion, MAX_APP_VERSION, false),
     accountId: identity.accountId,
-    anonymous: identity.anonymous,
+    anonymous: false,
     deviceId: clip(payload.deviceId, MAX_DEVICE_ID, true)
   }
-  const saved = await ctx.feedbackStore.save(record, images)
+  let saved
+  try {
+    saved = await ctx.feedbackStore.save(record, images)
+  } catch (error) {
+    await ctx.store.releaseFeedback(identity.accountId, now).catch(() => {})
+    throw error
+  }
   if (!saved || !saved.id) {
+    await ctx.store.releaseFeedback(identity.accountId, now).catch(() => {})
     const error = new Error('feedback save missing id')
     error.code = 'feedback_store'
     throw error

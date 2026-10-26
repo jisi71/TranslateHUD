@@ -45,10 +45,15 @@ struct FeedbackView: View {
                     .foregroundStyle(.secondary)
             }
             Section {
+                if !trial.isLoggedIn {
+                    Text(FeedbackCopy.needLogin)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Button(submitting ? "正在提交…" : "提交") {
                     Task { await submit() }
                 }
-                .disabled(submitting)
+                .disabled(submitting || !trial.isLoggedIn)
                 if !statusText.isEmpty {
                     Text(statusText)
                         .font(.caption)
@@ -128,6 +133,10 @@ struct FeedbackView: View {
 
     @MainActor
     private func submit() async {
+        guard trial.isLoggedIn else {
+            show(FeedbackCopy.needLogin, success: false)
+            return
+        }
         let draft = FeedbackDraft(
             title: title,
             body: bodyText,
@@ -157,18 +166,14 @@ struct FeedbackView: View {
 
         submitting = true
         defer { submitting = false }
-        let token: String?
-        if trial.isLoggedIn {
-            do {
-                token = try await trial.validAccessToken()
-            } catch is CancellationError {
-                return
-            } catch {
-                show((error as? LocalizedError)?.errorDescription ?? FeedbackCopy.auth, success: false)
-                return
-            }
-        } else {
-            token = nil
+        let token: String
+        do {
+            token = try await trial.validAccessToken()
+        } catch is CancellationError {
+            return
+        } catch {
+            show((error as? LocalizedError)?.errorDescription ?? FeedbackCopy.auth, success: false)
+            return
         }
         do {
             try await FeedbackClient.submit(

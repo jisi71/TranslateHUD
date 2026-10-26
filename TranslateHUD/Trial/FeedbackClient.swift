@@ -22,7 +22,9 @@ enum FeedbackCopy {
     static let imageBad = "图片格式无法使用，请换一张。"
     static let imageLarge = "有图片太大了，请换一张小一点的。"
     static let tooLarge = "这次提交太大了，请少传几张图片。"
-    static let auth = "登录已失效。请重新登录后再提交，或退出登录后直接提交。"
+    static let needLogin = "请先登录后再提交反馈。"
+    static let auth = "登录已失效。请重新登录后再提交反馈。"
+    static let dailyLimit = "今日反馈次数已达上限。"
     static let badJson = "提交内容无法读取，请稍后再试。"
     static let network = "网络不通，请稍后再试。"
     static let needProxy = "体验服务地址还没有，暂时交不了反馈。"
@@ -40,7 +42,9 @@ enum FeedbackCopy {
         case "feedback_image_large": return imageLarge
         case "feedback_too_large": return tooLarge
         case "feedback_store": return failed
+        case "feedback_login": return needLogin
         case "feedback_auth": return auth
+        case "feedback_daily_limit": return dailyLimit
         case "feedback_bad_json": return badJson
         default: return nil
         }
@@ -138,6 +142,9 @@ enum FeedbackClient {
         case .images:
             throw FeedbackClientError(message: FeedbackCopy.tooManyImages)
         }
+        guard let accessToken, !accessToken.isEmpty else {
+            throw FeedbackClientError(message: FeedbackCopy.needLogin)
+        }
         guard let url = endpoint(proxyBase: proxyBase) else {
             throw FeedbackClientError(message: FeedbackCopy.needProxy)
         }
@@ -145,9 +152,7 @@ enum FeedbackClient {
         request.httpMethod = "POST"
         request.timeoutInterval = 60
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let accessToken, !accessToken.isEmpty {
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        }
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = try bodyData(for: draft)
         let data: Data
         let response: URLResponse

@@ -70,6 +70,7 @@ async function dispatchUnsafe(event, deps) {
       }
       const result = await handleFeedback({
         ...shared,
+        store: deps.store || createAccountStoreFromEnv(),
         feedbackStore: deps.feedbackStore || createFeedbackStoreFromEnv()
       })
       return {

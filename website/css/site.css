@@ -713,6 +713,35 @@ html[data-lang="en"] .lang-zh {
   box-shadow: inset 0 0 0 1.5px rgba(96, 149, 211, 0.72);
 }
 
+.stage-select .page-sheet {
+  width: 90%;
+  height: 88%;
+  left: 5%;
+  top: 6%;
+}
+
+.stage-select .page-sheet mark {
+  background: #b4d7ff;
+  border-radius: 2px;
+  padding: 0 1px;
+  box-shadow: none;
+}
+
+.stage-select .sel-line {
+  max-width: 52%;
+}
+
+.stage-select .hud-panel {
+  width: min(336px, 58%);
+  right: 4%;
+  bottom: 5%;
+}
+
+html[data-lang="zh"] .pair-src-zh,
+html[data-lang="en"] .pair-src-en {
+  display: none !important;
+}
+
 .hud-panel {
   position: absolute;
   z-index: 2;
@@ -1271,6 +1300,29 @@ html[data-lang="en"] .lang-zh {
 
   .hud-source {
     font-size: 12px;
+  }
+
+  .stage-select.feature-stage {
+    height: auto;
+    min-height: 0;
+    padding: 14px 12px 16px;
+  }
+
+  .stage-select .page-sheet,
+  .stage-select .hud-panel {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    height: auto;
+  }
+
+  .stage-select .sel-line {
+    max-width: none;
+  }
+
+  .stage-select .hud-panel {
+    width: min(100%, 320px);
+    margin: -20px 0 0 auto;
   }
 }
 

@@ -262,43 +262,49 @@ main,
 .invite-panel {
   display: none;
   box-sizing: border-box;
-  max-width: min(100%, 34rem);
-  padding: 14px 18px;
-  border-radius: 18px;
-  background: #fff;
-  text-align: left;
-  box-shadow: 0 16px 40px rgba(29, 29, 29, 0.08);
+  max-width: min(100%, 36rem);
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
 .download-slot.is-invited .invite-panel {
-  display: block;
+  display: flex;
 }
 
-.invite-line,
-.invite-remaining {
+.site-header .invite-panel {
+  margin-block: 12px;
+}
+
+.invite-code,
+.invite-note {
   margin: 0;
 }
 
-.invite-line {
+.invite-code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 8px 22px;
+  border-radius: 14px;
+  border: 1px solid rgba(29, 29, 29, 0.34);
+  background: #fff;
   color: #1d1d1d;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.45;
-}
-
-.invite-remaining {
-  margin-top: 4px;
-  color: var(--muted-warm);
-  font-size: 14px;
-  line-height: 1.45;
-}
-
-.cta-row .invite-panel {
-  padding: 16px 22px;
-}
-
-.cta-row .invite-line {
   font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  box-shadow: 0 10px 24px rgba(29, 29, 29, 0.06);
+}
+
+.invite-note {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .hero {

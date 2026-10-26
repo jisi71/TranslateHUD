@@ -40,7 +40,7 @@
   }
 
   function countText() {
-    if (statusState.phase === "loading") return language() === "en" ? "Loading…" : "加载中…";
+    if (statusState.phase === "loading") return "…";
     if (statusState.phase === "ready") return String(statusState.remaining);
     return "—";
   }
@@ -55,14 +55,14 @@
   function panelMarkup() {
     return (
       '<div class="invite-panel">' +
-      '<p class="invite-line">' +
-      '<span class="lang-zh">输入邀请码：translatehud-200 新用户得2元使用额度</span>' +
-      '<span class="lang-en">Invite code: translatehud-200 — new users get ¥2 credit</span>' +
+      '<p class="invite-code">' +
+      '<span class="lang-zh">邀请码：translatehud-200</span>' +
+      '<span class="lang-en">Invite code: translatehud-200</span>' +
       "</p>" +
-      '<p class="invite-remaining">' +
-      '<span class="lang-zh">剩余可兑换次数：</span>' +
-      '<span class="lang-en">Remaining redemptions: </span>' +
-      '<span data-invite-remaining>—</span>' +
+      '<p class="invite-note">' +
+      '<span class="lang-zh">新用户输入的2元使用额度 剩余可兑换次数：</span>' +
+      '<span class="lang-en">New users enter the code for ¥2 credit. Remaining redemptions: </span>' +
+      '<span data-invite-remaining>…</span>' +
       "</p>" +
       "</div>"
     );

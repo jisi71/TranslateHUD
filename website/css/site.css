@@ -608,16 +608,6 @@ html[data-lang="en"] .lang-zh {
   background: #d5e6f6;
 }
 
-.stage-lake {
-  background:
-    radial-gradient(460px 280px at 80% 80%, rgba(154, 196, 236, 0.85), transparent 70%),
-    linear-gradient(180deg, #d4e8f8 0%, #e4f1fb 100%);
-}
-
-.stage-lake::after {
-  background: #b7d7f6;
-}
-
 .stage-dawn {
   background:
     radial-gradient(420px 260px at 18% 80%, rgba(255, 214, 196, 0.7), transparent 72%),
@@ -650,13 +640,207 @@ html[data-lang="en"] .lang-zh {
   filter: drop-shadow(0 28px 32px rgba(24, 42, 72, 0.28)) drop-shadow(0 8px 12px rgba(24, 42, 72, 0.16));
 }
 
-.feature-stage .hud-float {
-  width: 74%;
-  left: auto;
-  right: 7%;
-  top: auto;
-  bottom: 10%;
-  transform: none;
+.stage-poster .poster-frame {
+  position: absolute;
+  z-index: 1;
+  left: 4%;
+  top: 5%;
+  height: 90%;
+  aspect-ratio: 3 / 4;
+  border-radius: 16px;
+}
+
+.poster-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 16px;
+  box-shadow: 0 18px 36px rgba(29, 42, 68, 0.16);
+}
+
+.capture-marquee {
+  position: absolute;
+  left: 8%;
+  right: 10%;
+  top: 46%;
+  height: 24%;
+  background: rgba(0, 122, 255, 0.22);
+  box-shadow: inset 0 0 0 2px #007aff;
+  border-radius: 2px;
+}
+
+.capture-cursor {
+  position: absolute;
+  right: -6px;
+  bottom: -8px;
+  width: 28px;
+  height: 28px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+.stage-poster .hud-panel {
+  top: 7%;
+  bottom: auto;
+  width: min(292px, 46%);
+}
+
+.stage-speech,
+.stage-terms {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stage-terms {
+  height: auto;
+  min-height: 560px;
+  padding: 28px 22px;
+}
+
+.stage-speech .hud-panel,
+.stage-terms .hud-panel {
+  position: relative;
+  inset: auto;
+  width: min(440px, 88%);
+}
+
+.speech-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: rgba(246, 243, 236, 0.62);
+}
+
+.speech-btn .hud-glyph {
+  width: 16px;
+  height: 16px;
+}
+
+.speech-live {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 2px;
+  padding: 8px 10px 8px 8px;
+  border-radius: 12px;
+  background: rgba(10, 132, 255, 0.1);
+}
+
+.speech-btn-live {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  color: #0a84ff;
+  background: rgba(10, 132, 255, 0.16);
+  box-shadow: 0 0 0 1px rgba(10, 132, 255, 0.5);
+}
+
+.speech-btn-live .hud-glyph {
+  width: 24px;
+  height: 24px;
+  color: #0a84ff;
+}
+
+.waveform {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+  height: 36px;
+  flex: 1;
+  min-width: 0;
+}
+
+.waveform span {
+  display: block;
+  flex: 1 1 3px;
+  width: auto;
+  max-width: 4px;
+  border-radius: 99px;
+  background: #0a84ff;
+  transform-origin: center;
+  animation: speech-wave 1.15s ease-in-out infinite;
+}
+
+.waveform span:nth-child(odd) {
+  background: #7eb6ff;
+}
+
+.waveform span:nth-child(1) { height: 8px; animation-delay: 0s; }
+.waveform span:nth-child(2) { height: 14px; animation-delay: 0.08s; }
+.waveform span:nth-child(3) { height: 22px; animation-delay: 0.16s; }
+.waveform span:nth-child(4) { height: 16px; animation-delay: 0.05s; }
+.waveform span:nth-child(5) { height: 30px; animation-delay: 0.2s; }
+.waveform span:nth-child(6) { height: 12px; animation-delay: 0.12s; }
+.waveform span:nth-child(7) { height: 24px; animation-delay: 0.24s; }
+.waveform span:nth-child(8) { height: 34px; animation-delay: 0.04s; }
+.waveform span:nth-child(9) { height: 18px; animation-delay: 0.18s; }
+.waveform span:nth-child(10) { height: 28px; animation-delay: 0.1s; }
+.waveform span:nth-child(11) { height: 11px; animation-delay: 0.22s; }
+.waveform span:nth-child(12) { height: 22px; animation-delay: 0.14s; }
+.waveform span:nth-child(13) { height: 15px; animation-delay: 0.06s; }
+.waveform span:nth-child(14) { height: 9px; animation-delay: 0.16s; }
+.waveform span:nth-child(15) { height: 20px; animation-delay: 0.09s; }
+.waveform span:nth-child(16) { height: 32px; animation-delay: 0.19s; }
+.waveform span:nth-child(17) { height: 13px; animation-delay: 0.03s; }
+.waveform span:nth-child(18) { height: 26px; animation-delay: 0.15s; }
+.waveform span:nth-child(19) { height: 18px; animation-delay: 0.23s; }
+.waveform span:nth-child(20) { height: 36px; animation-delay: 0.07s; }
+.waveform span:nth-child(21) { height: 14px; animation-delay: 0.17s; }
+.waveform span:nth-child(22) { height: 24px; animation-delay: 0.11s; }
+.waveform span:nth-child(23) { height: 10px; animation-delay: 0.21s; }
+.waveform span:nth-child(24) { height: 16px; animation-delay: 0.02s; }
+
+@keyframes speech-wave {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+
+.hud-glyph.is-on {
+  color: #fff;
+}
+
+.hud-terms {
+  padding: 10px 12px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.hud-terms-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(246, 243, 236, 0.92);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.hud-terms-head .hud-glyph,
+.hud-terms-head .hud-chev {
+  color: rgba(246, 243, 236, 0.84);
+}
+
+.term-name,
+.term-note {
+  margin: 0;
+}
+
+.term-name {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.term-note {
+  margin-top: 2px;
+  color: rgba(246, 243, 236, 0.62);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .page-sheet {
@@ -1204,6 +1388,11 @@ html[data-lang="en"] .pair-src-en {
     height: 380px;
   }
 
+  .stage-terms.feature-stage {
+    height: auto;
+    min-height: 0;
+  }
+
   .hero {
     padding-top: 40px;
   }
@@ -1266,10 +1455,31 @@ html[data-lang="en"] .pair-src-en {
     border-radius: 24px;
   }
 
-  .feature-stage .hud-float {
-    width: 82%;
-    right: 8%;
-    bottom: 8%;
+  .stage-poster .poster-frame {
+    position: relative;
+    left: auto;
+    top: auto;
+    height: auto;
+    width: min(240px, 70%);
+    margin: 0 auto;
+  }
+
+  .stage-poster .hud-panel,
+  .stage-speech .hud-panel,
+  .stage-terms .hud-panel {
+    position: relative;
+    inset: auto;
+    width: min(100%, 420px);
+    margin: 14px auto 0;
+  }
+
+  .stage-poster.feature-stage,
+  .stage-speech,
+  .stage-terms {
+    display: block;
+    height: auto;
+    min-height: 0;
+    padding: 16px 12px 18px;
   }
 
   .page-sheet {
@@ -1332,7 +1542,9 @@ html[data-lang="en"] .pair-src-en {
   }
 
   .button,
-  .btn-glow::before {
+  .btn-glow::before,
+  .waveform span {
     transition: none;
+    animation: none;
   }
 }

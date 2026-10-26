@@ -34,7 +34,7 @@ python3 -m http.server 8080
 
 首页介绍片要等真实视频。计划内容是功能、界面，以及一点设计取舍。文件到位后再放到 `website/assets/`，并换掉 `index.html` 里的占位块。在那之前不要填一个猜测的视频地址。
 
-功能区用的是 `translation-panel.png` 放在渐变底上。仓库里还没有：介绍片、框选那一步的系统截图、展开后的名词解释，以及「系统设置」里辅助功能、屏幕录制的界面。下载准备里这两项只写路径，并留了截图位，没有做成系统窗口的样子。`permission-message.png` 是应用内提示，用在权限说明里，不充当系统设置截图。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
+功能区里，选区、框选、朗读和名词解释是页面里拼出来的浮窗，不是系统截图。框选用的海报是 `ocr-demo-poster-alps-ski.jpg`。介绍片还没有。「系统设置」里辅助功能、屏幕录制的界面也还没有，下载准备里这两项只写路径，并留了截图位，没有做成系统窗口的样子。`permission-message.png` 是应用内提示，用在权限说明里，不充当系统设置截图。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
 
 - `translation-panel.png`
 - `permission-message.png`

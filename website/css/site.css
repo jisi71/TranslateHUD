@@ -261,45 +261,79 @@ main,
 
 .invite-panel {
   display: none;
+  position: relative;
   box-sizing: border-box;
-  max-width: min(100%, 36rem);
+  width: max-content;
+  max-width: 100%;
   flex-direction: column;
   align-items: center;
-  text-align: center;
 }
 
 .download-slot.is-invited .invite-panel {
   display: flex;
 }
 
-.site-header .invite-panel {
-  margin-block: 12px;
+.hero .cta-row:has(.download-slot.is-invited) {
+  margin-bottom: 40px;
 }
 
-.invite-code,
-.invite-note {
-  margin: 0;
+@media (max-width: 720px) {
+  .hero .cta-row:has(.download-slot.is-invited) {
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+
+  .hero .download-slot.is-invited {
+    margin-bottom: 64px;
+  }
 }
 
-.invite-code {
+.invite-code.button {
+  gap: 8px;
+  border: 0;
+  cursor: default;
+  padding-right: 16px;
+}
+
+.invite-copy {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 48px;
-  padding: 8px 22px;
-  border-radius: 14px;
-  border: 1px solid rgba(29, 29, 29, 0.34);
-  background: #fff;
-  color: #1d1d1d;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.3;
-  white-space: nowrap;
-  box-shadow: 0 10px 24px rgba(29, 29, 29, 0.06);
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.invite-copy:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.invite-copy .icon-check {
+  display: none;
+}
+
+.invite-copy.is-copied .icon-copy {
+  display: none;
+}
+
+.invite-copy.is-copied .icon-check {
+  display: block;
 }
 
 .invite-note {
-  margin-top: 12px;
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 48px);
+  margin: 0;
   color: var(--muted);
   font-size: 15px;
   font-weight: 400;

@@ -40,7 +40,7 @@
   }
 
   function countText() {
-    if (statusState.phase === "loading") return "…";
+    if (statusState.phase === "loading") return language() === "en" ? "Loading…" : "加载中…";
     if (statusState.phase === "ready") return String(statusState.remaining);
     return "—";
   }
@@ -52,24 +52,44 @@
     });
   }
 
+  function copyButtonMarkup() {
+    var label = language() === "en" ? "Copy invite code" : "复制邀请码";
+    return (
+      '<button type="button" class="invite-copy" data-copy-invite="translatehud-200" aria-label="' + label + '" data-aria-zh="复制邀请码" data-aria-en="Copy invite code">' +
+      '<svg class="icon-copy" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' +
+      '<rect x="5.2" y="5.2" width="8.2" height="8.2" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"></rect>' +
+      '<path d="M10.6 5.2V3.4A1.4 1.4 0 0 0 9.2 2H3.4A1.4 1.4 0 0 0 2 3.4v5.8A1.4 1.4 0 0 0 3.4 10.6H5.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>' +
+      "</svg>" +
+      '<svg class="icon-check" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' +
+      '<path d="M3.2 8.3 6.3 11.4 12.8 4.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>' +
+      "</svg>" +
+      "</button>"
+    );
+  }
+
   function panelMarkup() {
     return (
       '<div class="invite-panel">' +
-      '<p class="invite-code">' +
+      '<div class="invite-code button secondary large">' +
       '<span class="lang-zh">邀请码：translatehud-200</span>' +
       '<span class="lang-en">Invite code: translatehud-200</span>' +
-      "</p>" +
+      copyButtonMarkup() +
+      "</div>" +
       '<p class="invite-note">' +
       '<span class="lang-zh">新用户输入的2元使用额度 剩余可兑换次数：</span>' +
       '<span class="lang-en">New users enter the code for ¥2 credit. Remaining redemptions: </span>' +
-      '<span data-invite-remaining>…</span>' +
+      '<span data-invite-remaining>' + countText() + "</span>" +
       "</p>" +
       "</div>"
     );
   }
 
+  function inviteHosts() {
+    return document.querySelectorAll("[data-invite-host]");
+  }
+
   function ensurePanels() {
-    document.querySelectorAll("[data-download-slot]").forEach(function (slot) {
+    inviteHosts().forEach(function (slot) {
       if (slot.querySelector(".invite-panel")) return;
       slot.insertAdjacentHTML("beforeend", panelMarkup());
     });
@@ -118,11 +138,48 @@
     remember();
     loadStatus();
     window.setTimeout(function () {
-      document.querySelectorAll("[data-download-slot]").forEach(function (slot) {
+      inviteHosts().forEach(function (slot) {
         slot.classList.add("is-invited");
       });
       renderCount();
     }, 0);
+  }
+
+  function markCopied(button) {
+    if (button._copyTimer) window.clearTimeout(button._copyTimer);
+    button.classList.add("is-copied");
+    var copied = language() === "en" ? "Copied" : "已复制";
+    button.setAttribute("aria-label", copied);
+    button._copyTimer = window.setTimeout(function () {
+      button.classList.remove("is-copied");
+      var label = button.getAttribute(language() === "en" ? "data-aria-en" : "data-aria-zh");
+      if (label) button.setAttribute("aria-label", label);
+    }, 1200);
+  }
+
+  function copyCode(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.top = "0";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      try {
+        var ok = document.execCommand("copy");
+        document.body.removeChild(area);
+        if (ok) resolve();
+        else reject(new Error("copy"));
+      } catch (error) {
+        document.body.removeChild(area);
+        reject(error);
+      }
+    });
   }
 
   document.querySelectorAll("[data-download]").forEach(function (link) {
@@ -130,6 +187,16 @@
   });
 
   document.addEventListener("click", function (event) {
+    var copy = event.target.closest("[data-copy-invite]");
+    if (copy) {
+      event.preventDefault();
+      copyCode(copy.getAttribute("data-copy-invite")).then(function () {
+        markCopied(copy);
+      }, function () {
+        /* keep the icon; no alert */
+      });
+      return;
+    }
     var link = event.target.closest("[data-download]");
     if (!link) return;
     link.setAttribute("href", DOWNLOAD_URL);

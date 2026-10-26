@@ -53,19 +53,24 @@ enum ModeRouter {
                 message: "请在「系统设置 → 隐私与安全性 → 辅助功能」中允许 TranslateHUD。",
                 duration: 5
             )
+            FailureReporter.reportSelection(result)
             _ = PermissionManager.shared.requestAccessibility()
         case .applicationChanged:
             AppLog.info("路由：抓取期间前台 App 改变，不进入截图")
             ToastCenter.shared.show(title: "选区已失效", message: "抓取期间前台应用发生变化，请重新选择后再试。")
+            FailureReporter.reportSelection(result)
         case .timedOut:
             AppLog.info("路由：选区抓取超时，不进入截图")
             ToastCenter.shared.show(title: "读取选区超时", message: "请保持文字选中后重试；截图可使用单独的截图快捷键。")
+            FailureReporter.reportSelection(result)
         case .noReadableText(let message):
             AppLog.info("路由：剪贴板是图片或没有可读文字，分键不进入截图")
             ToastCenter.shared.show(title: "无法读取选区", message: message)
+            FailureReporter.reportSelection(result)
         case .failed(let message):
             AppLog.info("路由：选区抓取失败，不进入截图：\(message)")
             ToastCenter.shared.show(title: "无法读取选区", message: message)
+            FailureReporter.reportSelection(result)
         case .cancelled:
             AppLog.debug("路由：旧的选区抓取任务已取消")
         }

@@ -18,6 +18,7 @@ enum SelectionFlow {
             explainer: { TranslationSession.explainer(for: selection.text) }
         )
         let progress = TranslationProgress()
+        progress.failureSurface = .selectionTranslate
         let popover = FloatingTranslationPopover(
             original: selection.text,
             context: selection.context,

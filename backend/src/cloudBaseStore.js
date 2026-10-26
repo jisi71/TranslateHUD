@@ -5,6 +5,7 @@ const { MESSAGES, normalizeRecord } = require('./trialPolicy')
 
 const COLLECTION = 'trial_accounts'
 const INVITE_COLLECTION = 'trial_invite'
+const ERROR_COLLECTION = 'trial_error_events'
 const INVITE_DOC = 'config'
 const readyByDatabase = new WeakMap()
 
@@ -248,6 +249,7 @@ function createCloudBaseStore(db) {
 module.exports = {
   COLLECTION,
   INVITE_COLLECTION,
+  ERROR_COLLECTION,
   INVITE_DOC,
   normalizeSnap,
   normalizeInvite,

@@ -103,10 +103,12 @@ final class TermExplanationProgress: ObservableObject {
             } catch let error as TranslationTimeoutError {
                 guard let self, self.requestID == currentID else { return }
                 self.state = .failed(ServiceErrorMessage.timeout(error, operation: "名词解释"))
+                FailureReporter.report(error, surface: .termExplanation)
                 self.task = nil
             } catch {
                 guard let self, self.requestID == currentID else { return }
                 self.state = .failed(ServiceErrorMessage.describe(error))
+                FailureReporter.report(error, surface: .termExplanation)
                 self.task = nil
             }
         }

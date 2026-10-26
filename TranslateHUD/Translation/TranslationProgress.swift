@@ -26,6 +26,7 @@ final class TranslationProgress: ObservableObject {
     @Published private(set) var timeoutMessage = ""
 
     let timeoutSeconds: TimeInterval
+    var failureSurface: FailureEvent.Surface = .selectionTranslate
 
     private var task: Task<Void, Never>?
     private var elapsedTimer: Timer?
@@ -76,6 +77,7 @@ final class TranslationProgress: ObservableObject {
                 self.timeoutMessage = ServiceErrorMessage.timeout(error, operation: "翻译")
                 AppLog.info(self.timeoutMessage)
                 self.state = .timedOut
+                FailureReporter.report(error, surface: self.failureSurface)
             } catch is CancellationError {
                 AppLog.debug("翻译被取消")
             } catch {
@@ -83,6 +85,7 @@ final class TranslationProgress: ObservableObject {
                 let message = ServiceErrorMessage.describe(error)
                 AppLog.error("翻译失败：\(message)")
                 self.state = .failed(message)
+                FailureReporter.report(error, surface: self.failureSurface)
             }
             guard self.requestID == currentID else { return }
             self.stopElapsedTimer()
@@ -162,6 +165,7 @@ final class TranslationProgress: ObservableObject {
                     self.timeoutMessage = ServiceErrorMessage.timeout(error, operation: "翻译")
                     AppLog.info(self.timeoutMessage)
                     self.state = .timedOut
+                    FailureReporter.report(error, surface: self.failureSurface)
                     self.stopElapsedTimer()
                     self.task = nil
                 }
@@ -173,6 +177,7 @@ final class TranslationProgress: ObservableObject {
                     let message = ServiceErrorMessage.describe(error)
                     AppLog.error("流式翻译失败：\(message)")
                     self.state = .failed(message)
+                    FailureReporter.report(error, surface: self.failureSurface)
                     self.stopElapsedTimer()
                     self.task = nil
                 }
@@ -191,6 +196,7 @@ final class TranslationProgress: ObservableObject {
         switch TranslationSession.prepare(sourceText: source) {
         case .blocked(_, let message):
             state = .failed(message)
+            FailureReporter.report(TranslationError.service(message), surface: failureSurface)
             stopElapsedTimer()
             return
         case .ready(let ready):

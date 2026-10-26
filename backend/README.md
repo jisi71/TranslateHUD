@@ -102,7 +102,7 @@ PORT=8080
 
 服务起来之后，把外网地址加上 `/v1`，写进 `project.yml` 的 `TRIAL_PROXY_BASE_URL`，再重新生成工程。例如 `https://你的服务域名/v1`。
 
-云托管需要能访问这个环境的云数据库（文档型）。镜像里会安装 `@cloudbase/node-sdk`。第一次读余额或邀请码次数时，服务会调用 `createCollection('trial_accounts')` 和 `createCollection('trial_invite')`。集合已经存在就跳过。账本文档 ID 仍是腾讯云用户 ID，登录和扣费都用它。App 设置里显示的是短号 `displayId`（第 1 个用户 `00001`），存在账本文档的 `displayNo` 上。发号计数在 `trial_invite` 文档 `config` 的 `nextDisplayNo`。邀请码计数也在这份 `config` 里。不需要先在控制台建集合，也不要改成 PostgreSQL。
+云托管需要能访问这个环境的云数据库（文档型）。镜像里会安装 `@cloudbase/node-sdk`。第一次读余额或邀请码次数时，服务会调用 `createCollection('trial_accounts')` 和 `createCollection('trial_invite')`。集合已经存在就跳过。问题反馈用集合 `trial_feedback`，第一次提交时自己建。失败记录用另一个集合 `trial_error_events`，不放在这次余额读取里：翻译不能因为失败记录建集合失败而中断。`npm run ensure-collection` 会把 `trial_accounts`、`trial_invite`、`trial_feedback` 和 `trial_error_events` 一起建好。服务第一次写入失败记录时，如果集合还没有，也会自己建 `trial_error_events`。账本文档 ID 仍是腾讯云用户 ID，登录和扣费都用它。App 设置里显示的是短号 `displayId`（第 1 个用户 `00001`），存在账本文档的 `displayNo` 上。发号计数在 `trial_invite` 文档 `config` 的 `nextDisplayNo`。邀请码计数也在这份 `config` 里。不需要先在控制台建集合，也不要改成 PostgreSQL。
 
 数据库报错会变成 `trial_store`，不会把数据库原文交给 App。App 显示：`体验余额暂时读不出来。请在设置里点余额旁的刷新。`
 
@@ -146,10 +146,67 @@ npx --yes @cloudbase/cli functions:deploy trial --config cloudbaserc.json
 - `POST /v1/trial/account`：查询余额。不送钱
 - `POST /v1/trial/redeem`：登录后提交邀请码，领 ¥2.00。请求头带云开发 access token
 - `GET /v1/trial/invite-status`：不用登录。给官网看邀请码和剩余次数
+- `POST /v1/trial/errors`：只在失败时记一条短记录。见下面「失败记录」
 - `POST /v1/chat/completions`：翻译。请求头带用户的云开发 access token，以及 `X-TranslateHUD-Source`
 - `POST /v1/trial/feedback`：问题反馈。见下面一节。云函数请求体通常比云托管小，带图片时请走云托管。
 
-如果 CLI 报事务写法不对，对照当前 `@cloudbase/node-sdk` 的 `startTransaction` / `doc().set()`。逻辑在 `src/cloudBaseStore.js`。
+如果 CLI 报事务写法不对，对照当前 `@cloudbase/node-sdk` 的 `startTransaction` / `doc().set()`。逻辑在 `src/cloudBaseStore.js`。失败记录的写入在 `src/errorLogStore.js`，用的是普通 `add`，不走账本事务。
+
+## 失败记录（公测）
+
+翻译、截图识别、朗读、名词解释、体验登录、邀请码领取失败时，App 会额外打一条很短的记录，方便看公测里为什么失败。成功的翻译不记。记不上、或者服务还没升级，用户看到的提示和现在一样，不会多一个报错。
+
+只记失败，不记原文、译文、截图、剪贴板、提示词、API Key、登录 token、手机号。技术摘要最多是一个模块名，例如 `TranslationError.parse`，没有堆栈。
+
+### 谁可以写
+
+- 请求头带了云开发 access token：和查余额一样先校验。通过后，`userId` 用云开发的 `sub`（账本文档 ID），不是手机号。短号 `displayId`（例如 `00001`）只有格式像短号时才留下。
+- 没带 token：可以记。`userId` 和 `displayId` 都是 null。必须带 `deviceHash`，这是 App 里随机设备号的 SHA-256，不是硬件序列号，也不是手机号。未登录时用自己的 API Key，以及登录失败、登录已经失效，走这一条。
+- 带了 token 但校验失败：直接 401，不改记成匿名，也不把这条请求的正文存下来。
+- 认证类失败（登录失效、没有权限）App 不附带 token，避免凭证已经坏了导致这条记录也被 401 丢掉。
+
+同一账号（没有账号就用 deviceHash）、同一种 bug、同一个功能，每个 UTC 日最多留下 3 条。App 自己也会在同一台 Mac 上对同一种 bug 每天最多发送 3 次。业务失败（额度、限流、超时、网络等）App 不截流，服务端同一种最多留下 12 条，避免重试把库打满。单个进程每小时最多收 300 条。超出的请求返回 `{ "ok": true, "dropped": true }`，不再写入。
+
+### 集合 `trial_error_events`
+
+一条文档一个字段，没有嵌套原文：
+
+| 字段 | 说明 |
+|---|---|
+| `occurredAt` | 客户端发生时间，ISO8601。离现在超过 7 天会改成服务端时间 |
+| `receivedAt` | 服务端收到的时间，毫秒 |
+| `surface` | 哪个功能失败，见下表 |
+| `appVersion` | 例如 `0.4.0` |
+| `appBuild` | 例如 `10` |
+| `osVersion` | 例如 `15.1.0`。没有就 null |
+| `path` | `trial` 体验额度，或 `own_key` 自己的 API Key。朗读没有自己的网络，记的是当时的翻译路径 |
+| `userId` | 登录校验通过时的云开发 `sub`。匿名是 null。不是手机号 |
+| `displayId` | 设置里的短号，例如 `00001`。匿名、或长得不像短号，就是 null |
+| `deviceHash` | 64 位十六进制。匿名时用来把同一台 Mac 的记录放在一起 |
+| `kind` | `business` 预期内（额度、限流、超时、权限、网络），或 `bug` 意外（解析、空数据、未知异常） |
+| `category` | 分类，见下表。和 App 里 `ServiceErrorMessage` 的试错码、HTTP 状态对齐 |
+| `httpStatus` | 有 HTTP 状态码时写下，否则 null |
+| `summary` | 仅 `bug`。模块标签，几十个字符以内。业务失败这里是 null |
+
+`surface`：`selection_translate` 划词翻译，`screenshot_ocr_translate` 截图和 OCR 翻译，`tts` 朗读，`term_explanation` 名词解释，`login` 登录和余额读取，`invite_redeem` 邀请码。
+
+`category`：`network`，`timeout`，`quota`，`rate_limit`，`permission`，`config`，`length`，`unavailable`，`invite`，`quality`，`empty_input`，`selection`，`auth`，`ocr`，`parse`，`empty_output`，`invariant`，`unknown`。
+
+用户取消截图、取消请求、没有选中文字，不记。
+
+本地 `TRIAL_STORE=file` 时，记录追加在账本旁边的 `backend/data/error-events.jsonl`，这个文件不入库。`TRIAL_STORE=memory` 只留在内存里。正式环境 `TRIAL_STORE=cloudbase` 写入上面的集合。不需要新的环境变量，也不要把密钥写进仓库。
+
+### 部署到 `translatehud-d4gl951eo8bef4702`
+
+在自己的 Mac 上做，密钥留在本机 `.env`，不要贴进 PR。
+
+1. 拉下包含这次改动的代码。
+2. `cd backend && npm install`
+3. `.env` 里已经是 `TRIAL_STORE=cloudbase`、`CLOUDBASE_ENV_ID=translatehud-d4gl951eo8bef4702`，并且填了腾讯云密钥时，运行 `npm run ensure-collection`。这会补上 `trial_error_events`。集合已存在会跳过。没跑也行：第一次写入失败记录时服务会自己建。建集合失败只影响失败记录，不影响翻译和扣费。
+4. 用现在的云托管重新部署 `backend/`（镜像是 `Dockerfile`）。App 打到的是 `TRIAL_PROXY_BASE_URL`，新接口是同一个服务上的 `POST /v1/trial/errors`。只部署备用云函数不会接到正式 App 的失败记录。
+5. 如果备用云函数也要带上这个接口：`npm run stage`，然后 `npx --yes @cloudbase/cli functions:deploy trial --config cloudbaserc.json`。HTTP 路径要能匹配 `/v1/trial/errors`。
+6. 看记录：云开发控制台 → 数据库 → 文档型数据库 → 集合 `trial_error_events`。
+7. 发一版新的 App 之后才会有客户端上报。这一步不在这次改动里做公证或 Release。旧 App 不会打这个接口；新 App 碰上还没升级的服务会得到 404，然后照常显示原来的错误。
 
 ## Yahao 怎么改邀请码和加名额
 
@@ -207,7 +264,7 @@ npm install
 npm run ensure-collection
 ```
 
-这行命令会同时准备 `trial_accounts`、`trial_invite` 和 `trial_feedback`。
+这行命令会同时准备 `trial_accounts`、`trial_invite`、`trial_feedback` 和 `trial_error_events`。
 
 Yahao 在云开发控制台查看（环境 `translatehud-d4gl951eo8bef4702`，上海）：
 

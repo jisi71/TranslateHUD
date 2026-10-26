@@ -13,6 +13,8 @@ const {
 const { handleFeedback, FEEDBACK_MESSAGES } = require('./feedbackService')
 const { defaultForward } = require('./upstream')
 const { MESSAGES } = require('./trialPolicy')
+const { handleErrorReport, sharedLimiter } = require('./errorLog')
+const { createErrorLogStoreFromEnv } = require('./errorLogStore')
 
 function decodeEventBody(event) {
   const body = event && event.body != null ? event.body : ''
@@ -52,6 +54,7 @@ async function dispatchUnsafe(event, deps) {
   }
   const clean = String(path).split('?')[0]
   const isFeedback = clean.endsWith('/trial/feedback') || event.action === 'feedback'
+  const isErrors = clean.endsWith('/trial/errors') || event.action === 'errors'
   const shared = {
     headers,
     rawBody: method === 'GET' ? '' : decodeEventBody(event),
@@ -85,6 +88,18 @@ async function dispatchUnsafe(event, deps) {
         headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
         body: JSON.stringify({ error: { code: 'feedback_store', message: FEEDBACK_MESSAGES.store } })
       }
+    }
+  }
+  if (isErrors) {
+    const result = await handleErrorReport({
+      ...shared,
+      errorLog: deps.errorLog || createErrorLogStoreFromEnv(),
+      errorRateLimiter: deps.errorRateLimiter || sharedLimiter
+    })
+    return {
+      statusCode: result.status,
+      headers: result.headers || { 'Content-Type': 'application/json; charset=utf-8' },
+      body: result.body || ''
     }
   }
   const store = deps.store || createAccountStoreFromEnv()

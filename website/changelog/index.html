@@ -9,7 +9,8 @@
     data-desc-zh="TranslateHUD 最新版本 v0.4.1 的更新说明。"
     data-desc-en="Release notes for TranslateHUD v0.4.1."
     content="TranslateHUD 最新版本 v0.4.1 的更新说明。">
-  <link rel="icon" href="../assets/icon.png" type="image/png">
+  <link rel="icon" href="../assets/icon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="../assets/icon-180.png">
   <style>
     html[data-lang="zh"] .lang-en { display: none !important; }
     html[data-lang="en"] .lang-zh { display: none !important; }
@@ -30,7 +31,7 @@
   <header class="site-header">
     <div class="wrap bar">
       <a class="brand" href="../index.html">
-        <img src="../assets/icon.png" width="512" height="512" alt="" aria-hidden="true">
+        <img src="../assets/icon-64.png" srcset="../assets/icon-64.png 64w, ../assets/icon-128.png 128w" sizes="32px" width="32" height="32" alt="" aria-hidden="true">
         TranslateHUD
       </a>
       <nav class="top-nav" aria-label="页面" data-aria-zh="页面" data-aria-en="Pages">
@@ -38,10 +39,9 @@
         <a href="./" aria-current="page"><span class="lang-zh">更新说明</span><span class="lang-en">Release notes</span></a>
       </nav>
       <div class="nav-actions">
-        <div class="lang-switch" role="group" aria-label="语言" data-aria-zh="语言" data-aria-en="Language">
-          <button type="button" data-set-lang="zh" aria-pressed="true">中文</button>
-          <button type="button" data-set-lang="en" aria-pressed="false">English</button>
-        </div>
+        <button type="button" class="lang-switch" data-lang-toggle aria-label="当前是中文，点按切换到英文" data-aria-zh="当前是中文，点按切换到英文" data-aria-en="English is on. Click to switch to Chinese">
+          <span class="lang-mark" data-for-lang="zh">中</span><span class="lang-slash" aria-hidden="true">/</span><span class="lang-mark" data-for-lang="en">E</span>
+        </button>
         <span class="download-slot" data-download-slot>
           <span class="btn-glow">
             <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.1/TranslateHUD-0.4.1-universal.zip">
@@ -85,7 +85,7 @@
           <span class="lang-en">Unzip it and drag it into Applications. macOS 14 or later.</span>
         </p>
         <p class="release-actions">
-          <span class="download-slot" data-download-slot>
+          <span class="download-slot" id="release-download" data-download-slot data-invite="inline">
             <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.1/TranslateHUD-0.4.1-universal.zip">
               <span class="lang-zh">下载 v0.4.1</span>
               <span class="lang-en">Download v0.4.1</span>
@@ -99,7 +99,7 @@
   <footer class="site-footer">
     <div class="wrap footer-bar">
       <a class="brand" href="../index.html">
-        <img src="../assets/icon.png" width="512" height="512" alt="" aria-hidden="true">
+        <img src="../assets/icon-64.png" srcset="../assets/icon-64.png 64w, ../assets/icon-128.png 128w" sizes="32px" width="32" height="32" alt="" aria-hidden="true" loading="lazy">
         TranslateHUD
       </a>
       <span class="download-slot" data-download-slot>

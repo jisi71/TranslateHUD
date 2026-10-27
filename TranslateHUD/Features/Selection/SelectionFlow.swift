@@ -21,7 +21,6 @@ enum SelectionFlow {
         progress.failureSurface = .selectionTranslate
         let popover = FloatingTranslationPopover(
             original: selection.text,
-            context: selection.context,
             progress: progress,
             termProgress: termProgress,
             rectTopLeft: selection.screenRectTopLeft,

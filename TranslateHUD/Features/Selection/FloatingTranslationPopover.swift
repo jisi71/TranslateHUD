@@ -20,7 +20,6 @@ final class FloatingTranslationPopover {
 
     init(
         original: String,
-        context: SelectionFetcher.TextContext? = nil,
         progress: TranslationProgress,
         termProgress: TermExplanationProgress,
         rectTopLeft: CGRect?,
@@ -60,7 +59,6 @@ final class FloatingTranslationPopover {
         var layoutRef: (@MainActor () -> Void)?
         let view = PopoverContent(
             original: original,
-            context: context,
             progress: progress,
             termProgress: termProgress,
             speech: speech,
@@ -194,7 +192,6 @@ struct PopoverContent: View {
     static let maxScrollableHeight: CGFloat = 544
 
     let original: String
-    var context: SelectionFetcher.TextContext? = nil
     @ObservedObject var progress: TranslationProgress
     @ObservedObject var termProgress: TermExplanationProgress
     @ObservedObject var speech: SpeechController
@@ -207,7 +204,6 @@ struct PopoverContent: View {
     var body: some View {
         TranslationPanel(
             original: original,
-            context: context,
             progress: progress,
             termProgress: termProgress,
             speech: speech,

@@ -54,7 +54,6 @@ final class PopoverContentSizingTests: XCTestCase {
         let terms = TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original], language: .chinese)
         let host = NSHostingController(rootView: PopoverContent(
             original: original,
-            context: .init(before: "A small detail makes all the difference. ", after: " You can return to your work without switching apps."),
             progress: progress,
             termProgress: terms,
             speech: SpeechController(),

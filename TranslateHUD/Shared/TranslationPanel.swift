@@ -3,7 +3,6 @@ import SwiftUI
 
 struct TranslationPanel: View {
     let original: String
-    var context: SelectionFetcher.TextContext?
     var image: NSImage?
     @ObservedObject var progress: TranslationProgress
     @ObservedObject var termProgress: TermExplanationProgress
@@ -52,7 +51,7 @@ struct TranslationPanel: View {
                 statusSection
                 if !translated.isEmpty { translationSection }
                 if termProgress.isExpanded { termsSection }
-                if showsContext { contextSection }
+                if showsContext, image != nil { contextSection }
             }
             .padding(18)
             .frame(maxHeight: heightBudget.bodyMax, alignment: .top)
@@ -317,21 +316,22 @@ struct TranslationPanel: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Copy, terms, context, speak, and retry stay on the leading side.
-    /// The model chip stays on the trailing side. Narrow widths tighten gaps
-    /// and truncate the chip title; this row does not wrap.
+    /// Copy, terms, speak, and retry stay on the leading side. Screenshot translation
+    /// adds the original-image button between terms and speak. The model chip stays
+    /// trailing. Narrow widths tighten gaps and truncate the chip title; this row does not wrap.
     private var footer: some View {
         GeometryReader { proxy in
             let plan = FooterToolbarPlan.resolve(
                 availableWidth: proxy.size.width,
                 titleWidth: FooterToolbarPlan.measuredTitleWidth(footerTitle),
-                chipChrome: FooterToolbarPlan.chipChrome
+                chipChrome: FooterToolbarPlan.chipChrome,
+                toolCount: image == nil ? 4 : 5
             )
             HStack(spacing: 0) {
                 HStack(spacing: plan.iconSpacing) {
                     copyButton
                     termButton
-                    contextButton
+                    if image != nil { screenshotButton }
                     SpeechButton(text: translated, id: "translation.translated", speech: speech)
                         .frame(width: FooterToolbarPlan.toolSide, height: FooterToolbarPlan.toolSide)
                     retryButton
@@ -365,12 +365,8 @@ struct TranslationPanel: View {
         .disabled(original.isEmpty)
     }
 
-    private var contextButton: some View {
-        iconButton(
-            image == nil ? "text.viewfinder" : "photo",
-            help: image == nil ? "查看原文上下文" : "查看截图",
-            active: showsContext
-        ) {
+    private var screenshotButton: some View {
+        iconButton("photo", help: "查看截图", active: showsContext) {
             showsContext.toggle()
         }
     }
@@ -433,7 +429,7 @@ struct TranslationPanel: View {
     @ViewBuilder
     private var contextView: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(image == nil ? "原文上下文" : "原始截图")
+            Text("原始截图")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(colors.muted)
             if let image {
@@ -442,19 +438,6 @@ struct TranslationPanel: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(maxHeight: 240)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
-            } else if let context {
-                (Text(context.before).foregroundColor(colors.muted)
-                 + Text(original).bold().foregroundColor(colors.emphasis)
-                 + Text(context.after).foregroundColor(colors.muted))
-                    .font(.system(size: 13))
-                    .lineSpacing(4)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("此应用未提供选中文字的前后文，可返回原页面查看。")
-                    .font(.system(size: 13))
-                    .foregroundStyle(colors.muted)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -589,13 +572,15 @@ struct FooterToolbarPlan: Equatable {
     static func resolve(
         availableWidth: CGFloat,
         titleWidth: CGFloat,
-        chipChrome: CGFloat
+        chipChrome: CGFloat,
+        toolCount: Int = FooterToolbarPlan.toolCount
     ) -> FooterToolbarPlan {
         let available = (availableWidth.isFinite && availableWidth > 0) ? availableWidth : .greatestFiniteMagnitude
         let title = (titleWidth.isFinite && titleWidth > 0) ? titleWidth : 0
         let chrome = (chipChrome.isFinite && chipChrome > 0) ? chipChrome : 0
-        let gaps = CGFloat(toolCount - 1)
-        let tools = CGFloat(toolCount) * toolSide
+        let count = max(toolCount, 1)
+        let gaps = CGFloat(count - 1)
+        let tools = CGFloat(count) * toolSide
 
         func row(iconSpacing: CGFloat, clusterGap: CGFloat, title: CGFloat) -> CGFloat {
             tools + iconSpacing * gaps + clusterGap + chrome + title

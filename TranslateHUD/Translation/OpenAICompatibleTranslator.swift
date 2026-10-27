@@ -20,6 +20,7 @@ struct OpenAICompatibleTranslator: Translator {
 
     private struct QualityRejected: Error {
         let failures: [TranslationValidator.Failure]
+        let output: String
     }
 
     private struct ConnectionInterrupted: Error {
@@ -37,6 +38,8 @@ struct OpenAICompatibleTranslator: Translator {
 
         var strict = false
         var retrySession: URLSession?
+        var preserved: [String]?
+        var preservedScore = -1
         defer { retrySession?.invalidateAndCancel() }
         for attemptIndex in 0..<TranslationAttemptPolicy.maximumAttempts {
             try Task.checkCancellation()
@@ -69,14 +72,57 @@ struct OpenAICompatibleTranslator: Translator {
             let hasFailures = !failures.isEmpty || batchUnder
             if !hasFailures { return result }
 
+            if let candidate = readableBatchFallback(originals: texts, translations: result, target: target) {
+                let score = TranslationValidator.readableScore(
+                    input: texts.joined(separator: "\n"),
+                    output: candidate.joined(separator: "\n"),
+                    target: target
+                )
+                if score > preservedScore {
+                    preserved = candidate
+                    preservedScore = score
+                }
+            }
+
             if TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) {
                 AppLog.info("批量第 \(attemptIndex + 1) 轮质量校验失败 → 最后一次严格重试")
                 strict = true
                 continue
             }
+            if let preserved {
+                AppLog.info("批量质量检查未通过，保留可读译文")
+                return preserved
+            }
             throw TranslationError.quality("已尝试两次，仍有未翻译内容；请缩短原文或更换模型后重试")
         }
+        if let preserved {
+            AppLog.info("批量质量检查未通过，保留可读译文")
+            return preserved
+        }
         throw TranslationError.quality("翻译未能在请求次数上限内完成，请重新发起；若持续失败，请更换模型。")
+    }
+
+    /// 整批都没有空译文、回吐原文或拒绝翻译时，才把这轮结果留作兜底。
+    private func readableBatchFallback(
+        originals: [String],
+        translations: [String],
+        target: TargetLanguage
+    ) -> [String]? {
+        guard originals.count == translations.count else { return nil }
+        for (original, translated) in zip(originals, translations) {
+            let lineFailures = TranslationValidator.validate(input: original, output: translated, target: target)
+            if lineFailures.contains(.emptyOutput)
+                || lineFailures.contains(.echoedInput)
+                || lineFailures.contains(.refusalDetected) {
+                return nil
+            }
+        }
+        let joinedIn = originals.joined(separator: "\n")
+        let joinedOut = translations.joined(separator: "\n")
+        guard TranslationValidator.shouldPreserveReadableOutput(input: joinedIn, output: joinedOut, target: target) else {
+            return nil
+        }
+        return translations
     }
 
     private func performBatch(
@@ -92,7 +138,7 @@ struct OpenAICompatibleTranslator: Translator {
 
         let example = compactExample(for: target)
         let strictPrefix = strict ? """
-        CRITICAL: A previous attempt failed because most English identifiers were NOT translated. Translate every JSON key (text → 文本, confidence → 置信度, start_ms → 开始毫秒, final → 最终), bare function and variable names, and snake_case / camelCase, even when they look like code. Only punctuation, numbers, and text already in L stay unchanged.
+        CRITICAL: A previous attempt left too many ordinary words untranslated. Translate ordinary words into L, including words in logs and errors, JSON keys, and snake_case / camelCase made of ordinary words. Do not leave a run of ordinary words in the source language just because the text looks technical.
 
         """ : ""
 
@@ -100,7 +146,8 @@ struct OpenAICompatibleTranslator: Translator {
         Translate into \(target.promptName). Call that language L. Write for an L reader.
         \(strictPrefix)The input is a JSON array. Translate each item's "text" into L.
         Translate every token that is not already in L: words, phrases, sentences, snake_case / camelCase / kebab-case identifiers (e.g. "promise_to_pay"), function names, variable names, comments, and code labels.
-        Leave unchanged: numbers, dates (e.g. "2026-05-12"), version strings, URLs, file paths, ISO codes, hash strings, structural punctuation `{}`, `[]`, `()`, quotes, commas, colons, semicolons, equals, and any text already in L.
+        Translate ordinary words into L, including words inside logs and error text.
+        Leave unchanged: numbers, dates (e.g. "2026-05-12"), version strings, URLs, email addresses, file paths, ISO codes, hash strings, and unordered random letter or password strings that are not ordinary words. Copy those random strings exactly; do not transliterate them. Also leave structural punctuation `{}`, `[]`, `()`, quotes, commas, colons, semicolons, equals, and any text already in L.
         Do not echo non-L text because it looks like code.
         Proper nouns: use an established L name. If none exists, keep the original and append a short L category in parentheses. Do not invent names, transliterations, or facts, and never return only the source proper noun.
         \(example)
@@ -220,6 +267,7 @@ struct OpenAICompatibleTranslator: Translator {
             let task = Task {
                 var strict = false
                 var retrySession: URLSession?
+                var preservedOutput: String?
                 defer { retrySession?.invalidateAndCancel() }
                 do {
                     for attemptIndex in 0..<TranslationAttemptPolicy.maximumAttempts {
@@ -236,6 +284,12 @@ struct OpenAICompatibleTranslator: Translator {
                             continuation.finish()
                             return
                         } catch let rejection as QualityRejected {
+                            preservedOutput = TranslationValidator.preferredReadableOutput(
+                                current: preservedOutput,
+                                candidate: rejection.output,
+                                input: text,
+                                target: target
+                            )
                             let shouldRetry = TranslationAttemptPolicy.shouldRetry(
                                 afterAttempt: attemptIndex,
                                 hasFailures: !rejection.failures.isEmpty
@@ -245,6 +299,12 @@ struct OpenAICompatibleTranslator: Translator {
                                 AppLog.info("流式最后一次严格重试")
                                 continuation.yield(.reset(reason: "首轮译文未通过校验，重试中"))
                                 continue
+                            }
+                            if let preservedOutput {
+                                AppLog.info("流式质量检查未通过，保留可读译文 outLen=\(preservedOutput.count)")
+                                continuation.yield(.delta(preservedOutput))
+                                continuation.finish()
+                                return
                             }
                             let reasons = rejection.failures.map(\.explanation).joined(separator: "、")
                             throw TranslationError.quality("已尝试两次：\(reasons)。可缩短原文或更换模型后重试")
@@ -257,6 +317,12 @@ struct OpenAICompatibleTranslator: Translator {
                             retrySession = URLSession(configuration: session.configuration)
                             try await Task.sleep(for: .milliseconds(300))
                         }
+                    }
+                    if let preservedOutput {
+                        AppLog.info("流式质量检查未通过，保留可读译文 outLen=\(preservedOutput.count)")
+                        continuation.yield(.delta(preservedOutput))
+                        continuation.finish()
+                        return
                     }
                     throw TranslationError.quality("翻译未能在请求次数上限内完成，请重新发起；若持续失败，请更换模型。")
                 } catch {
@@ -288,15 +354,16 @@ struct OpenAICompatibleTranslator: Translator {
 
         let example = compactExample(for: target)
         let strictPrefix = strict ? """
-        CRITICAL: A previous attempt failed because the input was returned unchanged. Translate EVERY non-L word, including JSON keys, bare names, snake_case/camelCase, loanwords (sigmoid → S 形函数（sigmoid）, softmax → 归一化指数（softmax）, transformer → 变换器, embedding → 嵌入向量), and acronyms (API → API（应用程序接口）). Only numbers, dates, versions, URLs, and punctuation stay unchanged.
+        CRITICAL: A previous attempt left too many ordinary words untranslated. Translate EVERY ordinary non-L word, including words in logs and errors, JSON keys, bare names, and snake_case/camelCase made of ordinary words. Do not leave a run of ordinary words untranslated because the text looks technical. Keep numbers, dates, versions, URLs, emails, file paths, and unordered random letter or password strings unchanged.
 
         """ : ""
 
         let systemPrompt = """
         Translate into \(target.promptName). Call that language L. Write for an L reader.
         \(strictPrefix)Translate every token that is not already in L: words, phrases, sentences, JSON keys, comments, variable names, and snake_case / camelCase / kebab-case identifiers.
+        Translate ordinary words into L, including words inside logs and error text.
         Also translate enum-style strings such as "self_claimed", "none", and "pending".
-        Leave unchanged: numbers, dates (e.g. "2026-05-12"), versions (e.g. "v1.2.0"), URLs, file paths, emails, hashes, ISO codes, structural punctuation `{}`, `[]`, `"`, `,`, `:`, `;`, `=`, all line breaks, indentation, and whitespace, and any text already in L.
+        Leave unchanged: numbers, dates (e.g. "2026-05-12"), versions (e.g. "v1.2.0"), URLs, file paths, emails, hashes, ISO codes, and unordered random letter or password strings that are not ordinary words. Copy those random strings exactly; do not transliterate them. Also leave structural punctuation `{}`, `[]`, `"`, `,`, `:`, `;`, `=`, all line breaks, indentation, and whitespace, and any text already in L.
         Preserve the exact number of input lines. Do NOT add missing code lines, closing parentheses, braces, summaries, or context that is not present in the input.
         Do not echo non-L text because it looks like code. Output length should generally NOT equal input length.
         Proper nouns: use an established L name. If none exists, keep the original and append a short L category in parentheses. Do not invent names, transliterations, or facts, and never return only the source proper noun.
@@ -383,7 +450,7 @@ struct OpenAICompatibleTranslator: Translator {
                 if !strict,
                    TranslationValidator.looksLikeEarlyEcho(accumulated: accumulated, fullInput: text, target: target) {
                     AppLog.info("流式早期检测到原文回吐（累积 \(accumulated.count) 字符匹配原文前缀），中断重试")
-                    throw QualityRejected(failures: [.echoedInput])
+                    throw QualityRejected(failures: [.echoedInput], output: accumulated)
                 }
 
                 continuation.yield(.delta(accumulated))
@@ -441,7 +508,7 @@ struct OpenAICompatibleTranslator: Translator {
             let failures = TranslationValidator.validate(input: text, output: accumulated, target: target)
             if !failures.isEmpty {
                 AppLog.info("流式第 \(strict ? 2 : 1) 轮终末校验失败 \(failures)")
-                throw QualityRejected(failures: failures)
+                throw QualityRejected(failures: failures, output: accumulated)
             }
             return accumulated
         } catch {

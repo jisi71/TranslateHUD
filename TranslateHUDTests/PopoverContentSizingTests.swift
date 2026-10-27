@@ -169,6 +169,69 @@ final class PopoverContentSizingTests: XCTestCase {
         XCTAssertLessThanOrEqual(PanelSectionSizer.stackedHeight(heights, spacing: 14), 300.5)
     }
 
+    func testFooterToolbarKeepsTheModelNameAtTheStandardWidth() {
+        let available = PopoverContent.fixedWidth - 36
+        let titles = [
+            "DeepSeek",
+            "月之暗面 Kimi",
+            "Ollama 本地",
+            "请登录或填写 API Key",
+            "正在读取体验余额",
+            "体验余额读取失败"
+        ]
+        for title in titles {
+            let plan = FooterToolbarPlan.resolve(
+                availableWidth: available,
+                titleWidth: FooterToolbarPlan.measuredTitleWidth(title),
+                chipChrome: FooterToolbarPlan.chipChrome
+            )
+            XCTAssertNil(plan.titleLimit, title)
+            XCTAssertEqual(plan.iconSpacing, FooterToolbarPlan.preferredIconSpacing, accuracy: 0.01, title)
+            XCTAssertEqual(plan.clusterGap, FooterToolbarPlan.preferredClusterGap, accuracy: 0.01, title)
+        }
+    }
+
+    func testFooterToolbarShrinksGapsBeforeTruncatingTheModel() {
+        let title: CGFloat = 80
+        let chrome: CGFloat = 70
+        let gaps = CGFloat(FooterToolbarPlan.toolCount - 1)
+        let tools = CGFloat(FooterToolbarPlan.toolCount) * FooterToolbarPlan.toolSide
+        let preferred = tools
+            + FooterToolbarPlan.preferredIconSpacing * gaps
+            + FooterToolbarPlan.preferredClusterGap
+            + chrome
+            + title
+            + FooterToolbarPlan.fitSlack
+        let available = preferred - 8
+        let plan = FooterToolbarPlan.resolve(availableWidth: available, titleWidth: title, chipChrome: chrome)
+
+        XCTAssertNil(plan.titleLimit)
+        XCTAssertLessThan(plan.iconSpacing, FooterToolbarPlan.preferredIconSpacing)
+        XCTAssertGreaterThanOrEqual(plan.iconSpacing, FooterToolbarPlan.minimumIconSpacing)
+        let used = tools + plan.iconSpacing * gaps + plan.clusterGap + chrome + title
+        XCTAssertLessThanOrEqual(used, available + 0.6)
+    }
+
+    func testFooterToolbarTruncatesTheModelInsteadOfWrapping() throws {
+        let title: CGFloat = 280
+        let chrome: CGFloat = 72
+        let available: CGFloat = 240
+        let plan = FooterToolbarPlan.resolve(availableWidth: available, titleWidth: title, chipChrome: chrome)
+        let limit = try XCTUnwrap(plan.titleLimit)
+
+        XCTAssertLessThan(limit, title)
+        XCTAssertEqual(plan.iconSpacing, FooterToolbarPlan.minimumIconSpacing, accuracy: 0.01)
+        XCTAssertEqual(plan.clusterGap, FooterToolbarPlan.minimumClusterGap, accuracy: 0.01)
+        let gaps = CGFloat(FooterToolbarPlan.toolCount - 1)
+        let used = CGFloat(FooterToolbarPlan.toolCount) * FooterToolbarPlan.toolSide
+            + plan.iconSpacing * gaps
+            + plan.clusterGap
+            + chrome
+            + limit
+        XCTAssertEqual(used, available, accuracy: 0.6)
+        XCTAssertGreaterThan(limit, 0)
+    }
+
     func testHeightBudgetFollowsTheScreenAndKeepsTheAbsoluteCap() {
         let tall = PopoverContent.heightBudget(visibleHeight: 1_600)
         XCTAssertEqual(tall.panelMax, PopoverContent.maxHeight)

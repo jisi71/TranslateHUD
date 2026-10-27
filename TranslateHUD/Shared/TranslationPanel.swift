@@ -51,7 +51,6 @@ struct TranslationPanel: View {
                 separator.panelSectionRole(.divider)
                 statusSection
                 if !translated.isEmpty { translationSection }
-                actionsSection
                 if termProgress.isExpanded { termsSection }
                 if showsContext { contextSection }
             }
@@ -223,11 +222,6 @@ struct TranslationPanel: View {
         .panelSectionRole(.translation)
     }
 
-    private var actionsSection: some View {
-        HeightFitting { actions }
-            .panelSectionRole(.actions)
-    }
-
     private var termsSection: some View {
         HeightFitting {
             TermExplanationView(progress: termProgress)
@@ -320,69 +314,117 @@ struct TranslationPanel: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var actions: some View {
-        HStack(spacing: 10) {
-            iconButton(hasCopied ? "checkmark" : "doc.on.doc", help: hasCopied ? "已复制" : "复制译文") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(translated, forType: .string)
-                hasCopied = true
-            }
-            .disabled(translated.isEmpty)
-            SpeechButton(text: translated, id: "translation.translated", speech: speech)
-                .frame(width: 26, height: 26)
-            Spacer()
-            iconButton("text.book.closed", help: "名词解释", active: termProgress.isExpanded) {
-                termProgress.toggleExpanded()
-            }
-            .disabled(original.isEmpty)
-        }
-    }
-
+    /// Copy, terms, context, speak, and retry stay on the leading side.
+    /// The model chip stays on the trailing side. Narrow widths tighten gaps
+    /// and truncate the chip title; this row does not wrap.
     private var footer: some View {
-        HStack(spacing: 12) {
-            Menu {
-                switch TranslationRoute.endpoint(routeInput) {
-                case .trial:
-                    Text(trial.balanceTitle)
-                    if trial.balanceState == .failed {
-                        Text("点设置里余额旁的刷新")
-                    }
-                case .ownKey:
-                    Text(providerName)
-                    Text(settings.model)
-                case .unavailable:
-                    Text("还没有可用的翻译接口")
+        GeometryReader { proxy in
+            let plan = FooterToolbarPlan.resolve(
+                availableWidth: proxy.size.width,
+                titleWidth: FooterToolbarPlan.measuredTitleWidth(footerTitle),
+                chipChrome: FooterToolbarPlan.chipChrome
+            )
+            HStack(spacing: 0) {
+                HStack(spacing: plan.iconSpacing) {
+                    copyButton
+                    termButton
+                    contextButton
+                    SpeechButton(text: translated, id: "translation.translated", speech: speech)
+                        .frame(width: FooterToolbarPlan.toolSide, height: FooterToolbarPlan.toolSide)
+                    retryButton
                 }
-                Divider()
-                Button("配置 API…") { SettingsWindowController.shared.show() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "cpu").font(.system(size: 13))
-                    Text(footerTitle).font(.system(size: 14))
-                    Image(systemName: "chevron.down").font(.system(size: 10, weight: .medium))
-                }
-                .padding(.horizontal, 12)
-                .frame(height: 30)
-                .background(colors.chip, in: RoundedRectangle(cornerRadius: 7))
-                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(colors.controlBorder, lineWidth: 1))
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
+
+                Spacer(minLength: plan.clusterGap)
+
+                modelMenu(titleLimit: plan.titleLimit)
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help(footerTitle)
-            Spacer()
-            iconButton(image == nil ? "text.viewfinder" : "photo", help: image == nil ? "查看原文上下文" : "查看截图", active: showsContext) {
-                showsContext.toggle()
-            }
-            iconButton("arrow.clockwise", help: "重新翻译") {
-                speech.stop()
-                onRetry()
-            }
-            .disabled(original.isEmpty)
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .padding(.horizontal, 18)
         .frame(height: 48)
+    }
+
+    private var copyButton: some View {
+        iconButton(hasCopied ? "checkmark" : "doc.on.doc", help: hasCopied ? "已复制" : "复制译文") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(translated, forType: .string)
+            hasCopied = true
+        }
+        .disabled(translated.isEmpty)
+    }
+
+    private var termButton: some View {
+        iconButton("text.book.closed", help: "名词解释", active: termProgress.isExpanded) {
+            termProgress.toggleExpanded()
+        }
+        .disabled(original.isEmpty)
+    }
+
+    private var contextButton: some View {
+        iconButton(
+            image == nil ? "text.viewfinder" : "photo",
+            help: image == nil ? "查看原文上下文" : "查看截图",
+            active: showsContext
+        ) {
+            showsContext.toggle()
+        }
+    }
+
+    private var retryButton: some View {
+        iconButton("arrow.clockwise", help: "重新翻译") {
+            speech.stop()
+            onRetry()
+        }
+        .disabled(original.isEmpty)
+    }
+
+    private func modelMenu(titleLimit: CGFloat?) -> some View {
+        Menu {
+            switch TranslationRoute.endpoint(routeInput) {
+            case .trial:
+                Text(trial.balanceTitle)
+                if trial.balanceState == .failed {
+                    Text("点设置里余额旁的刷新")
+                }
+            case .ownKey:
+                Text(providerName)
+                Text(settings.model)
+            case .unavailable:
+                Text("还没有可用的翻译接口")
+            }
+            Divider()
+            Button("配置 API…") { SettingsWindowController.shared.show() }
+        } label: {
+            HStack(spacing: FooterToolbarPlan.chipItemSpacing) {
+                Image(systemName: "cpu").font(.system(size: 13))
+                modelTitle(limit: titleLimit)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .medium))
+            }
+            .padding(.horizontal, FooterToolbarPlan.chipHorizontalPadding)
+            .frame(height: 30)
+            .background(colors.chip, in: RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(colors.controlBorder, lineWidth: 1))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(footerTitle)
+    }
+
+    @ViewBuilder
+    private func modelTitle(limit: CGFloat?) -> some View {
+        let title = Text(footerTitle)
+            .font(.system(size: 14))
+            .lineLimit(1)
+            .truncationMode(.tail)
+        if let limit {
+            title.frame(width: max(0, limit), alignment: .leading)
+        } else {
+            title
+        }
     }
 
     @ViewBuilder
@@ -506,6 +548,96 @@ enum TextBlockMetrics {
         let line = font.ascender - font.descender + font.leading
         // SwiftUI's line spacing can sit a couple of points above TextKit.
         return max(ceil(used), ceil(line)) + 4
+    }
+}
+
+/// Spacing for the single-row translation footer.
+/// Tools keep their hit size. Spare width sits between the tools and the model chip.
+/// When the row is short, gaps shrink first and the chip title truncates after that.
+struct FooterToolbarPlan: Equatable {
+    var iconSpacing: CGFloat
+    var clusterGap: CGFloat
+    /// Maximum width of the model name. `nil` means the full title.
+    var titleLimit: CGFloat?
+
+    /// Matches `iconButton`'s 26pt label and the speech control beside it.
+    static let toolSide: CGFloat = 26
+    static let toolCount = 5
+    static let preferredIconSpacing: CGFloat = 6
+    static let minimumIconSpacing: CGFloat = 2
+    static let preferredClusterGap: CGFloat = 10
+    static let minimumClusterGap: CGFloat = 6
+    static let chipHorizontalPadding: CGFloat = 12
+    static let chipItemSpacing: CGFloat = 8
+    /// Room so a glyph run a little wider than the measurement still avoids an early ellipsis.
+    static let fitSlack: CGFloat = 12
+
+    static var chipChrome: CGFloat {
+        symbolWidth("cpu", pointSize: 13, weight: .regular)
+            + symbolWidth("chevron.down", pointSize: 10, weight: .medium)
+            + chipHorizontalPadding * 2
+            + chipItemSpacing * 2
+    }
+
+    static func measuredTitleWidth(_ title: String) -> CGFloat {
+        textWidth(title, size: 14, weight: .regular)
+    }
+
+    static func resolve(
+        availableWidth: CGFloat,
+        titleWidth: CGFloat,
+        chipChrome: CGFloat
+    ) -> FooterToolbarPlan {
+        let available = (availableWidth.isFinite && availableWidth > 0) ? availableWidth : .greatestFiniteMagnitude
+        let title = (titleWidth.isFinite && titleWidth > 0) ? titleWidth : 0
+        let chrome = (chipChrome.isFinite && chipChrome > 0) ? chipChrome : 0
+        let gaps = CGFloat(toolCount - 1)
+        let tools = CGFloat(toolCount) * toolSide
+
+        func row(iconSpacing: CGFloat, clusterGap: CGFloat, title: CGFloat) -> CGFloat {
+            tools + iconSpacing * gaps + clusterGap + chrome + title
+        }
+
+        let slackTitle = title + fitSlack
+        if row(iconSpacing: preferredIconSpacing, clusterGap: preferredClusterGap, title: slackTitle) <= available {
+            return .init(iconSpacing: preferredIconSpacing, clusterGap: preferredClusterGap, titleLimit: nil)
+        }
+
+        var deficit = row(iconSpacing: preferredIconSpacing, clusterGap: preferredClusterGap, title: slackTitle) - available
+        var iconSpacing = preferredIconSpacing
+        var clusterGap = preferredClusterGap
+
+        let spacingRoom = (preferredIconSpacing - minimumIconSpacing) * gaps
+        let spacingCut = min(max(0, deficit), spacingRoom)
+        if gaps > 0, spacingCut > 0 {
+            iconSpacing -= spacingCut / gaps
+            deficit -= spacingCut
+        }
+
+        let gapCut = min(max(0, deficit), preferredClusterGap - minimumClusterGap)
+        clusterGap -= gapCut
+        deficit -= gapCut
+
+        if deficit <= fitSlack + 0.5 {
+            return .init(iconSpacing: iconSpacing, clusterGap: clusterGap, titleLimit: nil)
+        }
+
+        let limit = max(0, title - (deficit - fitSlack))
+        return .init(iconSpacing: minimumIconSpacing, clusterGap: minimumClusterGap, titleLimit: limit)
+    }
+
+    private static func textWidth(_ text: String, size: CGFloat, weight: NSFont.Weight) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: size, weight: weight)
+        let width = (text as NSString).size(withAttributes: [.font: font]).width
+        return width.isFinite ? ceil(width) : 0
+    }
+
+    private static func symbolWidth(_ name: String, pointSize: CGFloat, weight: NSFont.Weight) -> CGFloat {
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        let width = image?.size.width ?? pointSize
+        return width.isFinite ? ceil(width) : pointSize
     }
 }
 

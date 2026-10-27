@@ -124,46 +124,117 @@
     return "";
   }
 
-  function panelMarkup() {
-    var code = escapeHtml(inviteCode());
+  function noteMarkup() {
     return (
-      '<div class="invite-panel">' +
-      '<div class="invite-code button secondary large">' +
-      '<span class="lang-zh" data-invite-code-label="zh">邀请码：' + code + "</span>" +
-      '<span class="lang-en" data-invite-code-label="en">Invite code: ' + code + "</span>" +
-      copyButtonMarkup() +
-      "</div>" +
       '<p class="invite-note">' +
       '<span class="lang-zh"><span class="invite-note-lead">新用户输入邀请码获得2元体验额度</span><span class="invite-note-count" data-count-lang="zh">剩余可兑换次数：<span data-invite-remaining>' + countText("zh") + "</span></span></span>" +
       '<span class="lang-en"><span class="invite-note-lead">New users enter the invite code for ¥2 trial credit</span><span class="invite-note-count" data-count-lang="en">Remaining redemptions: <span data-invite-remaining>' + countText("en") + "</span></span></span>" +
       "</p>" +
-      '<p class="invite-feedback" data-invite-feedback role="status" aria-live="polite" aria-atomic="true"></p>' +
+      '<p class="invite-feedback" data-invite-feedback role="status" aria-live="polite" aria-atomic="true"></p>'
+    );
+  }
+
+  function codeMarkup(extraClass) {
+    var code = escapeHtml(inviteCode());
+    return (
+      '<div class="invite-code ' + extraClass + '">' +
+      '<span class="lang-zh" data-invite-code-label="zh">邀请码：' + code + "</span>" +
+      '<span class="lang-en" data-invite-code-label="en">Invite code: ' + code + "</span>" +
+      copyButtonMarkup() +
       "</div>"
     );
   }
 
-  function downloadSlots() {
-    return document.querySelectorAll("[data-download-slot]");
+  function followMarkup(slotId) {
+    return (
+      '<div class="invite-follow" data-invite-for="' + escapeHtml(slotId) + '">' +
+      noteMarkup() +
+      '<p class="invite-again"><a data-download href="' + DOWNLOAD_URL + '">' +
+      '<span class="lang-zh">重新下载</span><span class="lang-en">Download again</span>' +
+      "</a></p></div>"
+    );
   }
 
-  function ensurePanel(slot) {
-    if (!slot || slot.querySelector(".invite-panel")) return;
-    slot.insertAdjacentHTML("beforeend", panelMarkup());
+  function popoverMarkup() {
+    var closeLabel = language() === "en" ? "Close" : "关闭";
+    return (
+      '<div class="invite-popover" role="dialog" hidden>' +
+      '<button type="button" class="invite-popover-close" data-invite-close aria-label="' + closeLabel + '" data-aria-zh="关闭" data-aria-en="Close">&times;</button>' +
+      '<div class="invite-popover-code">' +
+      '<span class="lang-zh" data-invite-code-label="zh">邀请码：' + escapeHtml(inviteCode()) + "</span>" +
+      '<span class="lang-en" data-invite-code-label="en">Invite code: ' + escapeHtml(inviteCode()) + "</span>" +
+      copyButtonMarkup() +
+      "</div>" +
+      noteMarkup() +
+      "</div>"
+    );
   }
 
-  function markRedownload(slot) {
-    slot.querySelectorAll("[data-download]").forEach(function (link) {
-      var zh = link.querySelector(".lang-zh");
-      var en = link.querySelector(".lang-en");
-      if (zh) zh.textContent = "重新下载";
-      if (en) en.textContent = "Download again";
+  function ensureInline(slot) {
+    if (!slot || slot.getAttribute("data-invite") !== "inline") return;
+    if (!slot.id) slot.id = "download-inline";
+    if (!slot.querySelector(".invite-code")) {
+      slot.insertAdjacentHTML("beforeend", codeMarkup("button secondary large"));
+    }
+    var row = slot.closest(".cta-row, .release-actions");
+    if (!row) return;
+    if (row.parentElement.querySelector('.invite-follow[data-invite-for="' + slot.id + '"]')) return;
+    row.insertAdjacentHTML("afterend", followMarkup(slot.id));
+  }
+
+  function revealInline(slot) {
+    ensureInline(slot);
+    slot.classList.add("is-invited");
+  }
+
+  function ensurePopover(slot) {
+    if (!slot.querySelector(".invite-popover")) {
+      slot.insertAdjacentHTML("beforeend", popoverMarkup());
+    }
+  }
+
+  function closePopovers() {
+    document.querySelectorAll(".download-slot.is-popover-open").forEach(function (slot) {
+      slot.classList.remove("is-popover-open");
+      var pop = slot.querySelector(".invite-popover");
+      if (pop) pop.hidden = true;
     });
   }
 
-  function revealSlot(slot) {
-    ensurePanel(slot);
-    markRedownload(slot);
-    slot.classList.add("is-invited");
+  function clampPopover(slot) {
+    var pop = slot.querySelector(".invite-popover");
+    if (!pop || pop.hidden) return;
+    pop.style.right = "0";
+    pop.style.left = "auto";
+    pop.style.top = "calc(100% + 10px)";
+    pop.style.bottom = "auto";
+    var rect = pop.getBoundingClientRect();
+    var slotRect = slot.getBoundingClientRect();
+    if (rect.left < 12) {
+      pop.style.right = "auto";
+      pop.style.left = (12 - slotRect.left) + "px";
+      rect = pop.getBoundingClientRect();
+    }
+    if (rect.right > window.innerWidth - 12) {
+      pop.style.right = "auto";
+      pop.style.left = (window.innerWidth - 12 - rect.width - slotRect.left) + "px";
+      rect = pop.getBoundingClientRect();
+    }
+    if (rect.bottom > window.innerHeight - 8 && slotRect.top > rect.height + 16) {
+      pop.style.top = "auto";
+      pop.style.bottom = "calc(100% + 10px)";
+    }
+  }
+
+  function openPopover(slot) {
+    closePopovers();
+    ensurePopover(slot);
+    var pop = slot.querySelector(".invite-popover");
+    pop.hidden = false;
+    slot.classList.add("is-popover-open");
+    window.requestAnimationFrame(function () {
+      clampPopover(slot);
+    });
   }
 
   function loadStatus() {
@@ -208,15 +279,8 @@
       });
   }
 
-  function openInvite() {
-    remember();
-    downloadSlots().forEach(revealSlot);
-    renderInvite();
-    loadStatus();
-  }
-
   function setFeedback(button, state) {
-    var panel = button.closest(".invite-panel");
+    var panel = button.closest(".invite-follow, .invite-popover");
     var node = panel && panel.querySelector("[data-invite-feedback]");
     if (!node) return;
     node.setAttribute("data-state", state);
@@ -272,6 +336,11 @@
   });
 
   document.addEventListener("click", function (event) {
+    if (event.target.closest("[data-invite-close]")) {
+      event.preventDefault();
+      closePopovers();
+      return;
+    }
     var copy = event.target.closest("[data-copy-invite]");
     if (copy) {
       event.preventDefault();
@@ -285,9 +354,34 @@
       return;
     }
     var link = event.target.closest("[data-download]");
-    if (!link) return;
-    link.setAttribute("href", DOWNLOAD_URL);
-    openInvite();
+    if (link) {
+      link.setAttribute("href", DOWNLOAD_URL);
+      remember();
+      var slot = link.closest("[data-download-slot]");
+      if (!slot) {
+        var follow = link.closest(".invite-follow");
+        var owner = follow && follow.getAttribute("data-invite-for");
+        slot = owner ? document.getElementById(owner) : null;
+      }
+      if (slot && slot.getAttribute("data-invite") === "inline") {
+        closePopovers();
+        revealInline(slot);
+      } else if (slot) {
+        openPopover(slot);
+      }
+      renderInvite();
+      loadStatus();
+      return;
+    }
+    if (!event.target.closest(".invite-popover")) closePopovers();
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") closePopovers();
+  });
+
+  window.addEventListener("resize", function () {
+    document.querySelectorAll(".download-slot.is-popover-open").forEach(clampPopover);
   });
 
   if (window.MutationObserver) {
@@ -297,5 +391,9 @@
     });
   }
 
-  if (remembered()) openInvite();
+  if (remembered()) {
+    document.querySelectorAll('[data-download-slot][data-invite="inline"]').forEach(revealInline);
+    renderInvite();
+    loadStatus();
+  }
 })();

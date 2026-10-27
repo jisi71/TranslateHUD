@@ -34,7 +34,7 @@ python3 -m http.server 8080
 
 首页介绍片是 `assets/intro-walkthrough.mp4`，用原生 `video` 播放，封面是 `assets/intro-poster.jpg`。不要改回占位说明，也不要在片子结束时加遮挡层。
 
-功能区里，选区、框选、朗读和名词解释是页面里拼出来的浮窗，不是系统截图。框选用的海报是 `ocr-demo-poster-alps-ski.jpg`。必要权限和下载准备里的辅助功能、录屏与系统录音用的是真实系统设置截图：`accessibility-clean.png`（另有 800 宽的 `accessibility-clean-800.png`）、`screen-recording-clean.png`（另有 `screen-recording-800.png`）。两处引用同一组文件。整张列表做了高斯模糊，再把 TranslateHUD 那一行（图标、名字、打开的开关）贴回原位。`permission-message.png` 是应用内提示，只用在更新说明里。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
+功能区里，选区、框选、朗读和名词解释是页面里拼出来的浮窗，不是系统截图。框选底图是 `montreal-winter-sports.jpg`（Montreal Winter Sports 1924 海报），蓝框圈住海报上的 Winter Sports，浮窗原文和译文与这几个词一致。下载准备里的辅助功能和录屏与系统录音各有一张真实系统设置截图：`accessibility-clean.png`（另有 800 宽的 `accessibility-clean-800.png`）、`screen-recording-clean.png`（另有 `screen-recording-800.png`）。每张只出现一次。整张列表做了高斯模糊，再把 TranslateHUD 那一行（图标、名字、打开的开关）贴回原位。`permission-message.png` 是应用内提示，只用在更新说明里。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
 
 - `translation-panel.png`
 - `permission-message.png`
@@ -60,4 +60,4 @@ Open <http://127.0.0.1:8080>. Release notes: <http://127.0.0.1:8080/changelog/>.
 
 Point GitHub Pages or Vercel at the `website/` directory as the site root. Do not publish the repository `docs/` folder as the site. On Vercel, set Root Directory to `website`, Framework Preset to Other, and leave the build command empty.
 
-The download URL is the notarized v0.4.1 universal zip above. v0.3.2 is still a draft with no package of its own. The intro film is `assets/intro-walkthrough.mp4` with poster `assets/intro-poster.jpg`. Accessibility and Screen & System Audio Recording use real System Settings screenshots in Required permissions and in Download and prepare; each appears twice and both tags share the same optimized file. The list is gaussian-blurred, and the TranslateHUD row (icon, name, and on switch) stays sharp. `permission-message.png` is the in-app tip and appears only in the release notes.
+The download URL is the notarized v0.4.1 universal zip above. v0.3.2 is still a draft with no package of its own. The intro film is `assets/intro-walkthrough.mp4` with poster `assets/intro-poster.jpg`. The region demo uses `assets/montreal-winter-sports.jpg`; the blue box and the panel both use the poster line “Winter Sports.” Accessibility and Screen & System Audio Recording each appear once, inside Download and prepare. The list is gaussian-blurred, and the TranslateHUD row (icon, name, and on switch) stays sharp. `permission-message.png` is the in-app tip and appears only in the release notes.

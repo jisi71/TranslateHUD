@@ -22,9 +22,8 @@
       /* private mode */
     }
 
-    document.querySelectorAll("[data-set-lang]").forEach(function (button) {
-      var on = button.getAttribute("data-set-lang") === lang;
-      button.setAttribute("aria-pressed", on ? "true" : "false");
+    document.querySelectorAll("[data-lang-toggle]").forEach(function (button) {
+      button.setAttribute("aria-pressed", lang === "en" ? "true" : "false");
     });
 
     document.querySelectorAll("[data-alt-zh]").forEach(function (node) {
@@ -51,9 +50,10 @@
   }
 
   document.addEventListener("click", function (event) {
-    var button = event.target.closest("[data-set-lang]");
+    var button = event.target.closest("[data-lang-toggle]");
     if (!button) return;
-    apply(button.getAttribute("data-set-lang"));
+    var current = document.documentElement.getAttribute("data-lang") === "en" ? "en" : "zh";
+    apply(current === "en" ? "zh" : "en");
   });
 
   apply(readSaved());

@@ -39,10 +39,9 @@
         <a href="./" aria-current="page"><span class="lang-zh">更新说明</span><span class="lang-en">Release notes</span></a>
       </nav>
       <div class="nav-actions">
-        <div class="lang-switch" role="group" aria-label="语言" data-aria-zh="语言" data-aria-en="Language">
-          <button type="button" data-set-lang="zh" aria-pressed="true">中文</button>
-          <button type="button" data-set-lang="en" aria-pressed="false">English</button>
-        </div>
+        <button type="button" class="lang-switch" data-lang-toggle aria-label="当前是中文，点按切换到英文" data-aria-zh="当前是中文，点按切换到英文" data-aria-en="English is on. Click to switch to Chinese">
+          <span class="lang-mark" data-for-lang="zh">中</span><span class="lang-slash" aria-hidden="true">/</span><span class="lang-mark" data-for-lang="en">E</span>
+        </button>
         <span class="download-slot" data-download-slot>
           <span class="btn-glow">
             <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.1/TranslateHUD-0.4.1-universal.zip">

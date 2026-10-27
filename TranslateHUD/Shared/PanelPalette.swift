@@ -227,9 +227,23 @@ struct PanelColors: Equatable {
 
     var nsBackground: NSColor { NSColor(white: backgroundWhite, alpha: 1) }
     var nsPrimaryText: NSColor { NSColor(white: primaryWhite, alpha: 1) }
+    var nsMuted: NSColor { Self.achromatic(mutedWhite) }
     var nsBorder: NSColor { NSColor(white: borderWhite, alpha: 1) }
     var nsCard: NSColor { NSColor(white: cardWhite, alpha: 1) }
-    var nsField: NSColor { NSColor(white: fieldWhite, alpha: 1) }
+    /// sRGB with equal channels. `NSColor(white:)` and the system text-field bezel can both read as cool blue.
+    var nsField: NSColor { Self.achromatic(fieldWhite) }
+
+    /// Equal red, green, and blue. No blue or purple cast in either appearance.
+    static func achromatic(_ white: CGFloat) -> NSColor {
+        NSColor(srgbRed: white, green: white, blue: white, alpha: 1)
+    }
+
+    static func isAchromatic(_ color: NSColor) -> Bool {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return false }
+        let spread = max(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+            - min(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+        return spread < 0.001
+    }
 }
 
 private struct PanelColorsKey: EnvironmentKey {

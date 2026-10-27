@@ -240,7 +240,7 @@ struct TranslationPanel: View {
             Image(systemName: "character.bubble")
                 .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(colors.muted)
-            Text("Translation")
+            Text("TranslateHUD")
                 .font(.system(size: 17, weight: .semibold))
             Spacer(minLength: 10)
             Menu {

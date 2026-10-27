@@ -99,7 +99,7 @@ final class SettingsUXTests: XCTestCase {
             backing: .buffered,
             defer: true
         )
-        SettingsWindowChrome.apply(to: window)
+        SettingsWindowChrome.apply(to: window, colors: .dark, followsSystem: false)
         XCTAssertEqual(window.appearance?.name, .darkAqua)
         XCTAssertTrue(window.titlebarAppearsTransparent)
         XCTAssertEqual(window.titlebarSeparatorStyle, .none)

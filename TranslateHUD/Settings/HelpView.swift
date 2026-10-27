@@ -24,6 +24,7 @@ enum SettingsRoute: Hashable {
 
 /// 这个设置窗口的标题栏不会自己长出返回按钮，所以在页面顶部放一个。
 struct SettingsBackContainer<Content: View>: View {
+    @Environment(\.panelColors) private var colors
     var title: String
     var goBack: () -> Void
     var content: Content
@@ -40,7 +41,7 @@ struct SettingsBackContainer<Content: View>: View {
                 Label(title, systemImage: "chevron.backward")
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(PanelPalette.primaryText)
+            .foregroundStyle(colors.primaryText)
             .help("返回\(title)")
             .accessibilityLabel("返回\(title)")
             .padding(.leading, 16)

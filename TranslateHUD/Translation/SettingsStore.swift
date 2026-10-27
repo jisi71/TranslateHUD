@@ -13,6 +13,7 @@ final class SettingsStore: ObservableObject {
         static let chineseVoiceIdentifier = "speech.chineseVoiceIdentifier"
         static let englishVoiceIdentifier = "speech.englishVoiceIdentifier"
         static let speechRate = "speech.rate"
+        static let appearance = AppearancePreference.storageKey
     }
 
     @Published var baseURL: String {
@@ -61,6 +62,14 @@ final class SettingsStore: ObservableObject {
             UserDefaults.standard.set(speechRate, forKey: K.speechRate)
         }
     }
+    /// 跟随系统 / 深色 / 浅色。浮窗和设置读同一个值。
+    @Published var appearancePreference: AppearancePreference {
+        didSet {
+            guard !suppressPersist else { return }
+            UserDefaults.standard.set(appearancePreference.rawValue, forKey: K.appearance)
+            PanelAppearance.shared.noteExternalChange()
+        }
+    }
     /// 内存里有没有非空 API Key。翻译浮窗看这个标记，不再读钥匙串。
     @Published private(set) var hasOwnAPIKey: Bool
 
@@ -74,6 +83,7 @@ final class SettingsStore: ObservableObject {
         englishVoiceIdentifier = UserDefaults.standard.string(forKey: K.englishVoiceIdentifier) ?? ""
         let savedSpeechRate = UserDefaults.standard.object(forKey: K.speechRate) as? Double
         speechRate = min(max(savedSpeechRate ?? 0.46, 0.35), 0.55)
+        appearancePreference = AppearancePreference.stored(UserDefaults.standard.string(forKey: K.appearance))
         apiKeyStore = StoredSecret(
             account: KeychainGate.apiKeyAccount,
             flagKey: KeychainGate.apiKeyFlag,

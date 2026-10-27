@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct FeedbackView: View {
+    @Environment(\.panelColors) private var colors
     @ObservedObject private var trial = TrialAccountStore.shared
     @State private var title = ""
     @State private var bodyText = ""
@@ -20,14 +21,14 @@ struct FeedbackView: View {
                 TextEditor(text: $bodyText)
                     .font(.body)
                     .scrollContentBackground(.hidden)
-                    .foregroundStyle(PanelPalette.primaryText)
+                    .foregroundStyle(colors.primaryText)
                     .frame(height: 72)
                     .fixedSize(horizontal: false, vertical: true)
                     .panelFieldSurface()
                     .overlay(alignment: .topLeading) {
                         if bodyText.isEmpty {
                             Text("问题描述")
-                                .foregroundStyle(PanelPalette.muted)
+                                .foregroundStyle(colors.muted)
                                 .padding(.top, 8)
                                 .padding(.leading, 5)
                                 .allowsHitTesting(false)
@@ -46,7 +47,7 @@ struct FeedbackView: View {
                         Spacer(minLength: 8)
                         Button("移除") { remove(item.id) }
                             .buttonStyle(.borderless)
-                            .foregroundStyle(PanelPalette.primaryText)
+                            .foregroundStyle(colors.primaryText)
                             .disabled(submitting)
                     }
                 }
@@ -55,7 +56,7 @@ struct FeedbackView: View {
                         .disabled(submitting || attachments.count >= FeedbackLimits.maxImages)
                     Text("可不加，最多 4 张")
                         .font(.caption)
-                        .foregroundStyle(PanelPalette.muted)
+                        .foregroundStyle(colors.muted)
                     Spacer()
                     Button(submitting ? "正在提交…" : "提交") {
                         Task { await submit() }
@@ -65,12 +66,12 @@ struct FeedbackView: View {
                 if !trial.isLoggedIn {
                     Text(FeedbackCopy.needLogin)
                         .font(.caption)
-                        .foregroundStyle(PanelPalette.muted)
+                        .foregroundStyle(colors.muted)
                 }
                 if !statusText.isEmpty {
                     Text(statusText)
                         .font(.caption)
-                        .foregroundStyle(succeeded ? Color.green : PanelPalette.error)
+                        .foregroundStyle(succeeded ? Color.green : colors.error)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

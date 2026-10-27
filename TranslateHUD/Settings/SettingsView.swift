@@ -4,6 +4,8 @@ import KeyboardShortcuts
 struct SettingsView: View {
     @ObservedObject private var store = SettingsStore.shared
     @ObservedObject private var trial = TrialAccountStore.shared
+    @ObservedObject private var appearance = PanelAppearance.shared
+    @Environment(\.colorScheme) private var systemScheme
     @State private var preset = ProviderPreset.matching(baseURL: SettingsStore.shared.baseURL)
     @State private var showApiKey = false
     @State private var testStatus: TestStatus = .idle
@@ -22,6 +24,7 @@ struct SettingsView: View {
         NavigationStack(path: $path) {
         ScrollView {
         Form {
+            appearanceSection
             trialSection
 
             Section("LLM 服务商") {
@@ -61,7 +64,7 @@ struct SettingsView: View {
                 }
                 Text("简体中文和 English 会按原文自动对调；其他语言保持不变。")
                     .font(.caption)
-                    .foregroundStyle(PanelPalette.muted)
+                    .foregroundStyle(colors.muted)
             }
             .panelSectionFill()
 
@@ -84,10 +87,10 @@ struct SettingsView: View {
 
                 LabeledContent("语速") {
                     HStack(spacing: 8) {
-                        Text("慢").font(.caption).foregroundStyle(PanelPalette.muted)
+                        Text("慢").font(.caption).foregroundStyle(colors.muted)
                         Slider(value: $store.speechRate, in: 0.35...0.55, step: 0.01)
                             .frame(width: 180)
-                        Text("快").font(.caption).foregroundStyle(PanelPalette.muted)
+                        Text("快").font(.caption).foregroundStyle(colors.muted)
                     }
                 }
 
@@ -123,7 +126,7 @@ struct SettingsView: View {
                 if let message = store.validationMessage {
                     Text(message)
                         .font(.caption)
-                        .foregroundStyle(PanelPalette.warning)
+                        .foregroundStyle(colors.warning)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -164,6 +167,26 @@ struct SettingsView: View {
         .frame(width: 560, height: 720)
     }
 
+    private var colors: PanelColors {
+        _ = appearance.changeID
+        return PanelColors.resolve(preference: store.appearancePreference, systemScheme: systemScheme)
+    }
+
+    private var appearanceSection: some View {
+        Section("外观") {
+            Picker("外观", selection: $store.appearancePreference) {
+                ForEach(AppearancePreference.allCases) { choice in
+                    Text(choice.title).tag(choice)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
+            .accessibilityLabel("外观")
+        }
+        .panelSectionFill()
+    }
+
     /// 用户点选预设才写入地址和推荐模型。打开窗口时直接改 `preset`，不走这个 setter。
     private var presetBinding: Binding<ProviderPreset> {
         Binding(
@@ -189,23 +212,23 @@ struct SettingsView: View {
     private var loginConsent: some View {
         HStack(spacing: 4) {
             Text("登录即表示已阅读")
-                .foregroundStyle(PanelPalette.muted)
+                .foregroundStyle(colors.muted)
             Button {
                 path.append(SettingsRoute.agreement)
             } label: {
                 Text("用户协议").underline()
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(PanelPalette.primaryText)
+            .foregroundStyle(colors.primaryText)
             Text("和")
-                .foregroundStyle(PanelPalette.muted)
+                .foregroundStyle(colors.muted)
             Button {
                 path.append(SettingsRoute.privacy)
             } label: {
                 Text("隐私政策").underline()
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(PanelPalette.primaryText)
+            .foregroundStyle(colors.primaryText)
         }
         .font(.caption)
         .controlSize(.small)
@@ -255,7 +278,7 @@ struct SettingsView: View {
                         .textFieldStyle(.roundedBorder)
                     Text("每个账号只能领取一次。")
                         .font(.caption)
-                        .foregroundStyle(PanelPalette.muted)
+                        .foregroundStyle(colors.muted)
                     Button(trial.isBusy ? "正在领取…" : "领取 ¥2 体验额度") {
                         Task { await trial.redeemInvite() }
                     }
@@ -283,7 +306,7 @@ struct SettingsView: View {
             if !trial.statusMessage.isEmpty {
                 Text(trial.statusMessage)
                     .font(.caption)
-                    .foregroundStyle(PanelPalette.muted)
+                    .foregroundStyle(colors.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -313,7 +336,7 @@ struct SettingsView: View {
                 .font(.callout)
         case .fail(let msg):
             Label(msg, systemImage: "xmark.octagon.fill")
-                .foregroundStyle(PanelPalette.error)
+                .foregroundStyle(colors.error)
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
                 .help(msg)

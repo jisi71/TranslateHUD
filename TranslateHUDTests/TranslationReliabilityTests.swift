@@ -253,6 +253,146 @@ final class TranslationReliabilityTests: XCTestCase {
         XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
     }
 
+    func testStreamAcceptsTranslationThatKeepsOnlyLiterals() async throws {
+        let source = "Error: password update failed for alice@example.com. Open https://example.com/account/v1.2.0, read /var/log/app.log, version v2.3.1, and enter kQmNpLxRwTzY."
+        let translated = "错误：alice@example.com 的密码更新失败。打开 https://example.com/account/v1.2.0，阅读 /var/log/app.log，版本 v2.3.1，并输入 kQmNpLxRwTzY。"
+        let translator = mockTranslator(responses: [streamResult(translated), streamResult("不应该再请求")])
+        var resets = 0
+        var result = ""
+        for try await event in translator.translateStreaming(source, to: .chinese) {
+            switch event {
+            case .reset: resets += 1
+            case .delta(let partial): result = partial
+            }
+        }
+        XCTAssertEqual(result, translated)
+        XCTAssertEqual(resets, 0)
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+    }
+
+    func testStreamRejectsBarelyTranslatedErrorWords() async {
+        let source = "Error: HTTP request failed: invalid password or missing credentials"
+        let output = "错误：HTTP request 失败，invalid password 或 missing credentials 已被拒绝"
+        let translator = mockTranslator(responses: [streamResult(output), streamResult(output)])
+        do {
+            _ = try await collect(translator, source: source)
+            XCTFail("Ordinary words left in English must remain an error")
+        } catch TranslationError.quality(let message) {
+            XCTAssertTrue(message.contains("已尝试两次"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+    }
+
+    func testStreamAcceptsChineseGlossAroundTechnicalTerms() async throws {
+        let source = "Error: HTTP 401 Unauthorized: invalid password or missing credentials"
+        let translated = "错误（Error）：HTTP 401 未授权（Unauthorized）：无效（invalid）的密码（password）或缺失（missing）的凭据（credentials）"
+        let translator = mockTranslator(responses: [streamResult(translated)])
+        let result = try await collect(translator, source: source)
+        XCTAssertEqual(result, translated)
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+    }
+
+    func testStreamKeepsRicherReadableDraftWhenQualityStillFails() async throws {
+        let source = "Please update the configuration before restarting the service today"
+        let richer = "```\n请先更新配置，然后再重启这项服务\n```"
+        let thinner = "请更新后再看 update configuration before restarting service"
+        let translator = mockTranslator(responses: [streamResult(richer), streamResult(thinner)])
+        var resets = 0
+        var result = ""
+        for try await event in translator.translateStreaming(source, to: .chinese) {
+            switch event {
+            case .reset: resets += 1
+            case .delta(let partial): result = partial
+            }
+        }
+        XCTAssertEqual(result, richer)
+        XCTAssertEqual(resets, 1)
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+    }
+
+    func testStreamStillRejectsCaptionAroundTheOriginal() async {
+        let source = "Error: the password and credentials were rejected by the server"
+        let caption = "错误：" + source
+        let translator = mockTranslator(responses: [streamResult(caption), streamResult(caption)])
+        do {
+            _ = try await collect(translator, source: source)
+            XCTFail("A caption around the original must remain an error")
+        } catch TranslationError.quality(let message) {
+            XCTAssertTrue(message.contains("已尝试两次"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+    }
+
+    func testStreamStillRejectsBarelyTranslatedCode() async {
+        let source = "signals = detect_identity_confirm(anger_count)"
+        let output = "信号 = detect_identity_confirm(anger_count) signals"
+        let translator = mockTranslator(responses: [streamResult(output), streamResult(output)])
+        do {
+            _ = try await collect(translator, source: source)
+            XCTFail("Barely translated code must remain an error")
+        } catch TranslationError.quality(let message) {
+            XCTAssertTrue(message.contains("已尝试两次"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+    }
+
+    func testBatchKeepsTheRicherReadableDraft() async throws {
+        let source = "Please update the configuration before restarting the service today"
+        let thinner = "请更新后再看 update configuration before restarting service"
+        let richer = "```\n请先更新配置，然后再重启这项服务\n```"
+        let translator = mockTranslator(responses: [batchResult(thinner), batchResult(richer)])
+        let result = try await translator.translate([source], to: .chinese)
+        XCTAssertEqual(result, [richer])
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+    }
+
+    func testBatchRejectsEchoAfterTwoAttempts() async {
+        let source = "Please restart the background service"
+        let translator = mockTranslator(responses: [batchResult(source), batchResult(source)])
+        do {
+            _ = try await translator.translate([source], to: .chinese)
+            XCTFail("An echoed batch result must remain an error")
+        } catch TranslationError.quality(let message) {
+            XCTAssertTrue(message.contains("已尝试两次"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+    }
+
+    func testLineFallbackKeepsReadableStreamWhenBatchQualityFails() async throws {
+        let original = "Error: HTTP 401 Unauthorized\npassword authentication failed\ninvalid credentials"
+        let streamed = "错误：HTTP 401 未授权。密码认证失败。凭据无效。"
+        let lines = original.components(separatedBy: "\n")
+        let echo = try JSONSerialization.data(withJSONObject: [
+            "results": lines.enumerated().map { ["i": $0.offset, "t": $0.element] }
+        ])
+        let echoBody = try XCTUnwrap(String(data: echo, encoding: .utf8))
+        let translator = mockTranslator(responses: [
+            streamResult(streamed),
+            .batch(echoBody),
+            .batch(echoBody)
+        ])
+        let progress = TranslationProgress()
+        progress.startStreaming(translator: translator, original: original, target: .chinese)
+        for _ in 0..<100 {
+            if case .success = progress.state { break }
+            if case .failed = progress.state { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard case .success(let pairs) = progress.state else {
+            return XCTFail("Expected the streamed translation to stay visible")
+        }
+        XCTAssertEqual(pairs.first?.translated, streamed)
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 3)
+    }
+
     func testStreamSupportsMissingBlankSeparatorsAndDone() async throws {
         let translator = mockTranslator(responses: [.init(body: "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\ndata: [DONE]\n")])
         let result = try await collect(translator)
@@ -336,12 +476,24 @@ final class TranslationReliabilityTests: XCTestCase {
         XCTAssertTrue(pairs.isEmpty)
     }
 
-    private func collect(_ translator: OpenAICompatibleTranslator) async throws -> String {
+    private func collect(_ translator: OpenAICompatibleTranslator, source: String = "Hello") async throws -> String {
         var result = ""
-        for try await event in translator.translateStreaming("Hello", to: .chinese) {
+        for try await event in translator.translateStreaming(source, to: .chinese) {
             if case .delta(let partial) = event { result = partial }
         }
         return result
+    }
+
+    private func streamResult(_ text: String) -> TranslationURLProtocol.Response {
+        let payload: [String: Any] = ["choices": [["delta": ["content": text]]]]
+        let data = try! JSONSerialization.data(withJSONObject: payload)
+        let json = String(data: data, encoding: .utf8)!
+        return .init(body: "data: \(json)\n\ndata: [DONE]\n\n")
+    }
+
+    private func batchResult(_ text: String) -> TranslationURLProtocol.Response {
+        let data = try! JSONSerialization.data(withJSONObject: ["results": [["i": 0, "t": text]]])
+        return .batch(String(data: data, encoding: .utf8)!)
     }
 
     private func mockTranslator(responses: [TranslationURLProtocol.Response]) -> OpenAICompatibleTranslator {

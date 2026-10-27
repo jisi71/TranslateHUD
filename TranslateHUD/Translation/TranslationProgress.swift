@@ -139,12 +139,26 @@ final class TranslationProgress: ObservableObject {
                     let outputNL = lastPartial.filter { $0 == "\n" }.count
                     if inputNL >= 2 && outputNL != inputNL {
                         AppLog.info("流式输出行数不匹配（inNL=\(inputNL) outNL=\(outputNL)），fallback 逐行 JSON 批量")
-                        return try await translateLineByLine(
-                            translator: translator,
-                            original: original,
-                            target: target,
-                            context: context
-                        )
+                        do {
+                            return try await translateLineByLine(
+                                translator: translator,
+                                original: original,
+                                target: target,
+                                context: context
+                            )
+                        } catch let error as TranslationError {
+                            // 用户已经在看流式译文。逐行重译只是排版兜底，质量检查失败时不要用报错盖掉它。
+                            if case .quality = error,
+                               TranslationValidator.shouldPreserveReadableOutput(
+                                   input: original,
+                                   output: lastPartial,
+                                   target: target
+                               ) {
+                                AppLog.info("逐行重译未通过质量检查，保留已经显示的译文")
+                                return lastPartial
+                            }
+                            throw error
+                        }
                     }
                     guard !lastPartial.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                         throw TranslationError.parse("服务返回了空译文，请重试或更换模型。")

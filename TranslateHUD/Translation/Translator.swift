@@ -32,6 +32,7 @@ protocol Translator: Sendable {
 
     /// 流式：单条文本，逐字符 yield 累积译文（`.delta`）。
     /// 检测到原文回吐时会先 yield `.reset(reason)`、再以严格 prompt 重发，第二轮再 yield `.delta`。
+    /// 两轮质量检查都失败时，如果已经有可读译文，会再 yield 保留的那一轮，而不是报错。
     /// 默认实现回退到 batch 模式（一次性 yield 完整结果，无 reset）。
     /// `context` 是选区前后文，只供消歧；nil 时请求与只发送原文相同。
     func translateStreaming(

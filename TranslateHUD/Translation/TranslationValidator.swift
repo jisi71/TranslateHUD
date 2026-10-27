@@ -53,22 +53,61 @@ enum TranslationValidator {
         return failures
     }
 
-    /// 「翻了一半」检测：原文里的英文 identifier 在输出里大量原样保留，说明 bare identifier 没翻译。
-    /// 排除网址等保护内容和带目标语言释义的专名后，至少三个词中有 70% 原样保留。
+    /// 「翻了一半」：大量像普通英文词的片段原样留在译文里，而且几乎没有目标语言。
+    /// 不靠词表。不算进去的只有邮箱、网址、路径、版本号，以及无序字母串、密码类随机串。
+    /// 「原名（中文）」或「中文（原名）」算这个词已经翻译。
     static func isUnderTranslated(input: String, output: String, target: TargetLanguage) -> Bool {
         let nonLatinTargets: Set<TargetLanguage> = [.chinese, .japanese, .korean, .russian, .arabic]
         guard nonLatinTargets.contains(target) else { return false }
         guard !isProtectedLiteral(input) else { return false }
 
-        let inputTokens = extractIdentifierTokens(from: input)
-        guard inputTokens.count >= 3 else { return false }
+        let counts = unresolvedOrdinaryWords(input: input, output: output, target: target)
+        guard counts.total >= 3 else { return false }
+        guard Double(counts.unresolved) / Double(counts.total) >= 0.7 else { return false }
+        // 主体已经是目标语言时，不把这轮判成没翻。要抓的是普通词大多没动、几乎没有中文。
+        let script = targetScriptCount(in: output, target: target)
+        let density = Double(script) / Double(max(output.count, 1))
+        if script >= 12 && density >= 0.34 { return false }
+        return true
+    }
 
-        var preservedCount = 0
-        for tok in inputTokens where output.range(of: tok) != nil && !hasLocalizedGloss(tok, in: output, target: target) {
-            preservedCount += 1
+    /// 质量检查偏严时，是否仍把这段译文留给用户看。
+    /// 空译文、整段回吐原文、明确拒绝翻译不保留。
+    /// 大量普通英文词还在、中文很少的草稿也不保留。
+    static func shouldPreserveReadableOutput(input: String, output: String, target: TargetLanguage) -> Bool {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let failures = validate(input: input, output: trimmed, target: target)
+        if failures.contains(.emptyOutput) || failures.contains(.echoedInput) || failures.contains(.refusalDetected) {
+            return false
         }
-        let preservedRatio = Double(preservedCount) / Double(inputTokens.count)
-        return preservedRatio >= 0.7
+        if failures.isEmpty { return true }
+        guard targetScriptCount(in: trimmed, target: target) >= 8 else { return false }
+        if isNearVerbatim(input: input, output: trimmed, target: target) { return false }
+        let counts = unresolvedOrdinaryWords(input: input, output: trimmed, target: target)
+        if counts.total >= 2, Double(counts.unresolved) / Double(counts.total) >= 0.5 { return false }
+        return true
+    }
+
+    /// 两轮都只有软失败时，留下目标语言更多的那一轮。
+    static func preferredReadableOutput(
+        current: String?,
+        candidate: String,
+        input: String,
+        target: TargetLanguage
+    ) -> String? {
+        guard shouldPreserveReadableOutput(input: input, output: candidate, target: target) else { return current }
+        guard let current else { return candidate }
+        if readableScore(input: input, output: candidate, target: target)
+            > readableScore(input: input, output: current, target: target) {
+            return candidate
+        }
+        return current
+    }
+
+    static func readableScore(input: String, output: String, target: TargetLanguage) -> Int {
+        let script = targetScriptCount(in: output, target: target)
+        return script * 1000 + output.count
     }
 
     /// 批量级别的「翻了一半」检测：把所有输入合并成一段、所有输出合并成一段再判。
@@ -103,11 +142,107 @@ enum TranslationValidator {
         return tokens
     }
 
-    // URLs, addresses and paths must survive translation and do not measure its quality.
+    // 邮箱、网址、路径、版本号可以原样留下，不拿来衡量译文质量。
     private static let protectedSpans = try! NSRegularExpression(
-        pattern: #"https?://[^\s<>\"']+|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?:^|\s)(?:~/|/)[^\s]+"#,
+        pattern: #"https?://[^\s<>"']+|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?:^|\s)(?:~/|/)[^\s]+|[A-Za-z]:\\[^\s]+|(?:^|\s)(?:[\w.-]+/){2,}[\w.-]+|(?:^|\s)[\w.-]+/[\w.-]+\.[A-Za-z0-9]{1,8}|\bv?\d+(?:\.\d+){1,}(?:[-+][0-9A-Za-z.]+)?\b"#,
         options: [.caseInsensitive]
     )
+
+    private static func unresolvedOrdinaryWords(
+        input: String,
+        output: String,
+        target: TargetLanguage
+    ) -> (unresolved: Int, total: Int) {
+        let tokens = extractIdentifierTokens(from: input).filter { !isOpaqueSecret($0) }
+        guard !tokens.isEmpty else { return (0, 0) }
+        let searchable = maskingResolvedSpans(output, target: target)
+        var unresolved = 0
+        for token in tokens {
+            if hasLocalizedGloss(token, in: output, target: target) { continue }
+            if containsIdentifier(token, in: searchable) { unresolved += 1 }
+        }
+        return (unresolved, tokens.count)
+    }
+
+    /// 无序字母串、密码类随机串。外形像普通英文词的不算。
+    private static func isOpaqueSecret(_ token: String) -> Bool {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains(where: \.isWhitespace) else { return false }
+        guard trimmed.count >= 4 else { return false }
+        if isWordIdentifier(trimmed) { return false }
+
+        let runs = letterRuns(in: trimmed).filter { $0.count >= 4 }
+        if runs.contains(where: { isWordIdentifier($0) }) { return false }
+
+        let hasUpper = trimmed.contains { $0.isASCII && $0.isUppercase }
+        let hasLower = trimmed.contains { $0.isASCII && $0.isLowercase }
+        let hasDigit = trimmed.contains(where: \.isNumber)
+        let mixedCase = hasUpper && hasLower
+        let lettersAndDigits = (hasUpper || hasLower) && hasDigit
+        let vowelless = !hasVowel(trimmed) && trimmed.count >= 6
+        return mixedCase || lettersAndDigits || vowelless
+    }
+
+    /// 普通英文词，或由普通英文词拼成的 snake_case / camelCase。这些必须翻译。
+    private static func isWordIdentifier(_ token: String) -> Bool {
+        if isOrdinaryWord(token) { return true }
+        if token.contains("_") {
+            let parts = token.split(separator: "_").map(String.init).filter { $0.count >= 4 }
+            return !parts.isEmpty && parts.allSatisfy(isOrdinaryWord)
+        }
+        let parts = camelParts(token)
+        if parts.count >= 2 {
+            let meaningful = parts.filter { $0.count >= 4 || ($0.count >= 2 && $0.allSatisfy(\.isUppercase)) }
+            return !meaningful.isEmpty && meaningful.allSatisfy { part in
+                isOrdinaryWord(part) || (part.count <= 6 && part.allSatisfy(\.isUppercase))
+            }
+        }
+        return isOrdinaryWord(token)
+    }
+
+    private static func isOrdinaryWord(_ token: String) -> Bool {
+        guard token.count >= 4, token.allSatisfy({ $0.isLetter && $0.isASCII }) else { return false }
+        let isAllUpper = token.allSatisfy(\.isUppercase)
+        let isAllLower = token.allSatisfy(\.isLowercase)
+        let isCapitalized = token.first?.isUppercase == true && token.dropFirst().allSatisfy(\.isLowercase)
+        guard isAllUpper || isAllLower || isCapitalized else { return false }
+        if isAllUpper && token.count <= 6 { return true }
+        return hasVowel(token)
+    }
+
+    private static func camelParts(_ token: String) -> [String] {
+        var parts: [String] = []
+        var current = ""
+        for character in token where character.isLetter {
+            if character.isUppercase, !current.isEmpty {
+                parts.append(current)
+                current = String(character)
+            } else {
+                current.append(character)
+            }
+        }
+        if !current.isEmpty { parts.append(current) }
+        return parts
+    }
+
+    private static func letterRuns(in text: String) -> [String] {
+        var runs: [String] = []
+        var current = ""
+        for character in text {
+            if character.isLetter && character.isASCII {
+                current.append(character)
+            } else if !current.isEmpty {
+                runs.append(current)
+                current = ""
+            }
+        }
+        if !current.isEmpty { runs.append(current) }
+        return runs
+    }
+
+    private static func hasVowel(_ text: String) -> Bool {
+        text.contains { "aeiouyAEIOUY".contains($0) }
+    }
 
     private static func hasLocalizedGloss(_ token: String, in output: String, target: TargetLanguage) -> Bool {
         let pattern = NSRegularExpression.escapedPattern(for: token) + #"\s*[（(]([^）)]+)[）)]"#
@@ -117,6 +252,124 @@ enum TranslationValidator {
             guard let glossRange = Range(match.range(at: 1), in: output) else { return false }
             let gloss = String(output[glossRange])
             return target == .chinese ? containsHan(gloss) : isAlreadyInTarget(text: gloss, target: target)
+        }
+    }
+
+    /// 抹掉「中文（原名）」和括注里的目标语言，避免把已经解释过的专名再算成没翻译。
+    /// 代码实参如 `fn(anger_count)` 前面不是目标文字、括号里也没有目标文字，不会被抹掉。
+    private static func maskingResolvedSpans(_ output: String, target: TargetLanguage) -> String {
+        var chars = Array(output)
+        var index = 0
+        while index < chars.count {
+            let opener = chars[index]
+            let closer: Character
+            if opener == "（" { closer = "）" }
+            else if opener == "(" { closer = ")" }
+            else { index += 1; continue }
+
+            guard let end = chars[(index + 1)...].firstIndex(of: closer) else {
+                index += 1
+                continue
+            }
+            let precededByTarget = previousNonSpace(chars, before: index)
+                .map { isTargetScriptCharacter($0, target: target) } ?? false
+            let interiorHasTarget = chars[(index + 1)..<end].contains {
+                isTargetScriptCharacter($0, target: target)
+            }
+            if precededByTarget || interiorHasTarget {
+                for cursor in index...end { chars[cursor] = " " }
+                index = end + 1
+            } else {
+                index += 1
+            }
+        }
+        return String(chars)
+    }
+
+    private static func previousNonSpace(_ chars: [Character], before index: Int) -> Character? {
+        var cursor = index - 1
+        while cursor >= 0 {
+            if !chars[cursor].isWhitespace { return chars[cursor] }
+            cursor -= 1
+        }
+        return nil
+    }
+
+    /// 整词匹配，避免 `user` 撞上 `username` 这类更长的标识符。
+    private static func containsIdentifier(_ token: String, in text: String) -> Bool {
+        guard !token.isEmpty else { return false }
+        var search = text.startIndex
+        while let found = text.range(of: token, range: search..<text.endIndex) {
+            let beforeOK = found.lowerBound == text.startIndex
+                || !isIdentifierCharacter(text[text.index(before: found.lowerBound)])
+            let afterOK = found.upperBound == text.endIndex
+                || !isIdentifierCharacter(text[found.upperBound])
+            if beforeOK && afterOK { return true }
+            search = found.upperBound
+        }
+        return false
+    }
+
+    private static func isIdentifierCharacter(_ character: Character) -> Bool {
+        character == "_" || (character.isLetter && character.isASCII)
+    }
+
+    /// 几乎把原文搬回来，只在前面加了几个字。这种不算可读译文。
+    private static func isNearVerbatim(input: String, output: String, target: TargetLanguage) -> Bool {
+        let source = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rendered = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty, !rendered.isEmpty else { return false }
+
+        let script = targetScriptCount(in: rendered, target: target)
+        let density = Double(script) / Double(max(rendered.count, 1))
+        // 先写出整段译文、再引用原文时，目标文字本身已经够读，不当作回吐。
+        if script >= 12, density >= 0.22 { return false }
+
+        if source.count >= 16, rendered.contains(source) {
+            let added = rendered.count - source.count
+            if added <= max(24, source.count / 3) { return true }
+        }
+
+        let tokens = extractIdentifierTokens(from: source)
+        guard tokens.count >= 3 else { return false }
+        let kept = tokens.filter { containsIdentifier($0, in: rendered) }.count
+        let keptRatio = Double(kept) / Double(tokens.count)
+        return keptRatio >= 0.85 && density < 0.28 && script < 12
+    }
+
+    private static func targetScriptCount(in text: String, target: TargetLanguage) -> Int {
+        text.reduce(into: 0) { count, character in
+            if isTargetScriptCharacter(character, target: target) { count += 1 }
+        }
+    }
+
+    private static func isTargetScriptCharacter(_ character: Character, target: TargetLanguage) -> Bool {
+        character.unicodeScalars.contains { isTargetScript($0, target: target) }
+    }
+
+    private static func isTargetScript(_ scalar: Unicode.Scalar, target: TargetLanguage) -> Bool {
+        switch target {
+        case .chinese:
+            return isHanScalar(scalar)
+        case .japanese:
+            return isHanScalar(scalar) || (0x3040...0x30FF).contains(scalar.value)
+        case .korean:
+            return (0xAC00...0xD7AF).contains(scalar.value)
+        case .russian:
+            return (0x0400...0x04FF).contains(scalar.value)
+        case .arabic:
+            return (0x0600...0x06FF).contains(scalar.value)
+        default:
+            return false
+        }
+    }
+
+    private static func isHanScalar(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF:
+            return true
+        default:
+            return false
         }
     }
 
@@ -156,14 +409,7 @@ enum TranslationValidator {
     }
 
     private static func containsHan(_ text: String) -> Bool {
-        text.unicodeScalars.contains { scalar in
-            switch scalar.value {
-            case 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF:
-                return true
-            default:
-                return false
-            }
-        }
+        text.unicodeScalars.contains(where: isHanScalar)
     }
 
     private static func isProtectedLiteral(_ text: String) -> Bool {
@@ -176,6 +422,15 @@ enum TranslationValidator {
         if matches(#"^v?\d+(\.\d+)+$"#, text: trimmed) { return true }
         if matches(#"^[A-Za-z]{2,3}[-_][A-Z]{2}$"#, text: trimmed) { return true }
         if trimmed.count >= 8, trimmed.allSatisfy({ $0.isHexDigit }) { return true }
+        if isStandalonePath(trimmed) { return true }
+        if isOpaqueSecret(trimmed) { return true }
+        return false
+    }
+
+    private static func isStandalonePath(_ text: String) -> Bool {
+        guard !text.contains(where: \.isWhitespace) else { return false }
+        if text.hasPrefix("/") || text.hasPrefix("~/") { return true }
+        if text.contains("/") || text.contains("\\") { return true }
         return false
     }
 

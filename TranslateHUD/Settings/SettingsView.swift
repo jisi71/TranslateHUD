@@ -36,19 +36,19 @@ struct SettingsView: View {
 
                 if preset.isCustom {
                     TextField("Base URL", text: $store.baseURL)
-                        .textFieldStyle(.roundedBorder)
+                        .panelTextInput()
                 }
 
                 TextField("Model", text: $store.model)
-                    .textFieldStyle(.roundedBorder)
+                    .panelTextInput()
 
                 HStack {
                     if showApiKey {
                         TextField("API Key", text: $store.apiKey)
-                            .textFieldStyle(.roundedBorder)
+                            .panelTextInput()
                     } else {
                         SecureField("API Key", text: $store.apiKey)
-                            .textFieldStyle(.roundedBorder)
+                            .panelTextInput()
                     }
                     Button(showApiKey ? "隐藏" : "显示") { showApiKey.toggle() }
                         .buttonStyle(.bordered)
@@ -275,7 +275,7 @@ struct SettingsView: View {
                 }
                 if !trial.inviteRedeemed, trial.balanceState != .loading {
                     TextField("邀请码", text: $trial.inviteCode)
-                        .textFieldStyle(.roundedBorder)
+                        .panelTextInput()
                     Text("每个账号只能领取一次。")
                         .font(.caption)
                         .foregroundStyle(colors.muted)
@@ -287,9 +287,9 @@ struct SettingsView: View {
                 Button("退出登录") { trial.logout() }
             } else {
                 TextField("手机号", text: $trial.phone)
-                    .textFieldStyle(.roundedBorder)
+                    .panelTextInput()
                 TextField("短信验证码", text: $trial.code)
-                    .textFieldStyle(.roundedBorder)
+                    .panelTextInput()
                 HStack {
                     Button(trial.codeCooldown > 0 ? "\(trial.codeCooldown) 秒后可重发" : "获取验证码") {
                         Task { await trial.sendCode() }

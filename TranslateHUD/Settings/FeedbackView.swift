@@ -17,23 +17,10 @@ struct FeedbackView: View {
         Form {
             Section {
                 TextField("标题", text: $title)
-                    .textFieldStyle(.roundedBorder)
-                TextEditor(text: $bodyText)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .foregroundStyle(colors.primaryText)
+                    .panelTextInput()
+                PanelTextEditor(text: $bodyText, placeholder: "问题描述")
                     .frame(height: 72)
-                    .fixedSize(horizontal: false, vertical: true)
                     .panelFieldSurface()
-                    .overlay(alignment: .topLeading) {
-                        if bodyText.isEmpty {
-                            Text("问题描述")
-                                .foregroundStyle(colors.muted)
-                                .padding(.top, 8)
-                                .padding(.leading, 5)
-                                .allowsHitTesting(false)
-                        }
-                    }
                 ForEach(attachments) { item in
                     HStack(spacing: 8) {
                         Image(nsImage: item.preview)

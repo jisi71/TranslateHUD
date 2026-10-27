@@ -79,7 +79,7 @@
 
 ## 安装（普通用户）
 
-推荐安装 **Developer ID 公证包**。当前源码版本是 **0.4.1**（构建号 11）。公证和官网上传还没做，下面是公证完成后的安装方式。
+推荐安装 **Developer ID 公证包**。当前源码版本是 **0.4.1**（构建号 11）。官网下载按钮指向已发布的公证包。
 
 1. 从官网下载公证后的 `TranslateHUD-0.4.1-universal.zip`
 2. 解压，把 `TranslateHUD.app` 拖到 `/Applications/`
@@ -89,7 +89,7 @@
 
 已经装过、里面还没有「检查更新…」的版本，需要先手动安装一次带自动更新的公证包。这一次之后就可以在软件里更新。
 
-公证包还没放上官网。现在官网的下载按钮，以及这个链接，都是未公证的 [TranslateHUD-0.3.1-universal.zip](https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip)。若被 Gatekeeper 拦截，在「应用程序」里右键 TranslateHUD 并选择「打开」。
+官网下载按钮是已公证的 [TranslateHUD-0.4.1-universal.zip](https://github.com/jisi71/TranslateHUD/releases/download/v0.4.1/TranslateHUD-0.4.1-universal.zip)。解压后拖到「应用程序」，一般不用右键绕过。
 
 本地预览官网：`cd website && python3 -m http.server 8080`，打开 <http://127.0.0.1:8080>。GitHub Pages 或 Vercel 要把站点根目录指到 `website/`，不要指到 `docs/`。细节见 [website/README.md](website/README.md)。
 

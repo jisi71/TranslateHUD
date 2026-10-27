@@ -1,11 +1,13 @@
 (function () {
-  // Placeholder until the notarized 0.4.0 Release URL is published. Swap this line only.
-  var DOWNLOAD_URL = "https://github.com/jisi71/TranslateHUD/releases/download/v0.3.1/TranslateHUD-0.3.1-universal.zip";
+  // v0.4.1 notarized Developer ID package.
+  // Version 0.4.1, build 11. macOS 14 or later. Universal (Apple silicon and Intel).
+  var DOWNLOAD_URL = "https://github.com/jisi71/TranslateHUD/releases/download/v0.4.1/TranslateHUD-0.4.1-universal.zip";
 
   var INVITE_STATUS_URL = "https://translatehud-d4gl951eo8bef4702-1445578102.ap-shanghai.app.tcloudbase.com/v1/trial/invite-status";
+  var DEFAULT_INVITE_CODE = "translatehud-200";
   var SESSION_KEY = "translatehud.downloaded";
 
-  var statusState = { phase: "idle", remaining: null };
+  var statusState = { phase: "idle", remaining: null, exhausted: false, code: DEFAULT_INVITE_CODE };
 
   function remembered() {
     try {
@@ -39,23 +41,61 @@
     return null;
   }
 
+  function readCode(data) {
+    if (!data || typeof data.code !== "string") return DEFAULT_INVITE_CODE;
+    var code = data.code.trim();
+    return code ? code : DEFAULT_INVITE_CODE;
+  }
+
+  function inviteCode() {
+    return statusState.code || DEFAULT_INVITE_CODE;
+  }
+
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+    });
+  }
+
   function countText() {
     if (statusState.phase === "loading") return language() === "en" ? "Loading…" : "加载中…";
     if (statusState.phase === "ready") return String(statusState.remaining);
     return "—";
   }
 
-  function renderCount() {
-    var text = countText();
-    document.querySelectorAll("[data-invite-remaining]").forEach(function (node) {
-      node.textContent = text;
+  function fillCount(node, lang, exhausted) {
+    if (exhausted) {
+      node.textContent = lang === "en" ? "No redemptions left" : "次数已用尽";
+      return;
+    }
+    var prefix = lang === "en" ? "Remaining redemptions: " : "剩余可兑换次数：";
+    node.textContent = "";
+    node.appendChild(document.createTextNode(prefix));
+    var value = document.createElement("span");
+    value.setAttribute("data-invite-remaining", "");
+    value.textContent = countText();
+    node.appendChild(value);
+  }
+
+  function renderInvite() {
+    var code = inviteCode();
+    var exhausted = statusState.phase === "ready" && statusState.exhausted === true;
+    document.querySelectorAll("[data-invite-code-label]").forEach(function (node) {
+      var lang = node.getAttribute("data-invite-code-label");
+      node.textContent = lang === "en" ? "Invite code: " + code : "邀请码：" + code;
+    });
+    document.querySelectorAll("[data-copy-invite]").forEach(function (node) {
+      node.setAttribute("data-copy-invite", code);
+    });
+    document.querySelectorAll(".invite-note-count").forEach(function (node) {
+      fillCount(node, node.getAttribute("data-count-lang"), exhausted);
     });
   }
 
   function copyButtonMarkup() {
     var label = language() === "en" ? "Copy invite code" : "复制邀请码";
     return (
-      '<button type="button" class="invite-copy" data-copy-invite="translatehud-200" aria-label="' + label + '" data-aria-zh="复制邀请码" data-aria-en="Copy invite code">' +
+      '<button type="button" class="invite-copy" data-copy-invite="' + escapeHtml(inviteCode()) + '" aria-label="' + label + '" data-aria-zh="复制邀请码" data-aria-en="Copy invite code">' +
       '<svg class="icon-copy" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' +
       '<rect x="5.2" y="5.2" width="8.2" height="8.2" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"></rect>' +
       '<path d="M10.6 5.2V3.4A1.4 1.4 0 0 0 9.2 2H3.4A1.4 1.4 0 0 0 2 3.4v5.8A1.4 1.4 0 0 0 3.4 10.6H5.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>' +
@@ -68,16 +108,17 @@
   }
 
   function panelMarkup() {
+    var code = escapeHtml(inviteCode());
     return (
       '<div class="invite-panel">' +
       '<div class="invite-code button secondary large">' +
-      '<span class="lang-zh">邀请码：translatehud-200</span>' +
-      '<span class="lang-en">Invite code: translatehud-200</span>' +
+      '<span class="lang-zh" data-invite-code-label="zh">邀请码：' + code + "</span>" +
+      '<span class="lang-en" data-invite-code-label="en">Invite code: ' + code + "</span>" +
       copyButtonMarkup() +
       "</div>" +
       '<p class="invite-note">' +
-      '<span class="lang-zh"><span class="invite-note-lead">新用户输入邀请码获得2元体验额度</span><span class="invite-note-count">剩余可兑换次数：<span data-invite-remaining>' + countText() + "</span></span></span>" +
-      '<span class="lang-en"><span class="invite-note-lead">New users enter the invite code for ¥2 trial credit</span><span class="invite-note-count">Remaining redemptions: <span data-invite-remaining>' + countText() + "</span></span></span>" +
+      '<span class="lang-zh"><span class="invite-note-lead">新用户输入邀请码获得2元体验额度</span><span class="invite-note-count" data-count-lang="zh">剩余可兑换次数：<span data-invite-remaining>' + countText() + "</span></span></span>" +
+      '<span class="lang-en"><span class="invite-note-lead">New users enter the invite code for ¥2 trial credit</span><span class="invite-note-count" data-count-lang="en">Remaining redemptions: <span data-invite-remaining>' + countText() + "</span></span></span>" +
       "</p>" +
       "</div>"
     );
@@ -96,11 +137,11 @@
 
   function loadStatus() {
     if (statusState.phase === "loading" || statusState.phase === "ready") {
-      renderCount();
+      renderInvite();
       return;
     }
     statusState.phase = "loading";
-    renderCount();
+    renderInvite();
     var controller = typeof AbortController === "function" ? new AbortController() : null;
     var timer = window.setTimeout(function () {
       if (controller) controller.abort();
@@ -119,13 +160,17 @@
         if (remaining === null) throw new Error("remaining");
         statusState.phase = "ready";
         statusState.remaining = remaining;
-        renderCount();
+        statusState.exhausted = data.exhausted === true;
+        statusState.code = readCode(data);
+        renderInvite();
       })
       .catch(function () {
         if (statusState.phase === "ready") return;
         statusState.phase = "error";
         statusState.remaining = null;
-        renderCount();
+        statusState.exhausted = false;
+        statusState.code = DEFAULT_INVITE_CODE;
+        renderInvite();
       })
       .then(function () {
         window.clearTimeout(timer);
@@ -140,7 +185,7 @@
       inviteHosts().forEach(function (slot) {
         slot.classList.add("is-invited");
       });
-      renderCount();
+      renderInvite();
     }, 0);
   }
 
@@ -203,7 +248,7 @@
   });
 
   if (window.MutationObserver) {
-    new MutationObserver(renderCount).observe(document.documentElement, {
+    new MutationObserver(renderInvite).observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-lang"]
     });

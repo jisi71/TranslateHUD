@@ -1388,6 +1388,13 @@ html[data-lang="en"] .pair-src-en {
   font-weight: 700;
 }
 
+.release-copy {
+  margin: 14px 0 0;
+  color: var(--muted-warm);
+  font-size: 16px;
+  line-height: 1.65;
+}
+
 .release-meta {
   display: flex;
   flex-direction: column;

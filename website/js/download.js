@@ -57,8 +57,9 @@
     });
   }
 
-  function countText() {
-    if (statusState.phase === "loading") return language() === "en" ? "Loading…" : "加载中…";
+  function countText(lang) {
+    var which = lang || language();
+    if (statusState.phase === "loading") return which === "en" ? "Loading…" : "加载中…";
     if (statusState.phase === "ready") return String(statusState.remaining);
     return "—";
   }
@@ -73,7 +74,7 @@
     node.appendChild(document.createTextNode(prefix));
     var value = document.createElement("span");
     value.setAttribute("data-invite-remaining", "");
-    value.textContent = countText();
+    value.textContent = countText(lang);
     node.appendChild(value);
   }
 
@@ -89,6 +90,11 @@
     });
     document.querySelectorAll(".invite-note-count").forEach(function (node) {
       fillCount(node, node.getAttribute("data-count-lang"), exhausted);
+    });
+    document.querySelectorAll("[data-invite-feedback]").forEach(function (node) {
+      var state = node.getAttribute("data-state");
+      node.classList.toggle("is-error", state === "err");
+      node.textContent = state ? feedbackText(state) : "";
     });
   }
 
@@ -107,6 +113,17 @@
     );
   }
 
+  function feedbackText(state) {
+    var en = language() === "en";
+    if (state === "ok") return en ? "Copied" : "已复制";
+    if (state === "err") {
+      return en
+        ? "Couldn't copy. Select the invite code and copy it manually."
+        : "复制失败，请手动选择邀请码复制。";
+    }
+    return "";
+  }
+
   function panelMarkup() {
     var code = escapeHtml(inviteCode());
     return (
@@ -117,22 +134,36 @@
       copyButtonMarkup() +
       "</div>" +
       '<p class="invite-note">' +
-      '<span class="lang-zh"><span class="invite-note-lead">新用户输入邀请码获得2元体验额度</span><span class="invite-note-count" data-count-lang="zh">剩余可兑换次数：<span data-invite-remaining>' + countText() + "</span></span></span>" +
-      '<span class="lang-en"><span class="invite-note-lead">New users enter the invite code for ¥2 trial credit</span><span class="invite-note-count" data-count-lang="en">Remaining redemptions: <span data-invite-remaining>' + countText() + "</span></span></span>" +
+      '<span class="lang-zh"><span class="invite-note-lead">新用户输入邀请码获得2元体验额度</span><span class="invite-note-count" data-count-lang="zh">剩余可兑换次数：<span data-invite-remaining>' + countText("zh") + "</span></span></span>" +
+      '<span class="lang-en"><span class="invite-note-lead">New users enter the invite code for ¥2 trial credit</span><span class="invite-note-count" data-count-lang="en">Remaining redemptions: <span data-invite-remaining>' + countText("en") + "</span></span></span>" +
       "</p>" +
+      '<p class="invite-feedback" data-invite-feedback role="status" aria-live="polite" aria-atomic="true"></p>' +
       "</div>"
     );
   }
 
-  function inviteHosts() {
-    return document.querySelectorAll("[data-invite-host]");
+  function downloadSlots() {
+    return document.querySelectorAll("[data-download-slot]");
   }
 
-  function ensurePanels() {
-    inviteHosts().forEach(function (slot) {
-      if (slot.querySelector(".invite-panel")) return;
-      slot.insertAdjacentHTML("beforeend", panelMarkup());
+  function ensurePanel(slot) {
+    if (!slot || slot.querySelector(".invite-panel")) return;
+    slot.insertAdjacentHTML("beforeend", panelMarkup());
+  }
+
+  function markRedownload(slot) {
+    slot.querySelectorAll("[data-download]").forEach(function (link) {
+      var zh = link.querySelector(".lang-zh");
+      var en = link.querySelector(".lang-en");
+      if (zh) zh.textContent = "重新下载";
+      if (en) en.textContent = "Download again";
     });
+  }
+
+  function revealSlot(slot) {
+    ensurePanel(slot);
+    markRedownload(slot);
+    slot.classList.add("is-invited");
   }
 
   function loadStatus() {
@@ -178,33 +209,34 @@
   }
 
   function openInvite() {
-    ensurePanels();
     remember();
+    downloadSlots().forEach(revealSlot);
+    renderInvite();
     loadStatus();
-    window.setTimeout(function () {
-      inviteHosts().forEach(function (slot) {
-        slot.classList.add("is-invited");
-      });
-      renderInvite();
-    }, 0);
+  }
+
+  function setFeedback(button, state) {
+    var panel = button.closest(".invite-panel");
+    var node = panel && panel.querySelector("[data-invite-feedback]");
+    if (!node) return;
+    node.setAttribute("data-state", state);
+    node.classList.toggle("is-error", state === "err");
+    node.textContent = "";
+    window.requestAnimationFrame(function () {
+      if (node.getAttribute("data-state") !== state) return;
+      node.textContent = feedbackText(state);
+    });
   }
 
   function markCopied(button) {
     if (button._copyTimer) window.clearTimeout(button._copyTimer);
     button.classList.add("is-copied");
-    var copied = language() === "en" ? "Copied" : "已复制";
-    button.setAttribute("aria-label", copied);
     button._copyTimer = window.setTimeout(function () {
       button.classList.remove("is-copied");
-      var label = button.getAttribute(language() === "en" ? "data-aria-en" : "data-aria-zh");
-      if (label) button.setAttribute("aria-label", label);
-    }, 1200);
+    }, 1600);
   }
 
-  function copyCode(text) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(text);
-    }
+  function fallbackCopy(text) {
     return new Promise(function (resolve, reject) {
       var area = document.createElement("textarea");
       area.value = text;
@@ -226,6 +258,15 @@
     });
   }
 
+  function copyCode(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(function () {
+        return fallbackCopy(text);
+      });
+    }
+    return fallbackCopy(text);
+  }
+
   document.querySelectorAll("[data-download]").forEach(function (link) {
     link.setAttribute("href", DOWNLOAD_URL);
   });
@@ -236,8 +277,10 @@
       event.preventDefault();
       copyCode(copy.getAttribute("data-copy-invite")).then(function () {
         markCopied(copy);
+        setFeedback(copy, "ok");
       }, function () {
-        /* keep the icon; no alert */
+        copy.classList.remove("is-copied");
+        setFeedback(copy, "err");
       });
       return;
     }

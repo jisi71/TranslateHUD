@@ -6,7 +6,7 @@
 
 <https://github.com/jisi71/TranslateHUD/releases/download/v0.4.1/TranslateHUD-0.4.1-universal.zip>
 
-这是 2026-10-27 的 GitHub Release `v0.4.1`，Developer ID 签名并已公证，版本 0.4.1，构建号 11，macOS 14 及以上，Universal。SHA-256：`15200d28d505a27a102fecc14782686d6f90d0d71a94ebe827a63e25f89810ff`。仓库里的 v0.3.2 仍是草案，没有单独的安装包。介绍视频也还没有文件，首页对应位置是空的占位，没有视频地址。
+这是 2026-10-27 的 GitHub Release `v0.4.1`，Developer ID 签名并已公证，版本 0.4.1，构建号 11，macOS 14 及以上，Universal。SHA-256：`15200d28d505a27a102fecc14782686d6f90d0d71a94ebe827a63e25f89810ff`。仓库里的 v0.3.2 仍是草案，没有单独的安装包。首页介绍片是 `assets/intro-walkthrough.mp4`，封面是 `assets/intro-poster.jpg`。
 
 ## 本地预览
 
@@ -32,9 +32,9 @@ python3 -m http.server 8080
 
 ## 还缺的材料
 
-首页介绍片要等真实视频。计划内容是功能、界面，以及一点设计取舍。文件到位后再放到 `website/assets/`，并换掉 `index.html` 里的占位块。在那之前不要填一个猜测的视频地址。
+首页介绍片是 `assets/intro-walkthrough.mp4`，用原生 `video` 播放，封面是 `assets/intro-poster.jpg`。不要改回占位说明，也不要在片子结束时加遮挡层。
 
-功能区里，选区、框选、朗读和名词解释是页面里拼出来的浮窗，不是系统截图。框选用的海报是 `ocr-demo-poster-alps-ski.jpg`。介绍片还没有。必要权限和下载准备里的辅助功能、录屏与系统录音用的是真实系统设置截图：`accessibility-clean.png`、`screen-recording-clean.png`。整张列表做了高斯模糊，再把 TranslateHUD 那一行（图标、名字、打开的开关）贴回原位。`permission-message.png` 是应用内提示，只用在更新说明里。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
+功能区里，选区、框选、朗读和名词解释是页面里拼出来的浮窗，不是系统截图。框选用的海报是 `ocr-demo-poster-alps-ski.jpg`。必要权限和下载准备里的辅助功能、录屏与系统录音用的是真实系统设置截图：`accessibility-clean.png`（另有 800 宽的 `accessibility-clean-800.png`）、`screen-recording-clean.png`（另有 `screen-recording-800.png`）。两处引用同一组文件。整张列表做了高斯模糊，再把 TranslateHUD 那一行（图标、名字、打开的开关）贴回原位。`permission-message.png` 是应用内提示，只用在更新说明里。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
 
 - `translation-panel.png`
 - `permission-message.png`
@@ -45,7 +45,7 @@ python3 -m http.server 8080
 - `accessibility-clean.png`
 - `screen-recording-clean.png`
 
-图标来自 `TranslateHUD/Resources/Assets.xcassets` 的 `AppIcon-512.png`。换图时请同时替换这里的副本。
+图标来自 `TranslateHUD/Resources/Assets.xcassets` 的 `AppIcon-512.png`，站内用的是按显示尺寸导出的 `icon-32.png`、`icon-64.png`、`icon-128.png`、`icon-180.png`。页面里不要再引用 512 的原图。
 
 ## Preview and hosting (English)
 
@@ -60,4 +60,4 @@ Open <http://127.0.0.1:8080>. Release notes: <http://127.0.0.1:8080/changelog/>.
 
 Point GitHub Pages or Vercel at the `website/` directory as the site root. Do not publish the repository `docs/` folder as the site. On Vercel, set Root Directory to `website`, Framework Preset to Other, and leave the build command empty.
 
-The download URL is the notarized v0.4.1 universal zip above. v0.3.2 is still a draft with no package of its own, and the intro video has no file yet. Accessibility and Screen & System Audio Recording use real System Settings screenshots in Required permissions and in Download and prepare. The list is gaussian-blurred, and the TranslateHUD row (icon, name, and on switch) stays sharp. `permission-message.png` is the in-app tip and appears only in the release notes.
+The download URL is the notarized v0.4.1 universal zip above. v0.3.2 is still a draft with no package of its own. The intro film is `assets/intro-walkthrough.mp4` with poster `assets/intro-poster.jpg`. Accessibility and Screen & System Audio Recording use real System Settings screenshots in Required permissions and in Download and prepare; each appears twice and both tags share the same optimized file. The list is gaussian-blurred, and the TranslateHUD row (icon, name, and on switch) stays sharp. `permission-message.png` is the in-app tip and appears only in the release notes.

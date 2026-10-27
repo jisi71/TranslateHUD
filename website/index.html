@@ -6,11 +6,11 @@
   <title data-title-zh="TranslateHUD — macOS 菜单栏翻译" data-title-en="TranslateHUD — menu-bar translation for macOS">TranslateHUD — macOS 菜单栏翻译</title>
   <meta
     name="description"
-    data-desc-zh="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看流式译文。原文和译文可以朗读，专有名词可以按需用中文解释。需要自备 OpenAI 兼容接口。"
-    data-desc-en="TranslateHUD is a macOS menu-bar translator. Select text or drag a screen region and read the streaming translation in a floating panel. Speak either side, and ask for a Chinese gloss of names and terms. You bring your own OpenAI-compatible API."
-    content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看流式译文。原文和译文可以朗读，专有名词可以按需用中文解释。需要自备 OpenAI 兼容接口。">
-  <link rel="icon" href="assets/icon.png" type="image/png">
-  <link rel="apple-touch-icon" href="assets/icon.png">
+    data-desc-zh="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。新用户可用邀请码领取体验额度，兼容市面上主流API形式。"
+    data-desc-en="TranslateHUD is a macOS menu-bar translator. Select text or drag a screen region and read the translation in a floating panel. Speak either side, and ask for a gloss of names and terms. New users can redeem trial credit with an invite code. Compatible with mainstream API formats."
+    content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。新用户可用邀请码领取体验额度，兼容市面上主流API形式。">
+  <link rel="icon" href="assets/icon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="assets/icon-180.png">
   <style>
     html[data-lang="zh"] .lang-en { display: none !important; }
     html[data-lang="en"] .lang-zh { display: none !important; }
@@ -31,7 +31,7 @@
   <header class="site-header">
     <div class="wrap bar">
       <a class="brand" href="index.html">
-        <img src="assets/icon.png" width="512" height="512" alt="" aria-hidden="true">
+        <img src="assets/icon-64.png" srcset="assets/icon-64.png 64w, assets/icon-128.png 128w" sizes="32px" width="32" height="32" alt="" aria-hidden="true">
         TranslateHUD
       </a>
       <nav class="top-nav" aria-label="页面" data-aria-zh="页面" data-aria-en="Pages">
@@ -71,7 +71,7 @@
           <span class="lang-en">Select a passage or drag a region of the screen, then press Option+W. The translation appears at once.</span>
         </p>
         <div class="cta-row">
-          <span class="download-slot" data-download-slot data-invite-host>
+          <span class="download-slot" data-download-slot>
             <span class="btn-glow">
               <a class="button large" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.1/TranslateHUD-0.4.1-universal.zip">
                 <span class="lang-zh">下载 macOS 版</span>
@@ -86,29 +86,20 @@
         </div>
       </section>
 
-      <!--
-        Intro video slot. Do not point this at a URL until a real file exists.
-        The panel still is the product, shown inside the stage until a film is supplied.
-        Planned film: the features, the panel UI, and a little of the design reasoning.
-      -->
       <figure class="media-stage" id="video">
-        <div class="stage">
-          <div class="stage-pill">
-            <span class="lang-zh">介绍片还没有放进来</span>
-            <span class="lang-en">Intro video not added yet</span>
-          </div>
-          <img
-            src="assets/translation-panel.png"
-            width="1000"
-            height="654"
-            alt="TranslateHUD 深色翻译浮窗，使用示例文案。顶部可切换目标语言、置顶或关闭；中间是原文、状态和译文；底部是当前 API 与模型。"
-            data-alt-zh="TranslateHUD 深色翻译浮窗，使用示例文案。顶部可切换目标语言、置顶或关闭；中间是原文、状态和译文；底部是当前 API 与模型。"
-            data-alt-en="TranslateHUD’s dark translation panel, using sample copy. The top switches the target language, pins, or closes the panel. The middle shows the source, status, and translation. The bottom shows the current API and model.">
-          <p class="stage-note">
-            <span class="lang-zh">留给以后的一段片子：功能怎么用、浮窗长什么样，以及一点设计上的取舍。这里没有视频地址。画面是现在的浮窗，文案是示例。</span>
-            <span class="lang-en">Reserved for a later film: how the features work, what the panel looks like, and a little of the design reasoning. There is no video address. The picture is the current panel, and the words are sample copy.</span>
-          </p>
-        </div>
+        <video
+          class="intro-video"
+          controls
+          playsinline
+          preload="metadata"
+          poster="assets/intro-poster.jpg"
+          width="1920"
+          height="1080"
+          aria-label="TranslateHUD 介绍视频"
+          data-aria-zh="TranslateHUD 介绍视频"
+          data-aria-en="TranslateHUD intro video">
+          <source src="assets/intro-walkthrough.mp4" type="video/mp4">
+        </video>
       </figure>
 
       <section class="section" id="features">
@@ -217,7 +208,8 @@
                 src="assets/ocr-demo-poster-alps-ski.jpg"
                 width="864"
                 height="1152"
-                alt="">
+                alt=""
+                loading="lazy">
               <div class="capture-marquee">
                 <p class="poster-line">Fresh powder on the high slopes.</p>
                 <svg class="capture-cursor" viewBox="0 0 32 32" aria-hidden="true">
@@ -414,8 +406,11 @@
             <figure>
               <img
                 src="assets/accessibility-clean.png"
-                width="1452"
-                height="1266"
+                srcset="assets/accessibility-clean-800.png 800w, assets/accessibility-clean.png 1600w"
+                sizes="(max-width: 900px) 92vw, 560px"
+                width="1600"
+                height="1395"
+                loading="lazy"
                 alt="系统设置的辅助功能。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
                 data-alt-zh="系统设置的辅助功能。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
                 data-alt-en="System Settings, Accessibility. TranslateHUD’s icon, name, and on switch are sharp. Other apps are gaussian-blurred.">
@@ -437,8 +432,11 @@
             <figure>
               <img
                 src="assets/screen-recording-clean.png"
-                width="1450"
-                height="1268"
+                srcset="assets/screen-recording-800.png 800w, assets/screen-recording-clean.png 1600w"
+                sizes="(max-width: 900px) 92vw, 560px"
+                width="1600"
+                height="1399"
+                loading="lazy"
                 alt="系统设置的录屏与系统录音。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
                 data-alt-zh="系统设置的录屏与系统录音。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
                 data-alt-en="System Settings, Screen &amp; System Audio Recording. TranslateHUD’s icon, name, and on switch are sharp. Other apps are gaussian-blurred.">
@@ -485,8 +483,11 @@
             <figure class="setup-stage">
               <img
                 src="assets/accessibility-clean.png"
-                width="1452"
-                height="1266"
+                srcset="assets/accessibility-clean-800.png 800w, assets/accessibility-clean.png 1600w"
+                sizes="(max-width: 900px) 92vw, 560px"
+                width="1600"
+                height="1395"
+                loading="lazy"
                 alt="系统设置的辅助功能。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
                 data-alt-zh="系统设置的辅助功能。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
                 data-alt-en="System Settings, Accessibility. TranslateHUD’s icon, name, and on switch are sharp. Other apps are gaussian-blurred.">
@@ -511,8 +512,11 @@
             <figure class="setup-stage">
               <img
                 src="assets/screen-recording-clean.png"
-                width="1450"
-                height="1268"
+                srcset="assets/screen-recording-800.png 800w, assets/screen-recording-clean.png 1600w"
+                sizes="(max-width: 900px) 92vw, 560px"
+                width="1600"
+                height="1399"
+                loading="lazy"
                 alt="系统设置的录屏与系统录音。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
                 data-alt-zh="系统设置的录屏与系统录音。TranslateHUD 的图标、名字和打开的开关是清晰的，其他应用已高斯模糊。"
                 data-alt-en="System Settings, Screen &amp; System Audio Recording. TranslateHUD’s icon, name, and on switch are sharp. Other apps are gaussian-blurred.">
@@ -526,12 +530,12 @@
             <div class="setup-copy">
               <p class="step-no">4</p>
               <h3>
-                <span class="lang-zh">领体验额度，或用自己的接口</span>
-                <span class="lang-en">Trial credit, or your own API</span>
+                <span class="lang-zh">领体验额度</span>
+                <span class="lang-en">Redeem trial credit</span>
               </h3>
               <p>
-                <span class="lang-zh">在设置里用手机号登录，输入邀请码领取 ¥2 体验额度。也可以填写自己的兼容接口。</span>
-                <span class="lang-en">In Settings, sign in with a phone number and enter the invite code for ¥2 of trial credit. You can also use your own compatible API.</span>
+                <span class="lang-zh">在设置里用手机号登录，输入邀请码领取 ¥2 体验额度。兼容市面上主流API形式。</span>
+                <span class="lang-en">In Settings, sign in with a phone number and enter the invite code for ¥2 of trial credit. Compatible with mainstream API formats.</span>
               </p>
             </div>
           </li>
@@ -567,7 +571,7 @@
   <footer class="site-footer">
     <div class="wrap footer-bar">
       <a class="brand" href="index.html">
-        <img src="assets/icon.png" width="512" height="512" alt="" aria-hidden="true">
+        <img src="assets/icon-64.png" srcset="assets/icon-64.png 64w, assets/icon-128.png 128w" sizes="32px" width="32" height="32" alt="" aria-hidden="true" loading="lazy">
         TranslateHUD
       </a>
       <span class="download-slot" data-download-slot>

@@ -183,10 +183,6 @@ struct SettingsView: View {
             .labelsHidden()
             .frame(maxWidth: .infinity)
             .accessibilityLabel("外观")
-            Text("翻译浮窗和这个窗口用同一套外观。选「跟随系统」后，电脑切换浅色或深色时，两边一起变。")
-                .font(.caption)
-                .foregroundStyle(colors.muted)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .panelSectionFill()
     }

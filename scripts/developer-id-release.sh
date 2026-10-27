@@ -67,11 +67,11 @@ fi
 echo "  私钥: $PRIVATE_SOURCE"
 BUNDLE_ID="$(sparkle_bundle_identifier)"
 PINNED_TEAM="$(sparkle_pinned_team_id)"
-echo "  包标识: $BUNDLE_ID（更新时不能改）"
+echo "  包标识: ${BUNDLE_ID}（更新时不能改）"
 if [[ -z "$PINNED_TEAM" ]]; then
     echo "  Team ID: 还没写进 Config/DeveloperTeamID。正式打包会停在这里。"
 elif sparkle_team_id_is_valid "$PINNED_TEAM"; then
-    echo "  Team ID: $PINNED_TEAM（以后每次公证都要用这同一支）"
+    echo "  Team ID: ${PINNED_TEAM}（以后每次公证都要用这同一支）"
 else
     echo "  Team ID: Config/DeveloperTeamID 里的值不是 10 位。"
 fi
@@ -96,17 +96,17 @@ if [[ -n "$PINNED_TEAM" ]] && ! sparkle_team_id_is_valid "$PINNED_TEAM"; then
 fi
 if [[ -z "$PINNED_TEAM" ]]; then
     echo "请先把 Team ID 写进 Config/DeveloperTeamID 并提交。"
-    echo "在线更新必须一直用同一支 Developer ID Application，以及同一个包标识 $BUNDLE_ID。"
+    echo "在线更新必须一直用同一支 Developer ID Application，以及同一个包标识 ${BUNDLE_ID}。"
     echo "换 Team、换包标识，或改发 ad-hoc / 本机签名包，用户就要重新授权「辅助功能」和「屏幕录制」。"
     exit 1
 fi
 if [[ "${DEVELOPER_ID_TEAM_ID:-}" != "$PINNED_TEAM" ]]; then
-    echo "DEVELOPER_ID_TEAM_ID 必须等于 Config/DeveloperTeamID（$PINNED_TEAM）。"
+    echo "DEVELOPER_ID_TEAM_ID 必须等于 Config/DeveloperTeamID（${PINNED_TEAM}）。"
     echo "不能换 Team。换了之后，用户要重新授权辅助功能和屏幕录制。"
     exit 1
 fi
 if [[ "${DEVELOPER_ID_APP:-}" == "-" || "${DEVELOPER_ID_APP:-}" != *"Developer ID Application"* || "$DEVELOPER_ID_APP" != *"($PINNED_TEAM)"* ]]; then
-    echo "更新包必须用 Developer ID Application（$PINNED_TEAM）签名。"
+    echo "更新包必须用 Developer ID Application（${PINNED_TEAM}）签名。"
     echo "不能改用 ad-hoc、本机证书，或另一支 Team。"
     exit 1
 fi
@@ -232,13 +232,13 @@ fi
 INFO="$APP/Contents/Info.plist"
 ACTUAL_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO")"
 if [[ "$ACTUAL_BUNDLE_ID" != "$BUNDLE_ID" ]]; then
-    echo "包标识是 $ACTUAL_BUNDLE_ID，必须保持 $BUNDLE_ID。"
+    echo "包标识是 ${ACTUAL_BUNDLE_ID}，必须保持 ${BUNDLE_ID}。"
     echo "改了包标识，系统会把它当成新 App，辅助功能和屏幕录制要重新授权。"
     exit 1
 fi
 ACTUAL_TEAM="$(printf '%s\n' "$SIGNATURE" | sed -n 's/^TeamIdentifier=//p' | head -1)"
 if [[ "$ACTUAL_TEAM" == "not set" || -z "$ACTUAL_TEAM" || "$ACTUAL_TEAM" != "$PINNED_TEAM" ]]; then
-    echo "签出来的 Team ID 是「${ACTUAL_TEAM:-空}」，钉住的是 $PINNED_TEAM。"
+    echo "签出来的 Team ID 是「${ACTUAL_TEAM:-空}」，钉住的是 ${PINNED_TEAM}。"
     echo "ad-hoc 或另一支证书不能当更新包。用户会要重新授权辅助功能和屏幕录制。"
     exit 1
 fi
@@ -260,7 +260,7 @@ ENABLED="$(/usr/libexec/PlistBuddy -c 'Print :TranslateHUDUpdatesEnabled' "$INFO
 BUNDLED_KEY="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$INFO")"
 BUNDLED_FEED="$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$INFO")"
 if [[ "$ENABLED" != "YES" ]]; then
-    echo "安装包没有打开在线更新（TranslateHUDUpdatesEnabled=$ENABLED）。"
+    echo "安装包没有打开在线更新（TranslateHUDUpdatesEnabled=${ENABLED}）。"
     exit 1
 fi
 if [[ "$BUNDLED_KEY" != "$PUBLIC_KEY" ]]; then

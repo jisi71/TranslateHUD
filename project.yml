@@ -53,8 +53,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qi.TranslateHUD
         MACOSX_DEPLOYMENT_TARGET: "14.0"
-        MARKETING_VERSION: "0.4.0"
-        CURRENT_PROJECT_VERSION: "10"
+        MARKETING_VERSION: "0.4.1"
+        CURRENT_PROJECT_VERSION: "11"
         # 订阅地址。以后改成官网的 appcast 即可，不用改更新代码。
         TRANSLATEHUD_UPDATE_FEED_URL: "https://github.com/jisi71/TranslateHUD/releases/latest/download/appcast.xml"
         # 公钥由 Config/Sparkle.xcconfig 覆盖。这里留空，避免没配密钥时写成占位符。

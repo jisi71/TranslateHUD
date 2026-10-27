@@ -276,6 +276,9 @@ struct TranslationPanel: View {
                 isPinned.toggle()
                 onPin(isPinned)
             }
+            iconButton("gearshape", help: "设置") {
+                SettingsWindowController.shared.show()
+            }
             iconButton("xmark", help: "关闭（ESC）", action: onClose)
         }
         .padding(.horizontal, 18)

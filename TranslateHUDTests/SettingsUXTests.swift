@@ -202,6 +202,18 @@ final class SettingsUXTests: XCTestCase {
         XCTAssertTrue(feedback.contains("PanelTextEditor(text: $bodyText, placeholder: \"问题描述\")"))
     }
 
+    func testPanelHeaderUsesTheAppName() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let panel = try String(contentsOf: root.appendingPathComponent("TranslateHUD/Shared/TranslationPanel.swift"), encoding: .utf8)
+        let menu = try String(contentsOf: root.appendingPathComponent("TranslateHUD/App/TranslateHUDApp.swift"), encoding: .utf8)
+        XCTAssertTrue(panel.contains("Text(\"TranslateHUD\")"))
+        XCTAssertFalse(panel.contains("Text(\"Translation\")"))
+        XCTAssertTrue(menu.contains("退出 TranslateHUD"))
+        XCTAssertTrue(menu.contains("accessibilityLabel(\"TranslateHUD\")"))
+    }
+
     func testTextFieldsAreTheRespondersThatCanStealFocus() {
         XCTAssertTrue(SettingsWindow.isTextInput(NSTextField()))
         XCTAssertTrue(SettingsWindow.isTextInput(NSSecureTextField()))

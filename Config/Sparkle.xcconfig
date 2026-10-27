@@ -1,4 +1,4 @@
 // TranslateHUD 的 Sparkle 公钥。
 // 在自己的 Mac 上运行 scripts/sparkle-generate-keys.sh，它会把公钥写到下面这一行。
 // 公钥可以提交。私钥不要写进这个文件，也不要提交。
-SPARKLE_PUBLIC_ED_KEY =
+SPARKLE_PUBLIC_ED_KEY = /rPYuTol7IM0SHUUUmrjCBv8+aoW+O3euJ4hgaX21+c=

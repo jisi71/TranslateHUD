@@ -118,6 +118,90 @@ final class SettingsUXTests: XCTestCase {
         XCTAssertFalse(SettingsPanelSurface.textNeedsLightForeground(luma: PanelPalette.primaryWhite))
     }
 
+    func testNeutralFieldFillHasNoHueInEitherAppearance() {
+        XCTAssertTrue(PanelColors.isAchromatic(PanelColors.dark.nsField))
+        XCTAssertTrue(PanelColors.isAchromatic(PanelColors.light.nsField))
+        XCTAssertTrue(PanelColors.isAchromatic(PanelColors.dark.nsMuted))
+        XCTAssertTrue(PanelColors.isAchromatic(PanelColors.light.nsMuted))
+        XCTAssertEqual(
+            SettingsPanelSurface.luma(of: PanelColors.dark.nsField) ?? -1,
+            PanelColors.dark.fieldWhite,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            SettingsPanelSurface.luma(of: PanelColors.light.nsField) ?? -1,
+            PanelColors.light.fieldWhite,
+            accuracy: 0.01
+        )
+        XCTAssertGreaterThan(PanelColors.light.fieldWhite, 0.85)
+        XCTAssertLessThan(PanelColors.dark.fieldWhite, 0.2)
+    }
+
+    func testBlueCastAtTheSameBrightnessStillNeedsANeutralFill() {
+        let white = PanelPalette.fieldWhite
+        let blueCast = NSColor(srgbRed: white, green: white, blue: min(1, white + 0.03), alpha: 1)
+        XCTAssertTrue(SettingsPanelSurface.colorHasCast(blueCast))
+        XCTAssertFalse(SettingsPanelSurface.colorHasCast(PanelColors.dark.nsField))
+        XCTAssertFalse(SettingsPanelSurface.colorHasCast(PanelColors.light.nsField))
+        XCTAssertTrue(SettingsPanelSurface.fieldNeedsFill(luma: white, fieldWhite: white, color: blueCast))
+        XCTAssertFalse(SettingsPanelSurface.fieldNeedsFill(luma: white, fieldWhite: white, color: PanelColors.dark.nsField))
+        XCTAssertFalse(
+            SettingsPanelSurface.fieldNeedsFill(
+                luma: PanelColors.light.fieldWhite,
+                fieldWhite: PanelColors.light.fieldWhite,
+                color: PanelColors.light.nsField
+            )
+        )
+    }
+
+    func testDescriptionPlaceholderUsesTheCaretLine() {
+        let origin = CGPoint(x: PanelTextLayout.textContainerInset.width, y: PanelTextLayout.textContainerInset.height)
+        let lineHeight: CGFloat = 17
+        let fragment = CGRect(x: 0, y: 0, width: 240, height: lineHeight)
+        let placeholder = PanelTextLayout.placeholderLineRect(
+            containerOrigin: origin,
+            extraLineFragment: fragment,
+            lineFragmentPadding: PanelTextLayout.lineFragmentPadding,
+            viewWidth: 280,
+            trailingInset: PanelTextLayout.textContainerInset.width
+        )
+        let caretX = origin.x + fragment.minX + PanelTextLayout.lineFragmentPadding
+        let caretY = origin.y + fragment.minY
+        XCTAssertEqual(placeholder.minX, caretX, accuracy: 0.001)
+        XCTAssertEqual(placeholder.minY, caretY, accuracy: 0.001)
+        XCTAssertEqual(placeholder.height, lineHeight, accuracy: 0.001)
+        XCTAssertGreaterThan(placeholder.width, 100)
+
+        let textView = PanelPlaceholderTextView()
+        textView.frame = NSRect(x: 0, y: 0, width: 320, height: 72)
+        PanelTextEditor.configure(textView, colors: .dark)
+        textView.string = ""
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        let padding = textView.textContainer?.lineFragmentPadding ?? -1
+        let extra = textView.layoutManager?.extraLineFragmentRect ?? .zero
+        let drawn = PanelTextEditor.placeholderLineRect(in: textView)
+        XCTAssertEqual(padding, PanelTextLayout.lineFragmentPadding, accuracy: 0.001)
+        XCTAssertEqual(textView.textContainerInset, PanelTextLayout.textContainerInset)
+        XCTAssertEqual(textView.defaultParagraphStyle?.lineSpacing ?? -1, 0, accuracy: 0.001)
+        XCTAssertEqual(drawn.minX, textView.textContainerOrigin.x + extra.minX + padding, accuracy: 0.5)
+        XCTAssertEqual(drawn.minY, textView.textContainerOrigin.y + extra.minY, accuracy: 0.5)
+        XCTAssertTrue(PanelColors.isAchromatic(textView.backgroundColor ?? NSColor.black))
+    }
+
+    func testSettingsInputsDoNotUseTheSystemBezel() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let settings = try String(contentsOf: root.appendingPathComponent("TranslateHUD/Settings/SettingsView.swift"), encoding: .utf8)
+        let feedback = try String(contentsOf: root.appendingPathComponent("TranslateHUD/Settings/FeedbackView.swift"), encoding: .utf8)
+        XCTAssertFalse(settings.contains(".textFieldStyle(.roundedBorder)"))
+        XCTAssertFalse(feedback.contains(".textFieldStyle(.roundedBorder)"))
+        XCTAssertFalse(feedback.contains("TextEditor("))
+        XCTAssertEqual(settings.components(separatedBy: ".panelTextInput()").count - 1, 7)
+        XCTAssertTrue(feedback.contains(".panelTextInput()"))
+        XCTAssertTrue(feedback.contains("PanelTextEditor(text: $bodyText, placeholder: \"问题描述\")"))
+    }
+
     func testTextFieldsAreTheRespondersThatCanStealFocus() {
         XCTAssertTrue(SettingsWindow.isTextInput(NSTextField()))
         XCTAssertTrue(SettingsWindow.isTextInput(NSSecureTextField()))

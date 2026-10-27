@@ -16,6 +16,11 @@ extension View {
     func panelFieldSurface() -> some View {
         modifier(PanelFieldSurfaceModifier())
     }
+
+    /// Single-line settings field. Plain style, so AppKit's blue bezel is not drawn under the neutral fill.
+    func panelTextInput() -> some View {
+        modifier(PanelTextInputModifier())
+    }
 }
 
 private struct PanelChromeModifier: ViewModifier {
@@ -54,13 +59,29 @@ private struct PanelFieldSurfaceModifier: ViewModifier {
     @Environment(\.panelColors) private var colors
 
     func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: PanelTextLayout.cornerRadius, style: .continuous)
         content
-            .background(colors.fieldFill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(colors.controlBorder, lineWidth: 1)
+            .clipShape(shape)
+            .background { shape.fill(Color(nsColor: colors.nsField)) }
+            .overlay {
+                shape.strokeBorder(colors.controlBorder, lineWidth: 1)
                     .allowsHitTesting(false)
-            )
+            }
+    }
+}
+
+private struct PanelTextInputModifier: ViewModifier {
+    @Environment(\.panelColors) private var colors
+
+    func body(content: Content) -> some View {
+        content
+            .textFieldStyle(.plain)
+            .font(.body)
+            .foregroundStyle(colors.primaryText)
+            .padding(.horizontal, PanelTextLayout.fieldHorizontalPadding)
+            .padding(.vertical, PanelTextLayout.fieldVerticalPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .panelFieldSurface()
     }
 }
 
@@ -114,9 +135,19 @@ enum SettingsPanelSurface {
         fieldNeedsFill(luma: luma, fieldWhite: PanelPalette.fieldWhite)
     }
 
-    static func fieldNeedsFill(luma: CGFloat?, fieldWhite: CGFloat) -> Bool {
+    static func fieldNeedsFill(luma: CGFloat?, fieldWhite: CGFloat, color: NSColor? = nil) -> Bool {
+        // Same brightness as the neutral field can still be the system blue-gray. Repaint that too.
+        if colorHasCast(color) { return true }
         guard let luma else { return true }
         return abs(luma - fieldWhite) > 0.02
+    }
+
+    /// Channel spread above this is a visible hue, not color-management noise on a gray.
+    static func colorHasCast(_ color: NSColor?) -> Bool {
+        guard let rgb = color?.usingColorSpace(.sRGB) ?? color?.usingColorSpace(.deviceRGB) else { return false }
+        let spread = max(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+            - min(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+        return spread > 0.006
     }
 
     static func textNeedsLightForeground(luma: CGFloat?) -> Bool {
@@ -166,12 +197,14 @@ enum SettingsPanelSurface {
         let editor = scroll.documentView is NSTextView
         let color = editor ? colors.nsField : colors.nsBackground
         let target = editor ? colors.fieldWhite : colors.backgroundWhite
-        if needsPaint(scroll.backgroundColor, target: target) {
+        if editor ? fieldNeedsFill(luma: luma(of: scroll.backgroundColor), fieldWhite: target, color: scroll.backgroundColor)
+            : needsPaint(scroll.backgroundColor, target: target) {
             scroll.drawsBackground = true
             scroll.backgroundColor = color
         }
         let clip = scroll.contentView
-        if needsPaint(clip.backgroundColor, target: target) {
+        if editor ? fieldNeedsFill(luma: luma(of: clip.backgroundColor), fieldWhite: target, color: clip.backgroundColor)
+            : needsPaint(clip.backgroundColor, target: target) {
             clip.drawsBackground = true
             clip.backgroundColor = color
         }
@@ -193,14 +226,30 @@ enum SettingsPanelSurface {
         if field.appearance?.name != colors.appearanceName {
             field.appearance = NSAppearance(named: colors.appearanceName)
         }
-        if fieldNeedsFill(luma: luma(of: field.backgroundColor), fieldWhite: colors.fieldWhite) {
+        // The system rounded bezel keeps a blue-tinted fill even after backgroundColor is set.
+        // Leave the bezel alone while editing so the caret is not dismissed.
+        if !isEditing(field) {
+            if field.isBezeled { field.isBezeled = false }
+            if field.isBordered { field.isBordered = false }
+        }
+        if fieldNeedsFill(luma: luma(of: field.backgroundColor), fieldWhite: colors.fieldWhite, color: field.backgroundColor) {
             field.drawsBackground = true
             field.backgroundColor = colors.nsField
         }
-        // Don't restyle the live field editor; that can drop the insertion point.
+        if let editor = field.currentEditor() as? NSTextView {
+            paintFieldBackground(of: editor, colors: colors)
+        }
+        // Don't restyle the live field editor's text; that can drop the insertion point.
         if !isEditing(field), textNeedsPrimaryForeground(luma: luma(of: field.textColor), primaryWhite: colors.primaryWhite) {
             field.textColor = colors.nsPrimaryText
         }
+    }
+
+    /// Background only. Text color and selection stay with the field editor.
+    private static func paintFieldBackground(of text: NSTextView, colors: PanelColors) {
+        guard fieldNeedsFill(luma: luma(of: text.backgroundColor), fieldWhite: colors.fieldWhite, color: text.backgroundColor) else { return }
+        text.drawsBackground = true
+        text.backgroundColor = colors.nsField
     }
 
     private static func isEditing(_ field: NSTextField) -> Bool {
@@ -216,7 +265,7 @@ enum SettingsPanelSurface {
             text.textColor = colors.nsPrimaryText
             text.insertionPointColor = colors.nsPrimaryText
         }
-        if fieldNeedsFill(luma: luma(of: text.backgroundColor), fieldWhite: colors.fieldWhite) {
+        if fieldNeedsFill(luma: luma(of: text.backgroundColor), fieldWhite: colors.fieldWhite, color: text.backgroundColor) {
             text.drawsBackground = true
             text.backgroundColor = colors.nsField
         }

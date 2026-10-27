@@ -14,7 +14,12 @@ final class UpdatePolicyTests: XCTestCase {
         XCTAssertEqual(decision(flag: .text("NO"), signed: true).reason, .switchedOff)
         XCTAssertEqual(decision(flag: .missing, signed: true).reason, .switchedOff)
         XCTAssertEqual(decision(flag: .bool(true), signed: false).reason, .notDeveloperID)
-        XCTAssertTrue(decision(flag: .text("NO"), signed: false).statusMessage.contains("本机安装"))
+        let local = decision(flag: .text("NO"), signed: false)
+        XCTAssertFalse(local.isEnabled)
+        XCTAssertEqual(local.reason, .notDeveloperID)
+        XCTAssertNil(UpdateMenu.settingsCaption(state: .check, decision: local))
+        XCTAssertNil(UpdateMenu.settingsCaption(state: .check, decision: decision(debug: true, flag: .bool(true), signed: true)))
+        XCTAssertNil(UpdateMenu.settingsCaption(state: .check, decision: decision(flag: .text("NO"), signed: true)))
     }
 
     func testReleaseBuildNeedsKeyAndHTTPSFeed() {
@@ -28,6 +33,7 @@ final class UpdatePolicyTests: XCTestCase {
         XCTAssertEqual(decision(flag: .bool(true), feed: "$(TRANSLATEHUD_UPDATE_FEED_URL)", signed: true).reason, .invalidFeedURL)
         let blocked = decision(flag: .bool(true), key: "", signed: true)
         XCTAssertTrue(blocked.statusMessage.contains("可以继续用"))
+        XCTAssertEqual(UpdateMenu.settingsCaption(state: .check, decision: blocked), blocked.statusMessage)
     }
 
     func testNotarizedBuildCanCheckTheDefaultFeed() {
@@ -37,7 +43,9 @@ final class UpdatePolicyTests: XCTestCase {
             XCTAssertEqual(decision.feedURL?.absoluteString, feed)
         }
         XCTAssertFalse(decision(flag: .text("false"), signed: true).isEnabled)
-        XCTAssertTrue(decision(flag: .bool(true), signed: true).statusMessage.contains("每天"))
+        let enabled = decision(flag: .bool(true), signed: true)
+        XCTAssertTrue(enabled.statusMessage.contains("每天"))
+        XCTAssertEqual(UpdateMenu.settingsCaption(state: .check, decision: enabled), enabled.statusMessage)
         XCTAssertEqual(UpdatePolicy.scheduledCheckInterval, 86_400)
         XCTAssertTrue(feed.hasPrefix("https://github.com/jisi71/TranslateHUD/releases/latest/download/"))
     }

@@ -66,6 +66,24 @@ enum UpdateMenu {
             return "有新版本。点「更新」查看说明并安装。"
         }
     }
+
+    /// 设置里要不要再写一句说明。本机安装、调试包、开关关掉时不写，避免出现「已关闭在线更新」那段文案。
+    /// 有没有打开在线更新仍由 `UpdatePolicy.decide` 决定。
+    static func settingsCaption(state: UpdateMenuState, decision: UpdatePolicy.Decision) -> String? {
+        switch state {
+        case .ready:
+            return settingsDetail(for: .ready, fallback: "")
+        case .check:
+            switch decision.reason {
+            case .debugBuild, .switchedOff, .notDeveloperID:
+                return nil
+            case .missingPublicKey, .invalidFeedURL:
+                return decision.statusMessage
+            case .none:
+                return decision.isEnabled ? decision.statusMessage : nil
+            }
+        }
+    }
 }
 
 /// 给菜单和设置共用。Sparkle 的回调在主线程改它。
@@ -115,10 +133,12 @@ struct UpdateSettingsSection: View {
     var body: some View {
         Section("软件更新") {
             UpdateActionButton()
-            Text(UpdateMenu.settingsDetail(for: menu.state, fallback: UpdatePolicy.current.statusMessage))
-                .font(.caption)
-                .foregroundStyle(colors.muted)
-                .fixedSize(horizontal: false, vertical: true)
+            if let caption = UpdateMenu.settingsCaption(state: menu.state, decision: UpdatePolicy.current) {
+                Text(caption)
+                    .font(.caption)
+                    .foregroundStyle(colors.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .panelSectionFill()
     }

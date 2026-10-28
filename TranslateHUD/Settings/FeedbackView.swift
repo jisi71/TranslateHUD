@@ -16,7 +16,8 @@ struct FeedbackView: View {
     var body: some View {
         Form {
             Section {
-                TextField("标题", text: $title)
+                TextField("", text: $title, prompt: Text("标题"))
+                    .accessibilityLabel("标题")
                     .panelTextInput()
                 PanelTextEditor(text: $bodyText, placeholder: "问题描述")
                     .frame(height: 72)

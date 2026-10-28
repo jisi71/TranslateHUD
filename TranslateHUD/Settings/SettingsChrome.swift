@@ -81,6 +81,7 @@ private struct PanelTextInputModifier: ViewModifier {
             .padding(.horizontal, PanelTextLayout.fieldHorizontalPadding)
             .padding(.vertical, PanelTextLayout.fieldVerticalPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
             .panelFieldSurface()
     }
 }

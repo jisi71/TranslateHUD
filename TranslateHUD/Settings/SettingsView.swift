@@ -35,19 +35,23 @@ struct SettingsView: View {
                 }
 
                 if preset.isCustom {
-                    TextField("Base URL", text: $store.baseURL)
+                    TextField("", text: $store.baseURL, prompt: Text("Base URL"))
+                        .accessibilityLabel("Base URL")
                         .panelTextInput()
                 }
 
-                TextField("Model", text: $store.model)
+                TextField("", text: $store.model, prompt: Text("Model"))
+                    .accessibilityLabel("Model")
                     .panelTextInput()
 
                 HStack {
                     if showApiKey {
-                        TextField("API Key", text: $store.apiKey)
+                        TextField("", text: $store.apiKey, prompt: Text("API Key"))
+                            .accessibilityLabel("API Key")
                             .panelTextInput()
                     } else {
-                        SecureField("API Key", text: $store.apiKey)
+                        SecureField("", text: $store.apiKey, prompt: Text("API Key"))
+                            .accessibilityLabel("API Key")
                             .panelTextInput()
                     }
                     Button(showApiKey ? "隐藏" : "显示") { showApiKey.toggle() }
@@ -274,7 +278,8 @@ struct SettingsView: View {
                     }
                 }
                 if !trial.inviteRedeemed, trial.balanceState != .loading {
-                    TextField("邀请码", text: $trial.inviteCode)
+                    TextField("", text: $trial.inviteCode, prompt: Text("邀请码"))
+                        .accessibilityLabel("邀请码")
                         .panelTextInput()
                     Text("每个账号只能领取一次。")
                         .font(.caption)
@@ -286,9 +291,11 @@ struct SettingsView: View {
                 }
                 Button("退出登录") { trial.logout() }
             } else {
-                TextField("手机号", text: $trial.phone)
+                TextField("", text: $trial.phone, prompt: Text("手机号"))
+                    .accessibilityLabel("手机号")
                     .panelTextInput()
-                TextField("短信验证码", text: $trial.code)
+                TextField("", text: $trial.code, prompt: Text("短信验证码"))
+                    .accessibilityLabel("短信验证码")
                     .panelTextInput()
                 HStack {
                     Button(trial.codeCooldown > 0 ? "\(trial.codeCooldown) 秒后可重发" : "获取验证码") {

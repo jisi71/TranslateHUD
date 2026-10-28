@@ -202,6 +202,22 @@ final class SettingsUXTests: XCTestCase {
         XCTAssertTrue(feedback.contains("PanelTextEditor(text: $bodyText, placeholder: \"问题描述\")"))
     }
 
+    func testPanelInputsUseInternalPromptsAndAccessibleLabels() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let pattern = #"(?:TextField|SecureField)\("", text: [^\n]+, prompt: Text\("([^"]+)"\)\)\s*\.accessibilityLabel\("\1"\)\s*\.panelTextInput\(\)"#
+        let expression = try NSRegularExpression(pattern: pattern)
+        for (file, expectedCount) in [("SettingsView", 7), ("FeedbackView", 1)] {
+            let source = try String(contentsOf: root.appendingPathComponent("TranslateHUD/Settings/\(file).swift"), encoding: .utf8)
+            let range = NSRange(source.startIndex..<source.endIndex, in: source)
+            XCTAssertEqual(expression.numberOfMatches(in: source, range: range), expectedCount, file)
+            XCTAssertEqual(source.components(separatedBy: ".panelTextInput()").count - 1, expectedCount, file)
+        }
+        let chrome = try String(contentsOf: root.appendingPathComponent("TranslateHUD/Settings/SettingsChrome.swift"), encoding: .utf8)
+        XCTAssertTrue(chrome.contains(".frame(maxWidth: .infinity, alignment: .leading)\n            .contentShape(Rectangle())\n            .panelFieldSurface()"))
+    }
+
     func testPanelHeaderUsesTheAppName() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

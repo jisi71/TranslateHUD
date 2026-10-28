@@ -55,7 +55,7 @@ echo "→ 拷贝到 releases/..."
 cp -R "$APP" releases/TranslateHUD.app
 
 VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")"
-ZIP_NAME="TranslateHUD-${VERSION}-universal.zip"
+ZIP_NAME="TranslateHUD-${VERSION}.zip"
 
 echo "→ 压缩为 $ZIP_NAME..."
 cd releases

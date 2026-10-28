@@ -278,7 +278,7 @@ if [[ ! "$BUILD" =~ ^[0-9]+$ ]]; then
 fi
 
 mkdir -p releases
-ZIP_NAME="TranslateHUD-${VERSION}-universal.zip"
+ZIP_NAME="TranslateHUD-${VERSION}.zip"
 STAGE_APP="$DERIVED/zip-root/TranslateHUD.app"
 rm -rf "$DERIVED/zip-root"
 mkdir -p "$DERIVED/zip-root"
@@ -308,7 +308,7 @@ fi
 FINAL_ZIP="$ROOT/releases/$ZIP_NAME"
 make_zip "$FINAL_ZIP"
 
-DMG_NAME="TranslateHUD-${VERSION}-universal.dmg"
+DMG_NAME="TranslateHUD-${VERSION}.dmg"
 FINAL_DMG="$ROOT/releases/$DMG_NAME"
 DMG_ROOT="$DERIVED/dmg-root"
 echo "→ 制作首次安装用的 DMG..."

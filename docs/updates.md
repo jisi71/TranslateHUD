@@ -110,8 +110,8 @@ bash scripts/developer-id-release.sh --dry-run
 
 | 文件 | 附件名 | 用途 |
 |---|---|---|
-| `releases/TranslateHUD-<版本>-universal.dmg` | 保持这个文件名 | 首次安装，打开后拖到「应用程序」 |
-| `releases/TranslateHUD-<版本>-universal.zip` | 保持这个文件名 | Sparkle 自动更新，appcast 下载地址仍指向它 |
+| `releases/TranslateHUD-<版本>.dmg` | 保持这个文件名 | 首次安装，打开后拖到「应用程序」 |
+| `releases/TranslateHUD-<版本>.zip` | 保持这个文件名 | Sparkle 自动更新，appcast 下载地址仍指向它 |
 | `appcast.xml` | 必须叫 `appcast.xml` | 更新订阅 |
 
 不要上传私钥。示例命令脚本结束时会打印，确认无误后再自己执行。
@@ -122,7 +122,7 @@ bash scripts/developer-id-release.sh --dry-run
 
 安装包地址写在 appcast 里，默认是：
 
-`https://github.com/jisi71/TranslateHUD/releases/download/v<版本>/TranslateHUD-<版本>-universal.zip`
+`https://github.com/jisi71/TranslateHUD/releases/download/v<版本>/TranslateHUD-<版本>.zip`
 
 `releases/latest` 指向最新的正式 Release。所以每个正式 Release 都要带上名为 `appcast.xml` 的附件，并且里面的构建号比用户正在用的更大。
 

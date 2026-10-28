@@ -81,15 +81,15 @@
 
 推荐安装 **Developer ID 公证包**。当前源码版本是 **0.4.1**（构建号 11）。官网下载按钮指向已发布的公证包。
 
-1. 从官网下载公证后的 `TranslateHUD-0.4.1-universal.zip`
-2. 解压，把 `TranslateHUD.app` 拖到 `/Applications/`
+1. 从官网或 GitHub Release 下载公证后的 `TranslateHUD-0.4.1-universal.dmg`
+2. 打开 DMG，把 `TranslateHUD.app` 拖到「应用程序」
 3. 在「应用程序」里直接双击打开。Gatekeeper 应接受这个包
 4. 「辅助功能」和「屏幕录制」仍需手动授权，然后按 [首次使用](#首次使用) 完成配置
-5. 打开后可自动更新。公证版大约每天检查一次，也可以在菜单栏选「检查更新…」。订阅里有新版本后，这一项会变成「更新」，并带一个图标；点开就能看说明并安装，不用自己再拖一次 `.app`。以后在软件里更新，不用重新打开「辅助功能」和「屏幕录制」
+5. 打开后可自动更新。自动更新仍用 zip，软件会自己下载处理。公证版大约每天检查一次，也可以在菜单栏选「检查更新…」。订阅里有新版本后，这一项会变成「更新」，并带一个图标；点开就能看说明并安装，不用自己再拖一次 `.app`。以后在软件里更新，不用重新打开「辅助功能」和「屏幕录制」
 
-已经装过、里面还没有「检查更新…」的版本，需要先手动安装一次带自动更新的公证包。这一次之后就可以在软件里更新。
+已经装过、里面还没有「检查更新…」的版本，需要先下载 DMG，手动安装一次带自动更新的公证包。这一次之后就可以在软件里更新。
 
-官网下载按钮是已公证的 [TranslateHUD-0.4.1-universal.zip](https://github.com/jisi71/TranslateHUD/releases/download/v0.4.1/TranslateHUD-0.4.1-universal.zip)。解压后拖到「应用程序」，一般不用右键绕过。
+首次安装请下载已公证的 [TranslateHUD-0.4.1-universal.dmg](https://github.com/jisi71/TranslateHUD/releases/download/v0.4.1/TranslateHUD-0.4.1-universal.dmg)。打开后拖到「应用程序」，一般不用右键绕过。同一 Release 里的 zip 留给软件自动更新用。
 
 本地预览官网：`cd website && python3 -m http.server 8080`，打开 <http://127.0.0.1:8080>。GitHub Pages 或 Vercel 要把站点根目录指到 `website/`，不要指到 `docs/`。细节见 [website/README.md](website/README.md)。
 

@@ -2,11 +2,11 @@
 
 静态页面，没有后端，也没有构建步骤。默认语言是简体中文，页面上的「English」会切换到英文，选择记在这个浏览器的 `localStorage`（键名 `translatehud.lang`）。
 
-下载按钮指向目前已发布的公证包：
+下载按钮指向首次安装用的已公证 DMG：
 
-<https://github.com/jisi71/TranslateHUD/releases/download/v0.4.1/TranslateHUD-0.4.1-universal.zip>
+<https://github.com/jisi71/TranslateHUD/releases/download/v0.4.1/TranslateHUD-0.4.1-universal.dmg>
 
-这是 2026-10-27 的 GitHub Release `v0.4.1`，Developer ID 签名并已公证，版本 0.4.1，构建号 11，macOS 14 及以上，Universal。SHA-256：`15200d28d505a27a102fecc14782686d6f90d0d71a94ebe827a63e25f89810ff`。仓库里的 v0.3.2 仍是草案，没有单独的安装包。首页介绍片是 `assets/intro-walkthrough.mp4`，封面是 `assets/intro-poster.jpg`。
+这是 2026-10-27 的 GitHub Release `v0.4.1`，Developer ID 签名并已公证，版本 0.4.1，构建号 11，macOS 14 及以上，Universal。仓库里的 v0.3.2 仍是草案，没有单独的安装包。首页介绍片是 `assets/intro-walkthrough.mp4`，封面是 `assets/intro-poster.jpg`。
 
 ## 本地预览
 
@@ -62,4 +62,4 @@ Open <http://127.0.0.1:8080>. Release notes: <http://127.0.0.1:8080/changelog/>.
 
 Point GitHub Pages or Vercel at the `website/` directory as the site root. Do not publish the repository `docs/` folder as the site. On Vercel, set Root Directory to `website`, Framework Preset to Other, and leave the build command empty.
 
-The download URL is the notarized v0.4.1 universal zip above. v0.3.2 is still a draft with no package of its own. The intro film is `assets/intro-walkthrough.mp4` with poster `assets/intro-poster.jpg`. The region demo uses `assets/montreal-winter-sports.jpg`; the blue box and the panel both use the poster line “Winter Sports.” Accessibility and Screen & System Audio Recording each appear once, inside Download and prepare. Other apps in the list are gaussian-blurred. The TranslateHUD row (icon, name, and on switch), “隐私与安全性” in the sidebar, and the page title stay sharp. `permission-message.png` is the in-app tip and appears only in the release notes.
+The download URL is the notarized v0.4.1 universal DMG above for first-time installation. v0.3.2 is still a draft with no package of its own. The intro film is `assets/intro-walkthrough.mp4` with poster `assets/intro-poster.jpg`. The region demo uses `assets/montreal-winter-sports.jpg`; the blue box and the panel both use the poster line “Winter Sports.” Accessibility and Screen & System Audio Recording each appear once, inside Download and prepare. Other apps in the list are gaussian-blurred. The TranslateHUD row (icon, name, and on switch), “隐私与安全性” in the sidebar, and the page title stay sharp. `permission-message.png` is the in-app tip and appears only in the release notes.

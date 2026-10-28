@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-title-zh="隐私声明 — TranslateHUD" data-title-en="Privacy — TranslateHUD">隐私声明 — TranslateHUD</title>
+  <meta
+    name="description"
+    data-desc-zh="TranslateHUD 的内容处理与隐私声明。"
+    data-desc-en="How TranslateHUD processes content and protects privacy."
+    content="TranslateHUD 的内容处理与隐私声明。">
+  <link rel="icon" href="../assets/icon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="../assets/icon-180.png">
+  <style>
+    html[data-lang="zh"] .lang-en { display: none !important; }
+    html[data-lang="en"] .lang-zh { display: none !important; }
+  </style>
+  <script>
+    try {
+      var savedLang = localStorage.getItem("translatehud.lang");
+      if (savedLang === "en" || savedLang === "zh") {
+        document.documentElement.setAttribute("data-lang", savedLang);
+        document.documentElement.lang = savedLang === "en" ? "en" : "zh-CN";
+      }
+    } catch (error) {}
+  </script>
+  <link rel="stylesheet" href="../css/site.css">
+</head>
+<body>
+  <a class="skip" href="#content"><span class="lang-zh">跳到内容</span><span class="lang-en">Skip to content</span></a>
+  <header class="site-header">
+    <div class="wrap bar">
+      <a class="brand" href="../index.html">
+        <img src="../assets/icon-64.png" srcset="../assets/icon-64.png 64w, ../assets/icon-128.png 128w" sizes="32px" width="32" height="32" alt="" aria-hidden="true">
+        TranslateHUD
+      </a>
+      <nav class="top-nav" aria-label="页面" data-aria-zh="页面" data-aria-en="Pages">
+        <a href="../index.html"><span class="lang-zh">首页</span><span class="lang-en">Home</span></a>
+        <a href="../changelog/"><span class="lang-zh">更新说明</span><span class="lang-en">Release notes</span></a>
+      </nav>
+      <div class="nav-actions">
+        <button type="button" class="lang-switch" data-lang-toggle aria-label="当前是中文，点按切换到英文" data-aria-zh="当前是中文，点按切换到英文" data-aria-en="English is on. Click to switch to Chinese">
+          <span class="lang-mark" data-for-lang="zh">中</span><span class="lang-slash" aria-hidden="true">/</span><span class="lang-mark" data-for-lang="en">E</span>
+        </button>
+        <span class="download-slot" data-download-slot>
+          <span class="btn-glow">
+            <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.3/TranslateHUD-0.4.3-universal.dmg">
+              <span class="lang-zh">下载</span>
+              <span class="lang-en">Download</span>
+            </a>
+          </span>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main id="content">
+    <div class="wrap">
+      <div class="page-intro">
+        <h1>
+          <span class="lang-zh">隐私声明</span>
+          <span class="lang-en">Privacy</span>
+        </h1>
+      </div>
+
+      <article class="release">
+        <p class="release-copy">
+          <span class="lang-zh">TranslateHUD 只在你主动划词或截图翻译时处理内容。划词用辅助功能，截图用屏幕录制做本机文字识别，不会后台持续监听。</span>
+          <span class="lang-en">TranslateHUD only processes content when you actively select text or take a screenshot to translate. Selection uses Accessibility; screenshots use Screen Recording for on-device text recognition. It does not continuously listen in the background.</span>
+        </p>
+        <ul>
+          <li>
+            <span class="lang-zh">自备 API：翻译正文由本机直连你填写的服务，不经过我们的中转；密钥只保存在本机钥匙串。</span>
+            <span class="lang-en">Bring your own API: translation text goes from your Mac straight to the service you configure; it does not pass through our relay. Keys stay only in the on-device Keychain.</span>
+          </li>
+          <li>
+            <span class="lang-zh">登录体验额度：为完成翻译与扣费，原文会经我们的服务转发；我们不会把原文或译文写入账本或失败日志。</span>
+            <span class="lang-en">Signed-in trial credit: to complete translation and billing, the source text is forwarded through our service; we do not write source or translated text into ledgers or failure logs.</span>
+          </li>
+          <li>
+            <span class="lang-zh">框选翻译：本机识别出文字后再送去翻译；正常流程不上传整张截图。</span>
+            <span class="lang-en">Region translate: text is recognized on device first, then sent for translation; the normal flow does not upload the full screenshot.</span>
+          </li>
+          <li>
+            <span class="lang-zh">我们没有接入第三方崩溃或统计 SDK；失败时可能记录不含正文的短日志。自愿提交的问题反馈另当别论。</span>
+            <span class="lang-en">We do not integrate third-party crash or analytics SDKs; on failure we may record short logs that omit the text body. Voluntary problem reports are a separate case.</span>
+          </li>
+        </ul>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-bar">
+      <a class="brand" href="../index.html">
+        <img src="../assets/icon-64.png" srcset="../assets/icon-64.png 64w, ../assets/icon-128.png 128w" sizes="32px" width="32" height="32" alt="" aria-hidden="true" loading="lazy">
+        TranslateHUD
+      </a>
+      <span class="download-slot" data-download-slot>
+        <span class="btn-glow">
+          <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.3/TranslateHUD-0.4.3-universal.dmg">
+            <span class="lang-zh">下载 macOS 版</span>
+            <span class="lang-en">Download for macOS</span>
+          </a>
+        </span>
+      </span>
+      <a href="../index.html">
+        <span class="lang-zh">回到首页</span>
+        <span class="lang-en">Home</span>
+      </a>
+      <a href="https://github.com/jisi71/TranslateHUD">GitHub</a>
+      <a href="./"><span class="lang-zh">隐私声明</span><span class="lang-en">Privacy</span></a>
+    </div>
+  </footer>
+  <script src="../js/lang.js"></script>
+  <script src="../js/download.js"></script>
+</body>
+</html>

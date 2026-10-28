@@ -378,7 +378,7 @@ python3 "$ROOT/scripts/update_appcast.py" \
     --download-url "$DOWNLOAD_URL" \
     --ed-signature "$SIGNATURE_VALUE" \
     --length "$LENGTH" \
-    "${NOTES_ARGS[@]}"
+    "${NOTES_ARGS[@]+"${NOTES_ARGS[@]}"}"
 
 if [[ "$NOTARIZED" -eq 1 || "${TRANSLATEHUD_UPDATE_APPCAST:-}" == "1" ]]; then
     cp "$PREVIEW" "$ROOT/appcast.xml"

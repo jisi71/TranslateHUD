@@ -102,7 +102,7 @@ PORT=8080
 
 服务起来之后，把外网地址加上 `/v1`，写进 `project.yml` 的 `TRIAL_PROXY_BASE_URL`，再重新生成工程。例如 `https://你的服务域名/v1`。
 
-云托管需要能访问这个环境的云数据库（文档型）。镜像里会安装 `@cloudbase/node-sdk`。第一次读余额或邀请码次数时，服务会调用 `createCollection('trial_accounts')` 和 `createCollection('trial_invite')`。集合已经存在就跳过。问题反馈用集合 `trial_feedback`，第一次提交时自己建。失败记录用另一个集合 `trial_error_events`，不放在这次余额读取里：翻译不能因为失败记录建集合失败而中断。`npm run ensure-collection` 会把 `trial_accounts`、`trial_invite`、`trial_feedback` 和 `trial_error_events` 一起建好。服务第一次写入失败记录时，如果集合还没有，也会自己建 `trial_error_events`。账本文档 ID 仍是腾讯云用户 ID，登录和扣费都用它。App 设置里显示的是短号 `displayId`（第 1 个用户 `00001`），存在账本文档的 `displayNo` 上。发号计数在 `trial_invite` 文档 `config` 的 `nextDisplayNo`。邀请码计数也在这份 `config` 里。不需要先在控制台建集合，也不要改成 PostgreSQL。
+云托管需要能访问这个环境的云数据库（文档型）。镜像里会安装 `@cloudbase/node-sdk`。第一次读余额或邀请码次数时，服务会调用 `createCollection('trial_accounts')` 和 `createCollection('trial_invite')`。集合已经存在就跳过。问题反馈用集合 `trial_feedback`，第一次提交时自己建。失败记录用另一个集合 `trial_error_events`，不放在这次余额读取里：翻译不能因为失败记录建集合失败而中断。`npm run ensure-collection` 会把 `trial_accounts`、`trial_invite`、`trial_feedback`、`trial_error_events` 和 `trial_usage_events` 一起建好。服务第一次写入失败记录时，如果集合还没有，也会自己建 `trial_error_events`。账本文档 ID 仍是腾讯云用户 ID，登录和扣费都用它。App 设置里显示的是短号 `displayId`（第 1 个用户 `00001`），存在账本文档的 `displayNo` 上。发号计数在 `trial_invite` 文档 `config` 的 `nextDisplayNo`。邀请码计数也在这份 `config` 里。不需要先在控制台建集合，也不要改成 PostgreSQL。
 
 数据库报错会变成 `trial_store`，不会把数据库原文交给 App。App 显示：`体验余额暂时读不出来。请在设置里点余额旁的刷新。`
 
@@ -202,11 +202,38 @@ npx --yes @cloudbase/cli functions:deploy trial --config cloudbaserc.json
 
 1. 拉下包含这次改动的代码。
 2. `cd backend && npm install`
-3. `.env` 里已经是 `TRIAL_STORE=cloudbase`、`CLOUDBASE_ENV_ID=translatehud-d4gl951eo8bef4702`，并且填了腾讯云密钥时，运行 `npm run ensure-collection`。这会补上 `trial_error_events`。集合已存在会跳过。没跑也行：第一次写入失败记录时服务会自己建。建集合失败只影响失败记录，不影响翻译和扣费。
+3. `.env` 里已经是 `TRIAL_STORE=cloudbase`、`CLOUDBASE_ENV_ID=translatehud-d4gl951eo8bef4702`，并且填了腾讯云密钥时，运行 `npm run ensure-collection`。这会补上 `trial_error_events` 和 `trial_usage_events`。集合已存在会跳过。没跑也行：第一次写入失败记录时服务会自己建。建集合失败只影响失败记录，不影响翻译和扣费。
 4. 用现在的云托管重新部署 `backend/`（镜像是 `Dockerfile`）。App 打到的是 `TRIAL_PROXY_BASE_URL`，新接口是同一个服务上的 `POST /v1/trial/errors`。只部署备用云函数不会接到正式 App 的失败记录。
 5. 如果备用云函数也要带上这个接口：`npm run stage`，然后 `npx --yes @cloudbase/cli functions:deploy trial --config cloudbaserc.json`。HTTP 路径要能匹配 `/v1/trial/errors`。
 6. 看记录：云开发控制台 → 数据库 → 文档型数据库 → 集合 `trial_error_events`。
 7. 发一版新的 App 之后才会有客户端上报。这一步不在这次改动里做公证或 Release。旧 App 不会打这个接口；新 App 碰上还没升级的服务会得到 404，然后照常显示原来的错误。
+
+## 体验扣费流水
+
+体验翻译成功结算后，服务会往 `trial_usage_events` 写一条流水。流式和非流式都记，拿不到 usage 或结算失败就不记。这个集合只用来看每次实际扣了多少，App 不展示，也不存原文、译文或完整请求响应。
+
+写流水失败会在服务日志里记一条 `trial usage event failed`，不影响翻译成功，也不影响已经完成的扣费。流水是尽力记录，不能拿它当作余额账本；余额还是看 `trial_accounts`。
+
+| 字段 | 说明 |
+|---|---|
+| `userId` | 登录校验通过的腾讯云 uid，和账本文档 ID 一样，不是手机号 |
+| `displayNo` | 账本里的用户序号，有才写 |
+| `displayId` | 根据序号生成的短号，例如 `00001`，有序号才写 |
+| `promptTokens` | 上游 usage 的输入 token 数 |
+| `completionTokens` | 上游 usage 的输出 token 数 |
+| `cacheHitTokens` | 输入里命中缓存的 token 数，上游没给就是 null |
+| `extraTokens` | total_tokens 超出输入加输出的部分，没有就是 0 |
+| `costMicroYuan` | 本次计算出的费用，微元（1 元 = 1,000,000 微元） |
+| `chargedMicroYuan` | 实际扣费，余额不够时可能小于计算费用 |
+| `costFen` / `chargedFen` | 对应的分展示值，实际扣费仍按微元 |
+| `durationMs` | 从进入翻译处理到结算成功后准备写流水的耗时，毫秒，最小为 0 |
+| `createdAt` | 服务端准备写流水的时间，Unix 毫秒 |
+
+看记录：云开发控制台 → 数据库 → 文档型数据库 → 集合 `trial_usage_events`。按 `userId` 或短号 `displayId` 筛选某个用户，再按 `createdAt` 倒序看最近的扣费。对账时看 `chargedMicroYuan`；`costMicroYuan` 是计算费用，余额不够时两者不一样。
+
+`npm run ensure-collection` 会一并准备这个集合。没提前跑也行，服务第一次写流水时会自己建；集合缺失时会重试一次。不要为了查流水改余额或手工补扣费。
+
+本地 `TRIAL_STORE=file` 时，在 accounts 文件旁边追加 `usage-events.jsonl`，默认是 `backend/data/usage-events.jsonl`，不入库。需要换位置可以设置 `TRIAL_USAGE_EVENTS_FILE`。`TRIAL_STORE=memory` 只留内存，`TRIAL_STORE=cloudbase` 写云数据库。
 
 ## Yahao 怎么改邀请码和加名额
 

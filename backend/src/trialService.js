@@ -130,6 +130,35 @@ async function settleUsage(ctx, uid, usage, prices) {
   return settled
 }
 
+// Only explicit accounting fields belong here; never include request/response text.
+async function recordUsageEvent(ctx, { uid, usage, settled, startedAt }) {
+  if (!ctx.usageEvents) return
+  try {
+    const createdAt = ctx.now()
+    const event = {
+      userId: uid,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      cacheHitTokens: usage.cacheHitTokens,
+      extraTokens: usage.extraTokens,
+      costMicroYuan: settled.costMicroYuan,
+      chargedMicroYuan: settled.chargedMicroYuan,
+      costFen: settled.costFen,
+      chargedFen: settled.chargedFen,
+      durationMs: Math.max(0, createdAt - startedAt),
+      createdAt
+    }
+    const displayNo = settled.record && settled.record.displayNo
+    if (displayNo) {
+      event.displayNo = displayNo
+      event.displayId = formatDisplayId(displayNo)
+    }
+    await ctx.usageEvents.insert(event)
+  } catch (error) {
+    console.error(`trial usage event failed code=${(error && (error.causeCode || error.code)) || 'unknown'}`)
+  }
+}
+
 function accountPayload(uid, record, giftedNow) {
   return {
     userId: uid,
@@ -221,6 +250,7 @@ function holdRelease(release) {
 }
 
 async function handleTranslate(ctx) {
+  const startedAt = ctx.now()
   const rawBody = ctx.rawBody || ''
   if (Buffer.byteLength(rawBody) > MAX_BODY_BYTES) {
     return errorResult(413, 'trial_body_limit', MESSAGES.body)
@@ -301,6 +331,7 @@ async function handleTranslate(ctx) {
         try {
           const settled = await settleUsage(ctx, identified.uid, usage, prices)
           if (!settled) return usageMissingSSE()
+          await recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt })
           return settlementSSE(settled, usage)
         } catch (error) {
           console.error(`trial settle failed code=${(error && (error.causeCode || error.code)) || 'unknown'}`)
@@ -342,6 +373,7 @@ async function handleTranslate(ctx) {
       await release()
       return errorResult(502, 'trial_usage_missing', MESSAGES.usageMissing)
     }
+    await recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt })
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       parsed.translatehud_trial = settlementFields(settled, usage)
     }

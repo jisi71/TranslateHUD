@@ -752,7 +752,7 @@ html[data-lang="en"] .lang-zh {
 .stage-poster .hud-panel {
   top: auto;
   bottom: 4%;
-  width: min(360px, 56%);
+  width: min(400px, 64%);
 }
 
 .stage-speech,
@@ -1012,7 +1012,7 @@ html[data-lang="en"] .lang-zh {
 }
 
 .stage-select .hud-panel {
-  width: min(400px, 68%);
+  width: min(440px, 72%);
   right: 3%;
   bottom: 4%;
 }
@@ -1024,6 +1024,7 @@ html[data-lang="en"] .pair-src-en {
 
 .hud-panel {
   --hud-pad: 14px;
+  container-type: inline-size;
   position: absolute;
   z-index: 2;
   right: 4%;
@@ -1031,8 +1032,7 @@ html[data-lang="en"] .pair-src-en {
   width: min(400px, 72%);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 0 var(--hud-pad) 0;
+  padding: 0 var(--hud-pad);
   border-radius: 12px;
   background: #161616;
   color: #f0f0f0;
@@ -1064,15 +1064,16 @@ html[data-lang="en"] .pair-src-en {
 }
 
 .hud-head {
-  height: 44px;
+  min-height: 44px;
+  flex: none;
   border-bottom: 1px solid #2e2e2e;
 }
 
 .hud-logo {
   width: 18px;
   height: 18px;
-  border-radius: 5px;
   flex: none;
+  color: #a1a1a1;
 }
 
 .hud-title {
@@ -1080,25 +1081,38 @@ html[data-lang="en"] .pair-src-en {
   font-weight: 600;
   letter-spacing: -0.02em;
   color: #f0f0f0;
+  white-space: nowrap;
 }
 
 .hud-lang {
   margin-left: auto;
   gap: 4px;
-  color: rgba(246, 243, 236, 0.62);
+  color: #a1a1a1;
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .hud-tools {
   gap: 8px;
+  flex: none;
 }
 
 .hud-glyph {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   flex: none;
-  color: rgba(246, 243, 236, 0.62);
+  color: #a1a1a1;
+}
+
+.hud-glyph,
+.hud-chev,
+.hud-logo {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .hud-chev {
@@ -1108,8 +1122,11 @@ html[data-lang="en"] .pair-src-en {
 }
 
 .hud-source-row {
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
+  margin: 16px 0 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #2e2e2e;
 }
 
 .hud-source,
@@ -1120,6 +1137,7 @@ html[data-lang="en"] .pair-src-en {
 
 .hud-source {
   flex: 1;
+  min-width: 0;
   color: #a1a1a1;
   font-size: 13px;
   line-height: 1.45;
@@ -1131,13 +1149,14 @@ html[data-lang="en"] .pair-src-en {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.03);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-  color: rgba(246, 243, 236, 0.78);
+  color: #a1a1a1;
   font-size: 12px;
   font-weight: 500;
 }
 
 .hud-status .hud-glyph {
-  color: #c8c8c8;
+  width: 16px;
+  height: 16px;
 }
 
 .hud-glyph.is-speaking {
@@ -1145,6 +1164,7 @@ html[data-lang="en"] .pair-src-en {
 }
 
 .hud-out {
+  margin: 14px 0 20px;
   font-size: 15px;
   font-weight: 500;
   line-height: 1.45;
@@ -1159,7 +1179,8 @@ html[data-lang="en"] .pair-src-en {
 }
 
 .hud-foot {
-  height: 46px;
+  min-height: 46px;
+  flex: none;
   gap: 10px;
   border-top: 1px solid #2e2e2e;
 }
@@ -1175,18 +1196,63 @@ html[data-lang="en"] .pair-src-en {
 }
 
 .hud-provider {
+  flex: none;
   gap: 6px;
-  height: 28px;
-  padding: 0 8px;
+  height: 30px;
+  padding: 0 10px;
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
   color: rgba(246, 243, 236, 0.84);
   font-size: 13px;
+  white-space: nowrap;
 }
 
-.hud-provider {
-  flex: none;
+@container (max-width: 340px) {
+  .hud-head {
+    gap: 6px;
+  }
+
+  .hud-logo {
+    width: 16px;
+    height: 16px;
+  }
+
+  .hud-title {
+    font-size: 12px;
+  }
+
+  .hud-lang {
+    gap: 3px;
+    font-size: 11px;
+  }
+
+  .hud-chev {
+    width: 8px;
+    height: 8px;
+  }
+
+  .hud-tools {
+    gap: 5px;
+  }
+
+  .hud-tools .hud-glyph {
+    width: 14px;
+    height: 14px;
+  }
+
+  .hud-foot-tools {
+    gap: 9px;
+  }
+
+  .hud-foot .hud-glyph {
+    width: 16px;
+    height: 16px;
+  }
+
+  .hud-provider {
+    padding: 0 8px;
+  }
 }
 
 .plain-shot img,
@@ -1648,10 +1714,8 @@ html[data-lang="en"] .pair-src-en {
     width: min(320px, 92%);
     right: 3%;
     bottom: 4%;
-    gap: 8px;
   }
 
-  .hud-title,
   .hud-out {
     font-size: 13px;
   }

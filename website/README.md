@@ -40,6 +40,8 @@ python3 -m http.server 8080
 - `permission-message.png`
 - `quota-message.png`
 
+四处浮窗示意图共用 `assets/panel-icons.svg` 里的静态图标。顶栏使用灰色「字」对话框、TranslateHUD、语言、置顶、设置、关闭；底栏左侧依次是复制、名词解释、朗读（朗读中显示停止）、刷新，右侧是模型。手机窄屏只缩小间距和图标，不隐藏这些项目。
+
 系统设置这两张不在 `docs/screenshots/` 里，是单独放进 `website/assets/` 的：
 
 - `accessibility-clean.png`

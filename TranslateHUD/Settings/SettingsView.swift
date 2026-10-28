@@ -52,18 +52,44 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            List(SettingsPane.allCases, selection: $selectedPane) { pane in
-                Label(pane.title, systemImage: pane.symbol)
-                    .tag(pane)
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("TranslateHUD")
+                .font(.system(size: 12))
+                .foregroundStyle(colors.muted)
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
+                .padding(.bottom, 14)
+                ForEach(SettingsPane.allCases) { pane in
+                    Button {
+                        selectedPane = pane
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: pane.symbol)
+                            .frame(width: 18)
+                            Text(pane.title)
+                            Spacer()
+                        }
+                        .font(.system(size: 13.5, weight: activePane == pane ? .medium : .regular))
+                        .foregroundStyle(activePane == pane ? colors.primaryText : colors.muted)
+                        .padding(.horizontal, 10)
+                        .frame(height: 38)
+                        .background(activePane == pane ? colors.settingsSelection : .clear,
+                        in: RoundedRectangle(cornerRadius: 8))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(activePane == pane ? .isSelected : [])
+                }
+                Spacer()
             }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 150, ideal: 170, max: 200)
-            .panelChrome()
-        } detail: {
+            .padding(.horizontal, 10)
+            .padding(.vertical, 14)
+            .frame(width: 188)
+            .background(colors.settingsSidebar)
+            Rectangle().fill(colors.border).frame(width: 1)
             NavigationStack(path: $path) {
                 paneContent
-                    .navigationTitle(activePane.title)
                     .navigationDestination(for: SettingsRoute.self) { route in
                         settingsDestination(route)
                     }
@@ -71,7 +97,7 @@ struct SettingsView: View {
             .panelChrome()
         }
         .panelChrome()
-        .frame(minWidth: 740, minHeight: 560)
+        .frame(minWidth: 720, minHeight: 560)
         .onChange(of: selectedPane) { _, _ in
             path.removeAll()
             speechPreview.stop()
@@ -87,11 +113,11 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var paneContent: some View {
-        if activePane == .help {
-            HelpView()
-        } else {
-            ScrollView {
-                Form {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                Text(activePane.title)
+                .font(.system(size: 22, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
                     switch activePane {
                     case .general:
                         appearanceSection
@@ -108,35 +134,47 @@ struct SettingsView: View {
                     case .update:
                         UpdateSettingsSection()
                     case .help:
-                        EmptyView()
-                    }
+                    HelpView()
                 }
-                .formStyle(.grouped)
-                .panelChrome()
             }
-            .panelChrome()
+            .padding(.horizontal, 28)
+            .padding(.top, 22)
+            .padding(.bottom, 28)
+            .font(.system(size: 13))
+            .buttonStyle(SettingsButtonStyle())
         }
     }
 
     @ViewBuilder
     private var translationSections: some View {
-        Section("LLM 服务商") {
+        SettingsCard("LLM 服务商") {
+            LabeledContent("预设") {
             Picker("预设", selection: presetBinding) {
                 ForEach(ProviderPreset.all) { p in
                     Text(p.displayName).tag(p)
                 }
             }
-
-            if preset.isCustom {
-                TextField("", text: $store.baseURL, prompt: Text("Base URL"))
-                    .accessibilityLabel("Base URL")
-                    .panelTextInput()
+                .labelsHidden()
+                .frame(width: 200)
             }
 
-            TextField("", text: $store.model, prompt: Text("Model"))
+            if preset.isCustom {
+                LabeledContent("Base URL") {
+                    TextField("", text: $store.baseURL, prompt: Text("Base URL"))
+                    .accessibilityLabel("Base URL")
+                    .panelTextInput()
+                    .frame(width: 200)
+                }
+            }
+
+            LabeledContent("Model") {
+                TextField("", text: $store.model, prompt: Text("Model"))
                 .accessibilityLabel("Model")
                 .panelTextInput()
+                .frame(width: 200)
+            }
 
+            LabeledContent("API Key") {
             HStack {
                 if showApiKey {
                     TextField("", text: $store.apiKey, prompt: Text("API Key"))
@@ -148,24 +186,32 @@ struct SettingsView: View {
                         .panelTextInput()
                 }
                 Button(showApiKey ? "隐藏" : "显示") { showApiKey.toggle() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(SettingsButtonStyle())
+                }
+                .frame(width: 240)
             }
         }
-        .panelSectionFill()
 
-        Section("目标语言") {
+        SettingsCard("目标语言") {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("翻译为")
+                    Text("简体中文和 English 会按原文自动对调；其他语言保持不变。")
+                    .font(.caption)
+                    .foregroundStyle(colors.muted)
+                }
+                Spacer(minLength: 0)
             Picker("翻译为", selection: $store.targetLanguage) {
                 ForEach(TargetLanguage.allCases) { lang in
                     Text(lang.displayName).tag(lang)
                 }
             }
-            Text("简体中文和 English 会按原文自动对调；其他语言保持不变。")
-                .font(.caption)
-                .foregroundStyle(colors.muted)
+                .labelsHidden()
+                .frame(width: 200)
+            }
         }
-        .panelSectionFill()
 
-        Section("测试连接") {
+        SettingsCard("测试连接") {
             HStack {
                 Text("发送测试翻译 “Hello, world”")
                 Spacer()
@@ -182,24 +228,32 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .panelSectionFill()
     }
 
+    @ViewBuilder
     private var speechSection: some View {
-        Section("朗读") {
+        SettingsCard("声音") {
+            LabeledContent("中文声音") {
             Picker("中文声音", selection: $store.chineseVoiceIdentifier) {
                 Text("自动选择最高质量").tag("")
                 ForEach(SpeechController.voiceOptions(languagePrefix: "zh")) { voice in
                     Text("\(voice.displayName) · \(voice.language)").tag(voice.identifier)
                 }
             }
+                .labelsHidden()
+                .frame(width: 200)
+            }
             .id("zh-\(voiceRefreshToken)")
 
+            LabeledContent("英文声音") {
             Picker("英文声音", selection: $store.englishVoiceIdentifier) {
                 Text("自动选择最高质量").tag("")
                 ForEach(SpeechController.voiceOptions(languagePrefix: "en")) { voice in
                     Text("\(voice.displayName) · \(voice.language)").tag(voice.identifier)
                 }
+                }
+                .labelsHidden()
+                .frame(width: 200)
             }
             .id("en-\(voiceRefreshToken)")
 
@@ -212,14 +266,17 @@ struct SettingsView: View {
                 }
             }
 
-            HStack {
+        }
+        SettingsCard("试听") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("预览当前声音")
+                HStack(spacing: 8) {
                 Button("试听中文") {
                     speechPreview.toggle(text: "这是一段中文朗读示例，包含 Kubernetes API。", id: "settings.zh")
                 }
                 Button("试听英文") {
                     speechPreview.toggle(text: "This is an English speech preview for TranslateHUD.", id: "settings.en")
                 }
-                Spacer()
                 Button {
                     voiceRefreshToken += 1
                 } label: {
@@ -231,11 +288,11 @@ struct SettingsView: View {
                 }
             }
         }
-        .panelSectionFill()
+        }
     }
 
     private var shortcutsSection: some View {
-        Section("快捷键") {
+        SettingsCard("触发") {
             LabeledContent("截图翻译") {
                 KeyboardShortcuts.Recorder(for: .triggerScreenshot)
             }
@@ -243,7 +300,6 @@ struct SettingsView: View {
                 KeyboardShortcuts.Recorder(for: .triggerSelection)
             }
         }
-        .panelSectionFill()
     }
 
     private var colors: PanelColors {
@@ -252,17 +308,19 @@ struct SettingsView: View {
     }
 
     private var appearanceSection: some View {
-        Section("外观") {
+        SettingsCard("外观") {
+            LabeledContent("主题") {
             Picker("主题", selection: $store.appearancePreference) {
                 ForEach([AppearancePreference.light, .dark, .system]) { choice in
                     Text(choice.title).tag(choice)
                 }
             }
             .pickerStyle(.segmented)
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel("主题")
+                .frame(width: 200)
+                .accessibilityLabel("主题")
+                .labelsHidden()
+            }
         }
-        .panelSectionFill()
     }
 
     /// 用户点选预设才写入地址和推荐模型。打开窗口时直接改 `preset`，不走这个 setter。
@@ -333,7 +391,7 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var trialSection: some View {
-        Section("登录") {
+        SettingsCard("登录") {
             if trial.isLoggedIn {
                 HStack(spacing: 12) {
                     accountIdentity
@@ -352,23 +410,32 @@ struct SettingsView: View {
                 }
             } else {
                 accountIdentity
-                TextField("", text: $trial.phone, prompt: Text("手机号"))
+                LabeledContent("手机号") {
+                    TextField("", text: $trial.phone, prompt: Text("手机号"))
                     .accessibilityLabel("手机号")
                     .panelTextInput()
-                TextField("", text: $trial.code, prompt: Text("短信验证码"))
-                    .accessibilityLabel("短信验证码")
-                    .panelTextInput()
-                HStack {
+                    .frame(width: 200)
+                }
+                LabeledContent("验证码") {
+                    HStack(spacing: 8) {
+                        TextField("", text: $trial.code, prompt: Text("短信验证码"))
+                        .accessibilityLabel("短信验证码")
+                        .panelTextInput()
+                        .frame(width: 100)
                     Button(trial.codeCooldown > 0 ? "\(trial.codeCooldown) 秒后可重发" : "获取验证码") {
                         Task { await trial.sendCode() }
                     }
                     .disabled(trial.isBusy || trial.codeCooldown > 0)
+                    }
+                }
+                HStack {
+                    loginConsent
+                    Spacer(minLength: 8)
                     Button("登录") {
                         Task { await trial.login() }
                     }
                     .disabled(trial.isBusy || trial.code.filter(\.isNumber).count != 6)
                 }
-                loginConsent
             }
 
             if !trial.statusMessage.isEmpty {
@@ -378,7 +445,6 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .panelSectionFill()
     }
 
     private var accountIdentity: some View {
@@ -397,20 +463,26 @@ struct SettingsView: View {
     }
 
     private var trialAllowanceSection: some View {
-        Section("体验额度") {
+        SettingsCard("体验额度") {
+            LabeledContent("邀请码") {
             TextField("", text: $trial.inviteCode, prompt: Text("邀请码"))
                 .accessibilityLabel("邀请码")
                 .panelTextInput()
                 .disabled(!trial.isLoggedIn || trial.inviteRedeemed || trial.isBusy)
+                .frame(width: 200)
+            }
             Text(!trial.isLoggedIn ? "登录后可领取" : (trial.inviteRedeemed ? "已领取体验额度，每个账号只能领取一次。" : "每个账号只能领取一次。"))
-                .font(.caption)
-                .foregroundStyle(colors.muted)
+            .font(.caption)
+            .foregroundStyle(colors.muted)
+            HStack {
+                Text("领取 ¥2 体验额度")
+                Spacer()
             Button(trial.isBusy ? "正在领取…" : "领取 ¥2 体验额度") {
                 Task { await trial.redeemInvite() }
             }
             .disabled(!trial.isLoggedIn || trial.inviteRedeemed || trial.isBusy || trial.balanceState == .loading || trial.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .panelSectionFill()
+        }
     }
 
     private var testDisabled: Bool {
@@ -539,7 +611,7 @@ private struct TrialBalanceRefreshButton: View {
                     .rotationEffect(.degrees(angle), anchor: .center)
             }
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(SettingsButtonStyle())
         .disabled(loading)
         .help("刷新体验余额")
         .accessibilityLabel("刷新体验余额")

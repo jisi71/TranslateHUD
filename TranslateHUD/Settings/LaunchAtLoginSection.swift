@@ -9,7 +9,15 @@ struct LaunchAtLoginSection: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        Section("启动") {
+        SettingsCard("启动") {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("开机自动启动")
+                    Text("登录 Mac 后自动打开 TranslateHUD")
+                        .font(.caption)
+                        .foregroundStyle(colors.muted)
+                }
+                Spacer()
             Toggle("开机自动启动", isOn: Binding(
                 get: { status == .enabled || status == .requiresApproval },
                 set: { enabled in
@@ -26,6 +34,9 @@ struct LaunchAtLoginSection: View {
                     refreshStatus()
                 }
             ))
+            .toggleStyle(.switch)
+            .labelsHidden()
+            }
             if status == .requiresApproval {
                 Text("请在系统设置中允许 TranslateHUD 开机自动启动。")
                     .font(.caption)
@@ -40,7 +51,6 @@ struct LaunchAtLoginSection: View {
                     .foregroundStyle(colors.warning)
             }
         }
-        .panelSectionFill()
         .onAppear { refreshStatus() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshStatus()

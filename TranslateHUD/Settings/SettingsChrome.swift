@@ -397,3 +397,19 @@ struct SettingsButtonStyle: ButtonStyle {
             .opacity(isEnabled ? 1 : 0.45)
     }
 }
+
+/// Fixed label column so trailing controls share one left edge inside a SettingsCard.
+struct SettingsLabeledRow<Content: View>: View {
+    var title: String
+    var labelWidth: CGFloat = 72
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Text(title)
+                .frame(width: labelWidth, alignment: .leading)
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}

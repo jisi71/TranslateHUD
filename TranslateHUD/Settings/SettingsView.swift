@@ -148,47 +148,49 @@ struct SettingsView: View {
     @ViewBuilder
     private var translationSections: some View {
         SettingsCard("LLM 服务商") {
-            LabeledContent("预设") {
-            Picker("预设", selection: presetBinding) {
-                ForEach(ProviderPreset.all) { p in
-                    Text(p.displayName).tag(p)
+            SettingsLabeledRow(title: "预设") {
+                Picker("预设", selection: presetBinding) {
+                    ForEach(ProviderPreset.all) { p in
+                        Text(p.displayName).tag(p)
+                    }
                 }
-            }
                 .labelsHidden()
-                .frame(width: 200)
+                .frame(maxWidth: 280, alignment: .leading)
             }
 
             if preset.isCustom {
-                LabeledContent("Base URL") {
+                SettingsLabeledRow(title: "Base URL") {
                     TextField("", text: $store.baseURL, prompt: Text("Base URL"))
-                    .accessibilityLabel("Base URL")
-                    .panelTextInput()
-                    .frame(width: 200)
+                        .accessibilityLabel("Base URL")
+                        .panelTextInput()
+                        .frame(maxWidth: 280, alignment: .leading)
                 }
             }
 
-            LabeledContent("Model") {
+            SettingsLabeledRow(title: "Model") {
                 TextField("", text: $store.model, prompt: Text("Model"))
-                .accessibilityLabel("Model")
-                .panelTextInput()
-                .frame(width: 200)
+                    .accessibilityLabel("Model")
+                    .panelTextInput()
+                    .frame(maxWidth: 280, alignment: .leading)
             }
 
-            LabeledContent("API Key") {
-            HStack {
-                if showApiKey {
-                    TextField("", text: $store.apiKey, prompt: Text("API Key"))
-                        .accessibilityLabel("API Key")
-                        .panelTextInput()
-                } else {
-                    SecureField("", text: $store.apiKey, prompt: Text("API Key"))
-                        .accessibilityLabel("API Key")
-                        .panelTextInput()
+            SettingsLabeledRow(title: "API Key") {
+                HStack(spacing: 8) {
+                    Group {
+                        if showApiKey {
+                            TextField("", text: $store.apiKey, prompt: Text("API Key"))
+                                .accessibilityLabel("API Key")
+                                .panelTextInput()
+                        } else {
+                            SecureField("", text: $store.apiKey, prompt: Text("API Key"))
+                                .accessibilityLabel("API Key")
+                                .panelTextInput()
+                        }
+                    }
+                    .frame(maxWidth: 280, alignment: .leading)
+                    Button(showApiKey ? "隐藏" : "显示") { showApiKey.toggle() }
+                        .buttonStyle(SettingsButtonStyle())
                 }
-                Button(showApiKey ? "隐藏" : "显示") { showApiKey.toggle() }
-                    .buttonStyle(SettingsButtonStyle())
-                }
-                .frame(width: 240)
             }
         }
 

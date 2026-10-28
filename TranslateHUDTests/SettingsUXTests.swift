@@ -4,6 +4,17 @@ import XCTest
 
 @MainActor
 final class SettingsUXTests: XCTestCase {
+    func testSettingsSidebarOrderAndTitles() {
+        XCTAssertEqual(SettingsPane.allCases.map(\.title), ["通用", "账户", "翻译", "朗读", "快捷键", "更新", "帮助"])
+        XCTAssertEqual(Set(SettingsPane.allCases.map(\.id)).count, 7)
+    }
+
+    func testLegalPagesReturnToTheirOriginatingPane() {
+        XCTAssertEqual(SettingsRoute.agreement.parentTitle(in: [.agreement], rootTitle: "账户"), "账户")
+        XCTAssertEqual(SettingsRoute.privacy.parentTitle(in: [.privacy], rootTitle: "帮助"), "帮助")
+        XCTAssertEqual(SettingsRoute.agreement.parentTitle(in: [.help, .agreement]), "帮助")
+    }
+
     func testEachPresetMatchesItsOwnAddress() {
         let named = ProviderPreset.all.filter { !$0.isCustom }
         XCTAssertEqual(named.map { ProviderPreset.matching(baseURL: $0.baseURL).displayName }, named.map(\.displayName))

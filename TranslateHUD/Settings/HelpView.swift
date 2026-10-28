@@ -15,9 +15,9 @@ enum SettingsRoute: Hashable {
         }
     }
 
-    /// 这一页的返回按钮该写上一页的名字。从设置首页进来时回到「设置」。
-    func parentTitle(in path: [SettingsRoute]) -> String {
-        guard let index = path.lastIndex(of: self), index > 0 else { return "设置" }
+    /// 这一页的返回按钮该写上一页的名字。从侧栏页面进来时回到该页面。
+    func parentTitle(in path: [SettingsRoute], rootTitle: String = "设置") -> String {
+        guard let index = path.lastIndex(of: self), index > 0 else { return rootTitle }
         return path[index - 1].pageTitle
     }
 }

@@ -14,6 +14,7 @@ const { handleFeedback, FEEDBACK_MESSAGES } = require('./feedbackService')
 const { defaultForward } = require('./upstream')
 const { MESSAGES } = require('./trialPolicy')
 const { handleErrorReport, sharedLimiter } = require('./errorLog')
+const { createUsageEventStoreFromEnv } = require('./usageEventStore')
 const { createErrorLogStoreFromEnv } = require('./errorLogStore')
 
 function decodeEventBody(event) {
@@ -106,6 +107,7 @@ async function dispatchUnsafe(event, deps) {
   const ctx = {
     ...shared,
     store,
+    usageEvents: deps.usageEvents || createUsageEventStoreFromEnv(),
     forward: deps.forward || defaultForward
   }
   const isAccount = clean.endsWith('/trial/account') || (event.action === 'account')

@@ -5,8 +5,9 @@
 // The running service also does this on the first balance read and the first
 // feedback submit. Failure records use trial_error_events, created here and
 // again on the first error write, not during a balance read.
+// Usage records use trial_usage_events, created on the first settled call.
 
-const { COLLECTION, ERROR_COLLECTION, INVITE_COLLECTION, ensureCollection, initApp } = require('../src/cloudBaseStore')
+const { COLLECTION, ERROR_COLLECTION, USAGE_COLLECTION, INVITE_COLLECTION, ensureCollection, initApp } = require('../src/cloudBaseStore')
 const { FEEDBACK_COLLECTION } = require('../src/feedbackStore')
 
 async function main() {
@@ -15,7 +16,8 @@ async function main() {
   await ensureCollection(db, INVITE_COLLECTION)
   await ensureCollection(db, FEEDBACK_COLLECTION)
   await ensureCollection(db, ERROR_COLLECTION)
-  console.log('trial_accounts、trial_invite、trial_feedback 和 trial_error_events 已就绪')
+  await ensureCollection(db, USAGE_COLLECTION)
+  console.log('trial_accounts、trial_invite、trial_feedback、trial_error_events 和 trial_usage_events 已就绪')
 }
 
 main().catch((error) => {

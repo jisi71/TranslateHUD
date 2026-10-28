@@ -6,6 +6,7 @@ const { MESSAGES, normalizeRecord } = require('./trialPolicy')
 const COLLECTION = 'trial_accounts'
 const INVITE_COLLECTION = 'trial_invite'
 const ERROR_COLLECTION = 'trial_error_events'
+const USAGE_COLLECTION = 'trial_usage_events'
 const INVITE_DOC = 'config'
 const readyByDatabase = new WeakMap()
 
@@ -250,6 +251,7 @@ module.exports = {
   COLLECTION,
   INVITE_COLLECTION,
   ERROR_COLLECTION,
+  USAGE_COLLECTION,
   INVITE_DOC,
   normalizeSnap,
   normalizeInvite,

@@ -124,6 +124,7 @@ function createRequestListener(deps = {}) {
         env,
         now,
         signal: abort.signal,
+        usageEvents: deps.usageEvents || null,
         errorLog,
         errorRateLimiter
       }

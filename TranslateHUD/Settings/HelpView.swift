@@ -15,9 +15,9 @@ enum SettingsRoute: Hashable {
         }
     }
 
-    /// 这一页的返回按钮该写上一页的名字。从设置首页进来时回到「设置」。
-    func parentTitle(in path: [SettingsRoute]) -> String {
-        guard let index = path.lastIndex(of: self), index > 0 else { return "设置" }
+    /// 这一页的返回按钮该写上一页的名字。从侧栏页面进来时回到该页面。
+    func parentTitle(in path: [SettingsRoute], rootTitle: String = "设置") -> String {
+        guard let index = path.lastIndex(of: self), index > 0 else { return rootTitle }
         return path[index - 1].pageTitle
     }
 }
@@ -58,16 +58,24 @@ struct SettingsBackContainer<Content: View>: View {
 
 struct HelpView: View {
     var body: some View {
-        Form {
-            Section {
-                NavigationLink("问题反馈", value: SettingsRoute.feedback)
-                NavigationLink("用户协议", value: SettingsRoute.agreement)
-                NavigationLink("隐私政策", value: SettingsRoute.privacy)
-            }
-            .panelSectionFill()
+        SettingsCard("支持与条款") {
+            helpLink("问题反馈", route: .feedback)
+            helpLink("用户协议", route: .agreement)
+            helpLink("隐私政策", route: .privacy)
         }
-        .formStyle(.grouped)
-        .panelChrome()
-        .navigationTitle("帮助")
+    }
+
+    private func helpLink(_ title: String, route: SettingsRoute) -> some View {
+        NavigationLink(value: route) {
+            HStack {
+                Text(title)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

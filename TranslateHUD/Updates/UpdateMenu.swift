@@ -131,15 +131,20 @@ struct UpdateSettingsSection: View {
     @ObservedObject private var menu = UpdateMenuModel.shared
 
     var body: some View {
-        Section("软件更新") {
-            UpdateActionButton()
-            if let caption = UpdateMenu.settingsCaption(state: menu.state, decision: UpdatePolicy.current) {
-                Text(caption)
-                    .font(.caption)
-                    .foregroundStyle(colors.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+        SettingsCard("软件更新") {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("检查更新")
+                    if let caption = UpdateMenu.settingsCaption(state: menu.state, decision: UpdatePolicy.current) {
+                        Text(caption)
+                            .font(.caption)
+                            .foregroundStyle(colors.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer()
+                UpdateActionButton()
             }
         }
-        .panelSectionFill()
     }
 }

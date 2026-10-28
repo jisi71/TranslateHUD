@@ -277,7 +277,9 @@ enum SettingsPanelSurface {
         // The feedback text box is a short rounded field, not a section card.
         if view.bounds.height < 120, containsTextView(view) { return }
         guard let layer = view.layer, layer.cornerRadius >= 8 else { return }
-        guard let y = luma(of: layer.backgroundColor), sectionNeedsFill(luma: y, colors: colors) else { return }
+        guard let y = luma(of: layer.backgroundColor) else { return }
+        if colors.scheme == .dark, abs(y - 28.0 / 255) < 0.004 { return }
+        guard sectionNeedsFill(luma: y, colors: colors) else { return }
         layer.backgroundColor = colors.nsCard.cgColor
     }
 
@@ -312,5 +314,102 @@ enum SettingsPanelSurface {
     private static func luma(of color: CGColor?) -> CGFloat? {
         guard let color else { return nil }
         return luma(of: NSColor(cgColor: color))
+    }
+}
+
+// Settings owns these surfaces; the translation panel palette remains unchanged.
+extension PanelColors {
+    var settingsSidebar: Color {
+        Color(white: scheme == .dark ? 16.0 / 255 : backgroundWhite - 0.025)
+    }
+    var settingsSelection: Color {
+        Color(white: scheme == .dark ? 42.0 / 255 : cardWhite - 0.04)
+    }
+    var settingsCard: Color {
+        scheme == .dark ? Color(white: 28.0 / 255) : cardFill
+    }
+}
+
+/// Explicit cards avoid the system Form's margins, materials and row backgrounds.
+struct SettingsCard<Content: View>: View {
+    @Environment(\.panelColors) private var colors
+    private let title: String
+    private let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+            _VariadicView.Tree(SettingsCardRows()) { content }
+                .background(colors.settingsCard)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(colors.border, lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct SettingsCardRows: _VariadicView_MultiViewRoot {
+    @Environment(\.panelColors) private var colors
+
+    @ViewBuilder
+    func body(children: _VariadicView.Children) -> some View {
+        VStack(spacing: 0) {
+            ForEach(children) { child in
+                if child.id != children.first?.id {
+                    Rectangle().fill(colors.border).frame(height: 1)
+                }
+                child
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .frame(minHeight: 44)
+            }
+        }
+    }
+}
+
+struct SettingsButtonStyle: ButtonStyle {
+    @Environment(\.panelColors) private var colors
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .foregroundStyle(colors.primaryText)
+            .background(colors.settingsSelection.opacity(configuration.isPressed ? 0.7 : 1),
+                        in: RoundedRectangle(cornerRadius: 7))
+            .overlay {
+                RoundedRectangle(cornerRadius: 7)
+                    .strokeBorder(colors.controlBorder, lineWidth: 1)
+            }
+            .opacity(isEnabled ? 1 : 0.45)
+    }
+}
+
+/// Fixed label column so trailing controls share one left edge inside a SettingsCard.
+struct SettingsLabeledRow<Content: View>: View {
+    var title: String
+    var labelWidth: CGFloat = 72
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Text(title)
+                .frame(width: labelWidth, alignment: .leading)
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }

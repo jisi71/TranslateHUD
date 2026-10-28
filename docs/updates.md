@@ -2,7 +2,7 @@
 
 公证过的 TranslateHUD 可以在软件里更新。本机用 `scripts/install-local.sh` 或 `scripts/build-release.sh` 装上的版本不会去网上替换自己。
 
-Sparkle 2.10.1 负责下载、校验和安装。订阅地址写在工程设置里，以后改到官网不用改更新代码。
+普通用户首次安装下载 DMG，打开后把 TranslateHUD 拖到「应用程序」。自动更新仍用 zip，由 Sparkle 2.10.1 负责下载、校验和安装。订阅地址写在工程设置里，以后改到官网不用改更新代码。
 
 ## 用户会看到什么
 
@@ -15,7 +15,7 @@ Sparkle 2.10.1 负责下载、校验和安装。订阅地址写在工程设置�
 
 ## 云端推送就是发一份新订阅
 
-软件没有单独的推送通知，也不会自己收到一条“有更新了”的消息。发布新公证包时，把 zip 和 `appcast.xml` 传到同一个 GitHub Release，就是这次说的推送。
+软件没有单独的推送通知，也不会自己收到一条“有更新了”的消息。发布新公证包时，把首次安装用的 DMG、更新用的 zip 和 `appcast.xml` 传到同一个 GitHub Release，就是这次说的推送。
 
 客户端只在拉订阅时知道有新版本：大约每天一次，以及用户点「检查更新…」或「更新」的时候。清单里的构建号比正在用的更大，菜单才变成「更新」。构建号没有更大，菜单保持「检查更新…」。
 
@@ -46,7 +46,7 @@ Team ID 写在 `Config/DeveloperTeamID`。第一次带更新功能的公证前�
 
 现在已经装上的版本里没有更新功能，不会自己变成新版本。
 
-先发布一版带这次功能的公证包，用户按原来的方式下载、解压、拖进「应用程序」。从这一版起，以后的版本才能在软件里更新。
+先发布一版带这次功能的公证包，用户下载 DMG，打开后把 TranslateHUD 拖进「应用程序」。从这一版起，以后的版本才能在软件里更新。
 
 Sparkle 比较的是构建号（`CURRENT_PROJECT_VERSION`），不是只看 `0.4.0` 这种版本名。每次发版都要把构建号加一。
 
@@ -98,20 +98,21 @@ TRANSLATEHUD_NOTARIZE=1 \
 bash scripts/developer-id-release.sh
 ```
 
-想先看会用哪些地址、密钥在不在，而不编译：
+想先看会用哪些地址、密钥在不在，以及会打 DMG 的说明，而不编译或实际打包：
 
 ```bash
 bash scripts/developer-id-release.sh --dry-run
 ```
 
-脚本会打出通用二进制、打开硬化运行时、打开在线更新，并确认包是 Developer ID 签名且带有 Sparkle。公证成功后才改仓库里的 `appcast.xml`。没设 `TRANSLATEHUD_NOTARIZE=1` 时只在 `releases/` 里留预览，避免把未公证的包写进订阅。
+脚本会打出通用二进制、打开硬化运行时、打开在线更新，并确认包是 Developer ID 签名且带有 Sparkle。App 公证、装订后，会再打出带 App 和「应用程序」快捷方式的 DMG，并单独公证、装订 DMG；zip 仍用于 EdDSA 签名和 appcast 更新。公证成功后才改仓库里的 `appcast.xml`。没设 `TRANSLATEHUD_NOTARIZE=1` 时只在 `releases/` 里留预览，避免把未公证的包写进订阅。
 
-同一个 GitHub Release（标签 `v版本号`，且不能是预发布或草稿）上传两个附件：
+同一个 GitHub Release（标签 `v版本号`，且不能是预发布或草稿）上传三个附件：
 
-| 文件 | 附件名 |
-|---|---|
-| `releases/TranslateHUD-<版本>-universal.zip` | 保持这个文件名 |
-| `appcast.xml` | 必须叫 `appcast.xml` |
+| 文件 | 附件名 | 用途 |
+|---|---|---|
+| `releases/TranslateHUD-<版本>-universal.dmg` | 保持这个文件名 | 首次安装，打开后拖到「应用程序」 |
+| `releases/TranslateHUD-<版本>-universal.zip` | 保持这个文件名 | Sparkle 自动更新，appcast 下载地址仍指向它 |
+| `appcast.xml` | 必须叫 `appcast.xml` | 更新订阅 |
 
 不要上传私钥。示例命令脚本结束时会打印，确认无误后再自己执行。
 

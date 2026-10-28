@@ -13,8 +13,8 @@
 #   TRANSLATEHUD_NOTARIZE=1 \
 #   bash scripts/developer-id-release.sh
 #
-# 私钥来源（按顺序，都不要写进命令行参数）：
-#   1. 环境变量 SPARKLE_PRIVATE_KEY（CI secret 的那一行）
+# 私钥来源 (按顺序，都不要写进命令行参数)：
+#   1. 环境变量 SPARKLE_PRIVATE_KEY (CI secret 的那一行)
 #   2. SPARKLE_PRIVATE_KEY_FILE，或默认 ~/.config/translatehud/sparkle_eddsa_private_key
 #   3. 登录钥匙串里账户 translatehud 的密钥
 
@@ -51,7 +51,7 @@ PRIVATE_SOURCE="未设置"
 if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
     PRIVATE_SOURCE="环境变量 SPARKLE_PRIVATE_KEY"
 elif [[ -f "$PRIVATE_PATH" ]]; then
-    PRIVATE_SOURCE="文件（不在仓库里）"
+    PRIVATE_SOURCE="文件 (不在仓库里)"
 else
     PRIVATE_SOURCE="登录钥匙串账户 $(sparkle_key_account)"
 fi
@@ -67,11 +67,11 @@ fi
 echo "  私钥: $PRIVATE_SOURCE"
 BUNDLE_ID="$(sparkle_bundle_identifier)"
 PINNED_TEAM="$(sparkle_pinned_team_id)"
-echo "  包标识: ${BUNDLE_ID}（更新时不能改）"
+echo "  包标识: ${BUNDLE_ID} (更新时不能改)"
 if [[ -z "$PINNED_TEAM" ]]; then
     echo "  Team ID: 还没写进 Config/DeveloperTeamID。正式打包会停在这里。"
 elif sparkle_team_id_is_valid "$PINNED_TEAM"; then
-    echo "  Team ID: ${PINNED_TEAM}（以后每次公证都要用这同一支）"
+    echo "  Team ID: ${PINNED_TEAM} (以后每次公证都要用这同一支)"
 else
     echo "  Team ID: Config/DeveloperTeamID 里的值不是 10 位。"
 fi
@@ -85,6 +85,7 @@ echo "  不会创建 GitHub Release。"
 if [[ "$DRY_RUN" -eq 1 ]]; then
     echo ""
     echo "这是预览，没有编译，也没有签名。"
+    echo "正式打包还会生成首次安装用的 DMG，软件内更新仍用 zip。"
     echo "在线更新会用 Sparkle 原地替换「应用程序」里的 TranslateHUD.app。"
     echo "包标识和 Team ID 保持不变时，辅助功能和屏幕录制不用重新授权。"
     exit 0
@@ -101,12 +102,12 @@ if [[ -z "$PINNED_TEAM" ]]; then
     exit 1
 fi
 if [[ "${DEVELOPER_ID_TEAM_ID:-}" != "$PINNED_TEAM" ]]; then
-    echo "DEVELOPER_ID_TEAM_ID 必须等于 Config/DeveloperTeamID（${PINNED_TEAM}）。"
+    echo "DEVELOPER_ID_TEAM_ID 必须等于 Config/DeveloperTeamID (${PINNED_TEAM})。"
     echo "不能换 Team。换了之后，用户要重新授权辅助功能和屏幕录制。"
     exit 1
 fi
 if [[ "${DEVELOPER_ID_APP:-}" == "-" || "${DEVELOPER_ID_APP:-}" != *"Developer ID Application"* || "$DEVELOPER_ID_APP" != *"($PINNED_TEAM)"* ]]; then
-    echo "更新包必须用 Developer ID Application（${PINNED_TEAM}）签名。"
+    echo "更新包必须用 Developer ID Application (${PINNED_TEAM}) 签名。"
     echo "不能改用 ad-hoc、本机证书，或另一支 Team。"
     exit 1
 fi
@@ -142,7 +143,7 @@ if [[ -n "${SPARKLE_PRIVATE_KEY_FILE:-}" || -f "$PRIVATE_PATH" ]]; then
     fi
 fi
 
-for command_name in xcodegen xcodebuild codesign ditto python3 curl; do
+for command_name in xcodegen xcodebuild codesign ditto hdiutil python3 curl; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
         echo "缺少命令: $command_name"
         exit 1
@@ -155,7 +156,7 @@ SIGN_UPDATE="$(sparkle_tools_dir)/bin/sign_update"
 echo "→ 同步 Xcode 工程..."
 xcodegen generate >/dev/null
 
-echo "→ 按 Developer ID 归档（打开在线更新，硬化运行时）..."
+echo "→ 按 Developer ID 归档 (打开在线更新，硬化运行时)..."
 DERIVED="$(mktemp -d)"
 ARCHIVE="$DERIVED/TranslateHUD.xcarchive"
 EXPORT_DIR="$DERIVED/export"
@@ -260,7 +261,7 @@ ENABLED="$(/usr/libexec/PlistBuddy -c 'Print :TranslateHUDUpdatesEnabled' "$INFO
 BUNDLED_KEY="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$INFO")"
 BUNDLED_FEED="$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$INFO")"
 if [[ "$ENABLED" != "YES" ]]; then
-    echo "安装包没有打开在线更新（TranslateHUDUpdatesEnabled=${ENABLED}）。"
+    echo "安装包没有打开在线更新 (TranslateHUDUpdatesEnabled=${ENABLED})。"
     exit 1
 fi
 if [[ "$BUNDLED_KEY" != "$PUBLIC_KEY" ]]; then
@@ -306,6 +307,26 @@ fi
 
 FINAL_ZIP="$ROOT/releases/$ZIP_NAME"
 make_zip "$FINAL_ZIP"
+
+DMG_NAME="TranslateHUD-${VERSION}-universal.dmg"
+FINAL_DMG="$ROOT/releases/$DMG_NAME"
+DMG_ROOT="$DERIVED/dmg-root"
+echo "→ 制作首次安装用的 DMG..."
+mkdir -p "$DMG_ROOT"
+ditto "$STAGE_APP" "$DMG_ROOT/TranslateHUD.app"
+ln -s /Applications "$DMG_ROOT/Applications"
+hdiutil create -volname TranslateHUD -srcfolder "$DMG_ROOT" -ov -format UDZO "$FINAL_DMG"
+if [[ "${TRANSLATEHUD_NOTARIZE:-}" == "1" ]]; then
+    echo "→ 提交 DMG 公证..."
+    xcrun notarytool submit "$FINAL_DMG" \
+        --keychain-profile "$NOTARY_KEYCHAIN_PROFILE" \
+        --wait
+    xcrun stapler staple "$FINAL_DMG"
+    xcrun stapler validate "$FINAL_DMG"
+else
+    echo "→ 预览 DMG 在 releases/${DMG_NAME}，未公证，请勿发给用户。"
+fi
+
 if stat -f%z "$FINAL_ZIP" >/dev/null 2>&1; then
     LENGTH="$(stat -f%z "$FINAL_ZIP")"
 else
@@ -369,16 +390,18 @@ fi
 
 echo ""
 echo "完成。"
-echo "  版本 ${VERSION}（构建号 ${BUILD}）"
-echo "  安装包 releases/${ZIP_NAME}"
+echo "  版本 ${VERSION} (构建号 ${BUILD})"
+echo "  首次安装 releases/${DMG_NAME}"
+echo "  在线更新 releases/${ZIP_NAME}"
 echo "  订阅地址 ${FEED_URL}"
 echo "  下载地址 ${DOWNLOAD_URL}"
 echo "  包标识 ${BUNDLE_ID}，Team ID ${PINNED_TEAM}"
 echo "  Sparkle 会原地替换已安装的 TranslateHUD.app。这两项不变，辅助功能和屏幕录制不用重新授权。"
 echo ""
-echo "发给用户时，把下面两个文件传到同一个 GitHub Release（标签 v${VERSION}），不要传私钥："
+echo "发给用户时，把下面三个文件传到同一个 GitHub Release (标签 v${VERSION})，不要传私钥："
+echo "  releases/${DMG_NAME}"
 echo "  releases/${ZIP_NAME}"
-echo "  appcast.xml    （附件名必须是 appcast.xml）"
+echo "  appcast.xml     (附件名必须是 appcast.xml)"
 echo ""
-echo "示例（确认公证和签名之后再自己执行）："
-echo "  gh release create \"v${VERSION}\" \"releases/${ZIP_NAME}\" \"appcast.xml\" --title \"v${VERSION}\" --notes-file \"docs/releases/v${VERSION}.md\""
+echo "示例 (确认公证和签名之后再自己执行)："
+echo "  gh release create \"v${VERSION}\" \"releases/${DMG_NAME}\" \"releases/${ZIP_NAME}\" \"appcast.xml\" --title \"v${VERSION}\" --notes-file \"docs/releases/v${VERSION}.md\""

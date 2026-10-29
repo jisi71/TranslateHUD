@@ -6,9 +6,19 @@
   <title data-title-zh="TranslateHUD — macOS 菜单栏翻译" data-title-en="TranslateHUD — menu-bar translation for macOS">TranslateHUD — macOS 菜单栏翻译</title>
   <meta
     name="description"
-    data-desc-zh="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。新用户可用邀请码领取体验额度，兼容市面上主流API形式。"
-    data-desc-en="TranslateHUD is a macOS menu-bar translator. Select text or drag a screen region and read the translation in a floating panel. Speak either side, and ask for a gloss of names and terms. New users can redeem trial credit with an invite code. Compatible with mainstream API formats."
-    content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。新用户可用邀请码领取体验额度，兼容市面上主流API形式。">
+    data-desc-zh="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。新用户可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。"
+    data-desc-en="TranslateHUD is a macOS menu-bar translator. Select text or drag a screen region and read the translation in a floating panel. Speak either side, and ask for a gloss of names and terms. New users can redeem trial credit with an invite code. Supports OpenAI-compatible APIs (such as DeepSeek and OpenAI; local Ollama works too)."
+    content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。新用户可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="TranslateHUD">
+  <meta property="og:title" content="TranslateHUD — macOS 菜单栏翻译">
+  <meta property="og:description" content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。新用户可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。">
+  <meta property="og:url" content="https://translatehud.com/">
+  <meta property="og:image" content="https://translatehud.com/assets/intro-poster.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="TranslateHUD — macOS 菜单栏翻译">
+  <meta name="twitter:description" content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。新用户可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。">
+  <meta name="twitter:image" content="https://translatehud.com/assets/intro-poster.jpg">
   <link rel="icon" href="assets/icon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="assets/icon-180.png">
   <style>
@@ -164,7 +174,7 @@
               </div>
               <p class="hud-status">
                 <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#check"/></svg>
-                <span>翻译完成</span>
+                <span class="lang-zh">翻译完成</span><span class="lang-en">Translation complete</span>
               </p>
               <p class="hud-out">
                 <span class="pair-src-en">好的工具，不会打断你。选中任意文字，即刻翻译，让思路保持连贯。</span>
@@ -238,7 +248,7 @@
               </div>
               <p class="hud-status">
                 <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#check"/></svg>
-                <span>翻译完成</span>
+                <span class="lang-zh">翻译完成</span><span class="lang-en">Translation complete</span>
               </p>
               <p class="hud-out">冬季运动</p>
               <div class="hud-foot" aria-hidden="true">
@@ -300,7 +310,7 @@
               </div>
               <p class="hud-status">
                 <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#check"/></svg>
-                <span>翻译完成</span>
+                <span class="lang-zh">翻译完成</span><span class="lang-en">Translation complete</span>
               </p>
               <p class="hud-out">
                 <span class="pair-src-en">好的工具，不会打断你。</span>
@@ -338,7 +348,7 @@
           <figure
             class="feature-stage stage-frost stage-terms"
             data-aria-zh="翻译浮窗展开了名词解释，用中文说明原文里的 LLM、ASR 和 SOP。"
-            data-aria-en="The panel has term notes open, with Chinese explanations for LLM, ASR, and SOP in the source.">
+            data-aria-en="The panel has term notes open, with explanations for LLM, ASR, and SOP in the source.">
             <div class="hud-panel hud-terms-panel" aria-hidden="true">
               <div class="hud-head">
                 <svg class="hud-logo" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#translate"/></svg>
@@ -363,7 +373,7 @@
               </div>
               <p class="hud-status">
                 <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#check"/></svg>
-                <span>翻译完成</span>
+                <span class="lang-zh">翻译完成</span><span class="lang-en">Translation complete</span>
               </p>
               <p class="hud-out">
                 <span class="pair-src-en">草稿来自 LLM，会议录音交给 ASR，交接遵循 SOP。</span>
@@ -373,14 +383,14 @@
                 <div class="hud-terms-head">
                   <svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg>
                   <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#terms"/></svg>
-                  <span>名词解释</span>
+                  <span class="lang-zh">名词解释</span><span class="lang-en">Term notes</span>
                 </div>
                 <p class="term-name">LLM</p>
-                <p class="term-note">大语言模型，按提示生成或改写文字。</p>
+                <p class="term-note"><span class="lang-zh">大语言模型，按提示生成或改写文字。</span><span class="lang-en">Large language model: generates or rewrites text from prompts.</span></p>
                 <p class="term-name">ASR</p>
-                <p class="term-note">自动语音识别，把说出的话转成文字。</p>
+                <p class="term-note"><span class="lang-zh">自动语音识别，把说出的话转成文字。</span><span class="lang-en">Automatic speech recognition: turns speech into text.</span></p>
                 <p class="term-name">SOP</p>
-                <p class="term-note">标准作业程序，写明一件事要按哪些步骤做。</p>
+                <p class="term-note"><span class="lang-zh">标准作业程序，写明一件事要按哪些步骤做。</span><span class="lang-en">Standard operating procedure: sets out the steps for a task.</span></p>
               </div>
               <div class="hud-foot" aria-hidden="true">
                 <span class="hud-foot-tools">
@@ -477,8 +487,8 @@
                 <span class="lang-en">Redeem trial credit</span>
               </h3>
               <p>
-                <span class="lang-zh">在设置里用手机号登录，输入邀请码 <strong>translatehud-200</strong> 领取 ¥2 体验额度。用户也可以使用自己的API，软件已兼容市面上主流API。</span>
-                <span class="lang-en">In Settings, sign in with a phone number and enter the invite code <strong>translatehud-200</strong> for ¥2 of trial credit. You can also use your own API. TranslateHUD supports mainstream APIs.</span>
+                <span class="lang-zh">在设置里用手机号登录，输入邀请码 <strong>translatehud-200</strong> 领取 ¥2 体验额度。用户也可以使用自己的 API。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。</span>
+                <span class="lang-en">In Settings, sign in with a phone number and enter the invite code <strong>translatehud-200</strong> for ¥2 of trial credit. You can also use your own API. Supports OpenAI-compatible APIs (such as DeepSeek and OpenAI; local Ollama works too).</span>
               </p>
             </div>
           </li>
@@ -511,6 +521,7 @@
       </a>
       <a href="https://github.com/jisi71/TranslateHUD">GitHub</a>
       <a href="privacy/"><span class="lang-zh">隐私声明</span><span class="lang-en">Privacy</span></a>
+      <a href="mailto:translatehud@gmail.com"><span class="lang-zh">反馈</span><span class="lang-en">Feedback</span></a>
     </div>
   </footer>
   <script src="js/lang.js"></script>

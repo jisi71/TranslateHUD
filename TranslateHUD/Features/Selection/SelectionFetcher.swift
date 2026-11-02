@@ -267,7 +267,8 @@ private final class SystemSelectionProbeProvider: SelectionProbeProviding {
             if pasteboard.changeCount != beforeChange {
                 copyOccurred = true
                 // Text can arrive a moment after changeCount moves. Image types are classified once, at the end.
-                if let copied = PasteboardContentClassifier.readableText(in: pasteboard.string(forType: .string)) {
+                // 飞书等富文本：优先 HTML→Markdown，保留标题层级；无 HTML 再退回纯文字。
+                if let copied = PasteboardRichTextReader.preferredReadableText(from: pasteboard) {
                     return finishFound(copied, pasteboard: pasteboard, savedItems: savedItems)
                 }
             }
@@ -298,10 +299,13 @@ private final class SystemSelectionProbeProvider: SelectionProbeProviding {
         }
     }
 
-    /// Type identifiers only. Image bytes are never read; callers restore the original pasteboard.
+    /// Prefer HTML→Markdown when present; image bytes are never read.
     private func readPasteboard(_ pasteboard: NSPasteboard) -> PasteboardContentClassifier.Reading {
-        PasteboardContentClassifier.classify(
-            string: pasteboard.string(forType: .string),
+        if let preferred = PasteboardRichTextReader.preferredReadableText(from: pasteboard) {
+            return .readableText(preferred)
+        }
+        return PasteboardContentClassifier.classify(
+            string: nil,
             typeIdentifiers: Self.typeIdentifiers(on: pasteboard)
         )
     }

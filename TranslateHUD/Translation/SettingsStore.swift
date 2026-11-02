@@ -14,6 +14,8 @@ final class SettingsStore: ObservableObject {
         static let englishVoiceIdentifier = "speech.englishVoiceIdentifier"
         static let speechRate = "speech.rate"
         static let appearance = AppearancePreference.storageKey
+        static let smartPurify = "selection.smartPurify"
+        static let preserveMarkdown = "selection.preserveMarkdown"
     }
 
     @Published var baseURL: String {
@@ -70,6 +72,20 @@ final class SettingsStore: ObservableObject {
             PanelAppearance.shared.noteExternalChange()
         }
     }
+    /// 划词：合并 PDF/网页假换行。默认开。
+    @Published var smartPurify: Bool {
+        didSet {
+            guard !suppressPersist else { return }
+            UserDefaults.standard.set(smartPurify, forKey: K.smartPurify)
+        }
+    }
+    /// 划词：保留 Markdown 结构占位。默认开。
+    @Published var preserveMarkdown: Bool {
+        didSet {
+            guard !suppressPersist else { return }
+            UserDefaults.standard.set(preserveMarkdown, forKey: K.preserveMarkdown)
+        }
+    }
     /// 内存里有没有非空 API Key。翻译浮窗看这个标记，不再读钥匙串。
     @Published private(set) var hasOwnAPIKey: Bool
 
@@ -98,6 +114,16 @@ final class SettingsStore: ObservableObject {
             targetLanguage = lang
         } else {
             targetLanguage = .chinese   // 默认简体中文。目标是中文或英文时，原文是哪一种就译成另一种。
+        }
+        if UserDefaults.standard.object(forKey: K.smartPurify) == nil {
+            smartPurify = true
+        } else {
+            smartPurify = UserDefaults.standard.bool(forKey: K.smartPurify)
+        }
+        if UserDefaults.standard.object(forKey: K.preserveMarkdown) == nil {
+            preserveMarkdown = true
+        } else {
+            preserveMarkdown = UserDefaults.standard.bool(forKey: K.preserveMarkdown)
         }
         suppressPersist = false
     }

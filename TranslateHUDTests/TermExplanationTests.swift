@@ -52,10 +52,124 @@ final class TermExplanationTests: XCTestCase {
             session: session
         )
 
-        let terms = try await explainer.explain(texts: ["API"], in: .english)
+        let terms = try await explainer.explain(texts: ["API"], in: .chinese)
 
         XCTAssertEqual(terms, [TermExplanation(term: "API", explanation: "应用程序接口")])
         XCTAssertEqual(TermExplanationURLProtocolStub.currentRequestCount(), 2)
+    }
+
+    func testEnglishExplanationRequestsAndRetriesInEnglish() async throws {
+        TermExplanationURLProtocolStub.reset(contents: [
+            "{\"terms\":[{\"term\":\"API\",\"explanation\":\"应用程序接口\"}]}",
+            "{\"terms\":[{\"term\":\"API\",\"explanation\":\"Application programming interface\"}]}"
+        ])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TermExplanationURLProtocolStub.self]
+        let explainer = OpenAICompatibleTermExplainer(
+            config: ProviderConfig(baseURL: "https://example.com/v1", model: "test", apiKey: ""),
+            session: URLSession(configuration: configuration)
+        )
+        let terms = try await explainer.explain(texts: ["API"], in: .english)
+        XCTAssertEqual(terms.first?.explanation, "Application programming interface")
+        XCTAssertEqual(TermExplanationURLProtocolStub.currentRequestCount(), 2)
+        XCTAssertTrue(OpenAICompatibleTermExplainer.systemPrompt(language: .english, strict: false).contains("concise English"))
+        XCTAssertTrue(OpenAICompatibleTermExplainer.systemPrompt(language: .english, strict: true).contains("MUST be in English"))
+    }
+
+    func testTargetLanguageChangeCancelsAndClearsWithoutSendingAnotherRequest() async throws {
+        let explainer = ScriptedTermExplainer(outcomes: [.success([])], delayNanoseconds: 1_000_000_000)
+        let progress = TermExplanationProgress(texts: ["API"], outputLanguage: { .english }, explainer: { explainer })
+        progress.toggleExpanded()
+        let started = await waitUntil { await explainer.callCount() == 1 }
+        XCTAssertTrue(started)
+        let languages = await explainer.receivedLanguages()
+        XCTAssertEqual(languages, [.english])
+        progress.targetLanguageChanged()
+        XCTAssertEqual(progress.state, .idle)
+        XCTAssertFalse(progress.isExpanded)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let count = await explainer.callCount()
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(progress.state, .idle)
+    }
+
+    func testTargetLanguageChangeClearsCachedExplanationWithoutRequestingAgain() async {
+        let term = TermExplanation(term: "API", explanation: "Application programming interface")
+        let explainer = ScriptedTermExplainer(outcomes: [.success([term])])
+        let progress = TermExplanationProgress(texts: ["API"], outputLanguage: { .english }, explainer: { explainer })
+        progress.toggleExpanded()
+        let loaded = await waitUntil { progress.state == .success([term]) }
+        XCTAssertTrue(loaded)
+        progress.targetLanguageChanged()
+        XCTAssertEqual(progress.state, .idle)
+        XCTAssertFalse(progress.isExpanded)
+        let calls = await explainer.callCount()
+        XCTAssertEqual(calls, 1)
+    }
+
+    func testDefaultExplanationUsesResolvedTargetRegardlessOfInterfaceLanguage() async {
+        let interface = InterfaceLanguageStore.shared
+        let settings = SettingsStore.shared
+        let previousInterface = interface.language
+        let previousTarget = settings.targetLanguage
+        defer {
+            interface.language = previousInterface
+            settings.targetLanguage = previousTarget
+        }
+        for (ui, configured, source, expected) in [
+            (InterfaceLanguage.english, TargetLanguage.english, "This application uses an API to communicate with the server.", TargetLanguage.chinese),
+            (.chinese, .chinese, "应用程序通过接口与服务器通信。", .english)
+        ] {
+            interface.language = ui
+            settings.targetLanguage = configured
+            let explainer = ScriptedTermExplainer(outcomes: [.success([])])
+            let progress = TermExplanationProgress(explainer: explainer, texts: [source])
+            progress.toggleExpanded()
+            let completed = await waitUntil { progress.state == .empty }
+            XCTAssertTrue(completed)
+            let languages = await explainer.receivedLanguages()
+            XCTAssertEqual(languages, [expected])
+        }
+    }
+
+    func testExplicitTargetTracksTranslationAndIgnoresInterfaceSwitch() async {
+        let interface = InterfaceLanguageStore.shared
+        let previousInterface = interface.language
+        defer { interface.language = previousInterface }
+        let translation = TranslationProgress()
+        let resolved = TargetLanguage.chinese
+        let explainer = ScriptedTermExplainer(outcomes: [.success([]), .success([])])
+        let progress = TermExplanationProgress(
+            texts: ["API"],
+            outputLanguage: { translation.targetLanguage ?? resolved },
+            explainer: { explainer }
+        )
+        interface.language = .english
+        progress.toggleExpanded()
+        let completed = await waitUntil { progress.state == .empty }
+        XCTAssertTrue(completed)
+        interface.language = .chinese
+        progress.loadIfNeeded()
+        XCTAssertEqual(progress.state, .empty)
+        translation.start(translator: EmptyTermTestTranslator(), originals: [], target: .english)
+        progress.targetLanguageChanged()
+        progress.toggleExpanded()
+        let completedAgain = await waitUntil { progress.state == .empty }
+        XCTAssertTrue(completedAgain)
+        let languages = await explainer.receivedLanguages()
+        XCTAssertEqual(languages, [.chinese, .english])
+        translation.cancel()
+    }
+
+    func testAllTargetLanguagesAppearInTermPrompts() {
+        for language in TargetLanguage.allCases {
+            let name = language == .chinese ? "Simplified Chinese" : language.promptName
+            XCTAssertTrue(OpenAICompatibleTermExplainer.systemPrompt(language: language, strict: false).contains("concise \(name),"))
+            XCTAssertTrue(OpenAICompatibleTermExplainer.systemPrompt(language: language, strict: true).contains("MUST be in \(name)."))
+        }
+        XCTAssertTrue(OpenAICompatibleTermExplainer.explanationsMatch([
+            TermExplanation(term: "API", explanation: "プログラム同士が情報を交換するための仕組みです。")
+        ], language: .japanese))
     }
 
     func testExplanationDoesNotRequestBeforeUserExpands() async throws {
@@ -63,7 +177,6 @@ final class TermExplanationTests: XCTestCase {
         _ = TermExplanationProgress(
             explainer: explainer,
             texts: ["Kubernetes"],
-            language: .chinese
         )
 
         try await Task.sleep(nanoseconds: 50_000_000)
@@ -79,7 +192,6 @@ final class TermExplanationTests: XCTestCase {
         let progress = TermExplanationProgress(
             explainer: explainer,
             texts: ["SSE parsing"],
-            language: .chinese
         )
 
         progress.toggleExpanded()
@@ -101,7 +213,6 @@ final class TermExplanationTests: XCTestCase {
         let progress = TermExplanationProgress(
             explainer: explainer,
             texts: ["ordinary words"],
-            language: .chinese
         )
 
         progress.toggleExpanded()
@@ -118,7 +229,6 @@ final class TermExplanationTests: XCTestCase {
         let progress = TermExplanationProgress(
             explainer: explainer,
             texts: lines,
-            language: .chinese
         )
 
         progress.toggleExpanded()
@@ -140,7 +250,6 @@ final class TermExplanationTests: XCTestCase {
         let progress = TermExplanationProgress(
             explainer: explainer,
             texts: ["OCR"],
-            language: .chinese
         )
 
         progress.toggleExpanded()
@@ -166,7 +275,6 @@ final class TermExplanationTests: XCTestCase {
         let progress = TermExplanationProgress(
             explainer: explainer,
             texts: ["Kubernetes"],
-            language: .chinese
         )
 
         progress.toggleExpanded()
@@ -184,7 +292,6 @@ final class TermExplanationTests: XCTestCase {
         let progress = TermExplanationProgress(
             explainer: explainer,
             texts: ["cell"],
-            language: .chinese,
             context: context
         )
 
@@ -228,6 +335,7 @@ private actor ScriptedTermExplainer: TermExplainer {
     private var cancellations = 0
     private var batches: [[String]] = []
     private var contexts: [SelectionFetcher.TextContext?] = []
+    private var languages: [TargetLanguage] = []
 
     init(outcomes: [Outcome], delayNanoseconds: UInt64 = 0) {
         self.outcomes = outcomes
@@ -242,6 +350,7 @@ private actor ScriptedTermExplainer: TermExplainer {
         calls += 1
         batches.append(texts)
         contexts.append(context)
+        languages.append(language)
         if delayNanoseconds > 0 {
             do {
                 try await Task.sleep(nanoseconds: delayNanoseconds)
@@ -261,6 +370,7 @@ private actor ScriptedTermExplainer: TermExplainer {
     func cancelledCount() -> Int { cancellations }
     func receivedBatches() -> [[String]] { batches }
     func receivedContexts() -> [SelectionFetcher.TextContext?] { contexts }
+    func receivedLanguages() -> [TargetLanguage] { languages }
 }
 
 private struct TestTermError: Error, LocalizedError, Sendable {
@@ -312,4 +422,10 @@ private final class TermExplanationURLProtocolStub: URLProtocol, @unchecked Send
     }
 
     override func stopLoading() {}
+}
+
+private struct EmptyTermTestTranslator: Translator {
+    func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] {
+        []
+    }
 }

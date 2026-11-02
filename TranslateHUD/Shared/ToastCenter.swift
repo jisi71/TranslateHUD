@@ -67,15 +67,16 @@ final class ToastCenter {
 }
 
 struct ToastView: View {
+    @ObservedObject private var language = InterfaceLanguageStore.shared
     let title: String
     let message: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
+            Text(language.text(title))
                 .font(.headline)
                 .foregroundStyle(.primary)
-            Text(message)
+            Text(language.text(message))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

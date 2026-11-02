@@ -18,6 +18,13 @@ final class SpeechController: NSObject, ObservableObject {
             return "\(name)（\(Self.qualityName(quality))\(trait)）"
         }
 
+        func localizedName(using language: InterfaceLanguageStore) -> String {
+            let quality = language.text(Self.qualityName(quality))
+            return isNovelty
+                ? language.format("%@（%@ · 特效）", name, quality)
+                : language.format("%@（%@）", name, quality)
+        }
+
         private static func qualityName(_ quality: AVSpeechSynthesisVoiceQuality) -> String {
             switch quality {
             case .premium: return "高级"

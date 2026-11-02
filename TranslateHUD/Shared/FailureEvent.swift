@@ -271,7 +271,7 @@ private enum FailureClassification {
             return classifyHTTP(code: code, body: body)
         case .parse(let message):
             return classifyParse(message)
-        case .quality:
+        case .quality, .qualityFailures:
             return .business("quality")
         case .service(let message):
             return classifyService(message)

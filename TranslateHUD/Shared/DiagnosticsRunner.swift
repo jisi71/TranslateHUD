@@ -10,6 +10,7 @@ enum DiagnosticsRunner {
 
     @MainActor
     private static func runAsync() async {
+        let language = InterfaceLanguageStore.shared
         let trusted = PermissionManager.shared.isAccessibilityTrusted()
         let bundleID = Bundle.main.bundleIdentifier ?? "?"
         let exePath = Bundle.main.executablePath ?? "?"
@@ -22,31 +23,37 @@ enum DiagnosticsRunner {
         if trusted {
             let context = SelectionTriggerContext.capture()
             if case .found(let sel) = await SelectionFetcher.fetch(expectedApplicationPID: context.applicationPID) {
-                lines.append("选中文字: \(sel.text.count) 字符（不记录原文）")
+                lines.append(language.format("选中文字: %ld 字符（不记录原文）", sel.text.count))
                 if let r = sel.screenRectTopLeft {
-                    lines.append("选区(top-left): x=\(Int(r.minX)) y=\(Int(r.minY)) w=\(Int(r.width)) h=\(Int(r.height))")
+                    lines.append(language.format("选区(top-left): x=%ld y=%ld w=%ld h=%ld", Int(r.minX), Int(r.minY), Int(r.width), Int(r.height)))
                 } else {
-                    lines.append("选区坐标: 拿不到（可能走的 Cmd+C 兜底）")
+                    lines.append(language.text("选区坐标: 拿不到（可能走的 Cmd+C 兜底）"))
                 }
             } else {
-                lines.append("选中文字: nil（AX 和剪贴板嗅探都没拿到）")
+                lines.append(language.text("选中文字: nil（AX 和剪贴板嗅探都没拿到）"))
             }
         }
 
         let report = lines.joined(separator: "\n")
         AppLog.info("诊断:\n\(report)")
 
-        let alert = NSAlert()
-        alert.messageText = "TranslateHUD 诊断"
-        alert.informativeText = report
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "复制到剪贴板")
-        alert.addButton(withTitle: "关闭")
+        let alert = makeAlert(report: report, language: language)
         NSApp.activate(ignoringOtherApps: true)
         let resp = alert.runModal()
         if resp == .alertFirstButtonReturn {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(report, forType: .string)
         }
+    }
+
+    @MainActor
+    static func makeAlert(report: String, language: InterfaceLanguageStore) -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = language.text("TranslateHUD 诊断")
+        alert.informativeText = report
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: language.text("复制到剪贴板"))
+        alert.addButton(withTitle: language.text("关闭"))
+        return alert
     }
 }

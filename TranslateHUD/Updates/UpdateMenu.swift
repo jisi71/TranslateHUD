@@ -105,10 +105,10 @@ struct UpdateMenuLabel: View {
 
     var body: some View {
         if let symbol = UpdateMenu.symbolName(for: state) {
-            Label(UpdateMenu.title(for: state), systemImage: symbol)
+            Label(LocalizedStringKey(UpdateMenu.title(for: state)), systemImage: symbol)
                 .labelStyle(.titleAndIcon)
         } else {
-            Text(UpdateMenu.title(for: state))
+            Text(LocalizedStringKey(UpdateMenu.title(for: state)))
         }
     }
 }
@@ -122,11 +122,12 @@ struct UpdateActionButton: View {
         } label: {
             UpdateMenuLabel(state: menu.state)
         }
-        .accessibilityLabel(UpdateMenu.accessibilityLabel(for: menu.state))
+        .accessibilityLabel(InterfaceLanguageStore.shared.text(UpdateMenu.accessibilityLabel(for: menu.state)))
     }
 }
 
 struct UpdateSettingsSection: View {
+    @ObservedObject private var language = InterfaceLanguageStore.shared
     @Environment(\.panelColors) private var colors
     @ObservedObject private var menu = UpdateMenuModel.shared
 
@@ -136,7 +137,7 @@ struct UpdateSettingsSection: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("检查更新")
                     if let caption = UpdateMenu.settingsCaption(state: menu.state, decision: UpdatePolicy.current) {
-                        Text(caption)
+                        Text(language.text(caption))
                             .font(.caption)
                             .foregroundStyle(colors.muted)
                             .fixedSize(horizontal: false, vertical: true)

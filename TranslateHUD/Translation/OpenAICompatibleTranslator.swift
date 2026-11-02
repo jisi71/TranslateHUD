@@ -306,8 +306,7 @@ struct OpenAICompatibleTranslator: Translator {
                                 continuation.finish()
                                 return
                             }
-                            let reasons = rejection.failures.map(\.explanation).joined(separator: "、")
-                            throw TranslationError.quality("已尝试两次：\(reasons)。可缩短原文或更换模型后重试")
+                            throw TranslationError.qualityFailures(rejection.failures)
                         } catch let failure as ConnectionInterrupted {
                             guard TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) else {
                                 throw failure.underlying

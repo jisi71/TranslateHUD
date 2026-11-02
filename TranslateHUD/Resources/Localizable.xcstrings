@@ -1,0 +1,5599 @@
+{
+  "sourceLanguage": "zh-Hans",
+  "strings": {
+    "%@总耗时超过 %@ 秒，已停止请求。请缩短原文或更换模型后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@总耗时超过 %@ 秒，已停止请求。请缩短原文或更换模型后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ exceeded %@ seconds and was stopped. Shorten the text or choose another model."
+          }
+        }
+      }
+    },
+    "%@等待超过 %@ 秒，已停止请求。请稍后重试，或缩短原文、选择响应更快的模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@等待超过 %@ 秒，已停止请求。请稍后重试，或缩短原文、选择响应更快的模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ took longer than %@ seconds and was stopped. Retry, shorten the text, or choose a faster model."
+          }
+        }
+      }
+    },
+    "%@（%@ · 特效）": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（%@ · 特效）"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (%@ · Novelty)"
+          }
+        }
+      }
+    },
+    "%@（%@）": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（%@）"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (%@)"
+          }
+        }
+      }
+    },
+    "%d 秒后可重发": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 秒后可重发"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resend in %d seconds"
+          }
+        }
+      }
+    },
+    "API Key 无效或已失效，请在设置中更新当前服务商的 API Key。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API Key 无效或已失效，请在设置中更新当前服务商的 API Key。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The API key is invalid or expired. Update it in Settings."
+          }
+        }
+      }
+    },
+    "API 可用额度不足，请在服务商平台检查额度、余额和用量上限。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 可用额度不足，请在服务商平台检查额度、余额和用量上限。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API quota is insufficient. Check your provider's quota, balance and usage limits."
+          }
+        }
+      }
+    },
+    "API 服务地址无法使用，请在设置中检查 Base URL，使用以 http:// 或 https:// 开头的接口地址。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 服务地址无法使用，请在设置中检查 Base URL，使用以 http:// 或 https:// 开头的接口地址。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The API address is invalid. Check Base URL in Settings and use an address beginning with http:// or https://."
+          }
+        }
+      }
+    },
+    "API 服务证书不受系统信任，已停止连接。请检查是否有代理拦截，或联系服务商处理证书。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 服务证书不受系统信任，已停止连接。请检查是否有代理拦截，或联系服务商处理证书。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The API certificate is not trusted and the connection was stopped. Check for proxy interception or contact the provider."
+          }
+        }
+      }
+    },
+    "API 服务证书已过期或尚未生效，请检查系统日期和时间；时间正确时，请联系服务商处理证书。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 服务证书已过期或尚未生效，请检查系统日期和时间；时间正确时，请联系服务商处理证书。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The API certificate has expired or is not yet valid. Check your system date and time, then contact the provider if necessary."
+          }
+        }
+      }
+    },
+    "API 认证未通过，请在设置中检查 API Key 是否填写、有效且属于当前服务商。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 认证未通过，请在设置中检查 API Key 是否填写、有效且属于当前服务商。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API authentication failed. Check that your API key is present, valid, and belongs to this provider."
+          }
+        }
+      }
+    },
+    "API 账户余额不足，请在服务商平台检查余额或充值后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 账户余额不足，请在服务商平台检查余额或充值后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your API account balance is insufficient. Check or add funds with your provider."
+          }
+        }
+      }
+    },
+    "English（英语）": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "English（英语）"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "English"
+          }
+        }
+      }
+    },
+    "LLM 服务商": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LLM 服务商"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LLM Provider"
+          }
+        }
+      }
+    },
+    "Ollama 本地": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ollama 本地"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ollama (local)"
+          }
+        }
+      }
+    },
+    "TLS 安全连接失败，请检查网络或代理后重试；若持续出现，请联系服务商确认连接兼容性。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TLS 安全连接失败，请检查网络或代理后重试；若持续出现，请联系服务商确认连接兼容性。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TLS connection failed. Check your network or proxy and retry; if it continues, ask the provider about connection compatibility."
+          }
+        }
+      }
+    },
+    "TLS 数据校验失败，安全连接已中断。请检查网络或代理后重试；若持续出现，请联系服务商。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TLS 数据校验失败，安全连接已中断。请检查网络或代理后重试；若持续出现，请联系服务商。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TLS data validation failed and the secure connection was stopped. Check your network or proxy, then retry or contact the provider."
+          }
+        }
+      }
+    },
+    "TranslateHUD 设置": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TranslateHUD 设置"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TranslateHUD Settings"
+          }
+        }
+      }
+    },
+    "TranslateHUD 诊断": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TranslateHUD 诊断"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TranslateHUD Diagnostics"
+          }
+        }
+      }
+    },
+    "TranslateHUD 需要两项权限": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TranslateHUD 需要两项权限"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TranslateHUD Needs Two Permissions"
+          }
+        }
+      }
+    },
+    "• 屏幕录制：用于截取屏幕区域并 OCR\n• 辅助功能：用于读取其他应用中的选中文字\n\n点击下方按钮跳转系统设置 → 隐私与安全性，找到 TranslateHUD 后开启对应开关。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• 屏幕录制：用于截取屏幕区域并 OCR\n• 辅助功能：用于读取其他应用中的选中文字\n\n点击下方按钮跳转系统设置 → 隐私与安全性，找到 TranslateHUD 后开启对应开关。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• Screen Recording: capture a screen area for text recognition\n• Accessibility: read selected text in other apps\n\nUse the buttons below to open System Settings → Privacy & Security and enable the relevant permissions for TranslateHUD."
+          }
+        }
+      }
+    },
+    "与服务的连接中断，译文可能不完整。请检查网络或代理后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与服务的连接中断，译文可能不完整。请检查网络或代理后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection was interrupted and the translation may be incomplete. Check your network or proxy and retry."
+          }
+        }
+      }
+    },
+    "中文声音": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中文声音"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chinese Voice"
+          }
+        }
+      }
+    },
+    "主题": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主题"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Theme"
+          }
+        }
+      }
+    },
+    "云端要求图片验证。当前版本还过不了这一步，请稍后再试，或先填写你自己的 API Key。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "云端要求图片验证。当前版本还过不了这一步，请稍后再试，或先填写你自己的 API Key。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service requires an image verification that this version cannot complete. Try again later or enter your own API key."
+          }
+        }
+      }
+    },
+    "今日反馈次数已达上限。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今日反馈次数已达上限。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You have reached today's feedback limit."
+          }
+        }
+      }
+    },
+    "体验余额": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验余额"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trial balance"
+          }
+        }
+      }
+    },
+    "体验余额暂时读不出来。请在设置里点余额旁的刷新。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验余额暂时读不出来。请在设置里点余额旁的刷新。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read the trial balance. Refresh it in Settings."
+          }
+        }
+      }
+    },
+    "体验余额读取失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验余额读取失败"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not load trial balance"
+          }
+        }
+      }
+    },
+    "体验服务地址不对": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验服务地址不对"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid Trial Service Address"
+          }
+        }
+      }
+    },
+    "体验服务地址还没有。请向我们索取地址，或改用你自己的 API Key。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验服务地址还没有。请向我们索取地址，或改用你自己的 API Key。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The trial service address is missing. Contact us for the address or use your own API key."
+          }
+        }
+      }
+    },
+    "体验服务地址还没有，暂时交不了反馈。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验服务地址还没有，暂时交不了反馈。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The trial service address is missing, so feedback cannot be submitted yet."
+          }
+        }
+      }
+    },
+    "体验服务地址需要以 http:// 或 https:// 开头，例如 https://example.com/v1。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验服务地址需要以 http:// 或 https:// 开头，例如 https://example.com/v1。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The trial service address must begin with http:// or https://, for example https://example.com/v1."
+          }
+        }
+      }
+    },
+    "体验服务还没填好": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验服务还没填好"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trial Service Not Configured"
+          }
+        }
+      }
+    },
+    "体验登录已失效，请在设置里重新登录。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验登录已失效，请在设置里重新登录。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your trial session has expired. Sign in again in Settings."
+          }
+        }
+      }
+    },
+    "体验翻译暂时没有完成，这次没有扣体验额度。请稍后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验翻译暂时没有完成，这次没有扣体验额度。请稍后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The trial translation could not be completed. No credit was deducted. Try again later."
+          }
+        }
+      }
+    },
+    "体验翻译服务还没配置好。请稍后再试，或在设置里填写你自己的 API Key。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验翻译服务还没配置好。请稍后再试，或在设置里填写你自己的 API Key。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The trial service is not configured. Try again later or enter your own API key in Settings."
+          }
+        }
+      }
+    },
+    "体验翻译需要原文。请更新到最新版 TranslateHUD。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验翻译需要原文。请更新到最新版 TranslateHUD。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trial translation requires source text. Update TranslateHUD to the latest version."
+          }
+        }
+      }
+    },
+    "体验账号已登录": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验账号已登录"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed in to trial account"
+          }
+        }
+      }
+    },
+    "体验额度": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验额度"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trial Credit"
+          }
+        }
+      }
+    },
+    "体验额度不够支付这次翻译。请在设置里填写你自己的 API Key。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验额度不够支付这次翻译。请在设置里填写你自己的 API Key。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your trial credit is insufficient for this translation. Enter your own API key in Settings."
+          }
+        }
+      }
+    },
+    "体验额度已用完": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验额度已用完"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trial Credit Exhausted"
+          }
+        }
+      }
+    },
+    "体验额度已用完。请在设置里填写你自己的 API Key，之后会直接使用你的接口。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "体验额度已用完。请在设置里填写你自己的 API Key，之后会直接使用你的接口。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your trial credit is exhausted. Enter your own API key in Settings to use your provider directly."
+          }
+        }
+      }
+    },
+    "停止朗读": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止朗读"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop Reading"
+          }
+        }
+      }
+    },
+    "关闭": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
+          }
+        }
+      }
+    },
+    "关闭（ESC）": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭（ESC）"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close (Esc)"
+          }
+        }
+      }
+    },
+    "刷新体验余额": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新体验余额"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh trial balance"
+          }
+        }
+      }
+    },
+    "刷新余额": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新余额"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh balance"
+          }
+        }
+      }
+    },
+    "刷新已安装声音": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新已安装声音"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh installed voices"
+          }
+        }
+      }
+    },
+    "剪贴板未提供可读取的文字，请重新选中可复制文本，或使用截图翻译。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "剪贴板未提供可读取的文字，请重新选中可复制文本，或使用截图翻译。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The clipboard did not provide readable text. Select copyable text again or use screenshot translation."
+          }
+        }
+      }
+    },
+    "原始截图": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原始截图"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Original Screenshot"
+          }
+        }
+      }
+    },
+    "原文超出模型可处理的长度，请缩短原文或选择支持更长上下文的模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原文超出模型可处理的长度，请缩短原文或选择支持更长上下文的模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The source exceeds the model's context limit. Shorten it or choose a model with a longer context."
+          }
+        }
+      }
+    },
+    "发送内容超过服务限制，请缩短原文后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送内容超过服务限制，请缩短原文后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The content exceeds the service limit. Shorten the source text and retry."
+          }
+        }
+      }
+    },
+    "发送太频繁，请 60 秒后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送太频繁，请 60 秒后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too many requests. Try again in 60 seconds."
+          }
+        }
+      }
+    },
+    "发送测试翻译 “Hello, world”": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送测试翻译 “Hello, world”"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send a test translation: “Hello, world”"
+          }
+        }
+      }
+    },
+    "取消": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "取消置顶": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消置顶"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpin window"
+          }
+        }
+      }
+    },
+    "可不加，最多 4 张": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可不加，最多 4 张"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional, up to 4 images"
+          }
+        }
+      }
+    },
+    "同时进行的翻译太多了（同一账号最多 3 个）。请等当前翻译结束后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同时进行的翻译太多了（同一账号最多 3 个）。请等当前翻译结束后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too many translations are running (maximum three per account). Wait for one to finish and try again."
+          }
+        }
+      }
+    },
+    "名词解释": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名词解释"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Explain Terms"
+          }
+        }
+      }
+    },
+    "名词解释服务配置不完整或无效，请打开设置检查 Base URL 和 Model。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名词解释服务配置不完整或无效，请打开设置检查 Base URL 和 Model。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Term explanation service settings are incomplete or invalid. Check Base URL and Model in Settings."
+          }
+        }
+      }
+    },
+    "启动": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启动"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Launch"
+          }
+        }
+      }
+    },
+    "和": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "和"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "and"
+          }
+        }
+      }
+    },
+    "图片文字识别失败，请重新框选清晰文字区域；若持续失败，请重启软件后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图片文字识别失败，请重新框选清晰文字区域；若持续失败，请重启软件后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text recognition failed. Select an area with clear text and retry. If it continues, restart the app."
+          }
+        }
+      }
+    },
+    "图片格式无法使用，请换一张。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图片格式无法使用，请换一张。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This image format cannot be used. Choose another image."
+          }
+        }
+      }
+    },
+    "在线更新还没配置好，这次没有检查。当前的 TranslateHUD 可以继续用。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在线更新还没配置好，这次没有检查。当前的 TranslateHUD 可以继续用。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Online updates are not configured, so no check was made. You can continue using TranslateHUD."
+          }
+        }
+      }
+    },
+    "基础": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "基础"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Basic"
+          }
+        }
+      }
+    },
+    "增强": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "增强"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enhanced"
+          }
+        }
+      }
+    },
+    "声音": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "声音"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voices"
+          }
+        }
+      }
+    },
+    "复制到剪贴板": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制到剪贴板"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy to Clipboard"
+          }
+        }
+      }
+    },
+    "复制译文": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制译文"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy translation"
+          }
+        }
+      }
+    },
+    "外观": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外观"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appearance"
+          }
+        }
+      }
+    },
+    "多数需要翻译的词仍被保留": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "多数需要翻译的词仍被保留"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "most words remain untranslated"
+          }
+        }
+      }
+    },
+    "好": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        }
+      }
+    },
+    "安全连接暂时中断，重试中": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安全连接暂时中断，重试中"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Secure connection interrupted; retrying"
+          }
+        }
+      }
+    },
+    "尚未读取": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未读取"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not loaded"
+          }
+        }
+      }
+    },
+    "展开原文": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "展开原文"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand source text"
+          }
+        }
+      }
+    },
+    "已取消名词解释": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已取消名词解释"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Term explanation canceled."
+          }
+        }
+      }
+    },
+    "已复制": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已复制"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copied"
+          }
+        }
+      }
+    },
+    "已尝试两次，仍有未翻译内容；请缩短原文或更换模型后重试": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已尝试两次，仍有未翻译内容；请缩短原文或更换模型后重试"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some content remains untranslated after two attempts. Shorten the source or try another model."
+          }
+        }
+      }
+    },
+    "已提交，谢谢。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已提交，谢谢。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submitted. Thank you."
+          }
+        }
+      }
+    },
+    "已登录": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已登录"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed in"
+          }
+        }
+      }
+    },
+    "已登录。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已登录。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed in."
+          }
+        }
+      }
+    },
+    "已连续 %@ 秒没有新译文，已停止请求。请检查网络或代理后重试，或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已连续 %@ 秒没有新译文，已停止请求。请检查网络或代理后重试，或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No new translation arrived for %@ seconds, so the request was stopped. Check your network or proxy, or choose another model."
+          }
+        }
+      }
+    },
+    "已退出登录。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已退出登录。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed out."
+          }
+        }
+      }
+    },
+    "帮助": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "帮助"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Help"
+          }
+        }
+      }
+    },
+    "开机自动启动": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开机自动启动"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Launch at login"
+          }
+        }
+      }
+    },
+    "当前 App 的云开发环境和登录时不一致。请重新登录。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前 App 的云开发环境和登录时不一致。请重新登录。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The app's cloud environment has changed since sign-in. Sign in again."
+          }
+        }
+      }
+    },
+    "当前无法连接网络，请确认网络可用，并检查代理连接后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前无法连接网络，请确认网络可用，并检查代理连接后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network unavailable. Check your network and proxy connection and retry."
+          }
+        }
+      }
+    },
+    "快": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fast"
+          }
+        }
+      }
+    },
+    "快捷键": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快捷键"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shortcuts"
+          }
+        }
+      }
+    },
+    "慢": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "慢"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slow"
+          }
+        }
+      }
+    },
+    "截取屏幕区域翻译": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截取屏幕区域翻译"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate Screen Area"
+          }
+        }
+      }
+    },
+    "截图图像无法读取，请重新截图后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截图图像无法读取，请重新截图后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read the screenshot. Take another screenshot and try again."
+          }
+        }
+      }
+    },
+    "截图失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截图失败"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screenshot Failed"
+          }
+        }
+      }
+    },
+    "截图文件无法读取，请重新截图后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截图文件无法读取，请重新截图后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read the screenshot file. Take another screenshot and try again."
+          }
+        }
+      }
+    },
+    "截图翻译": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截图翻译"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate Screenshot"
+          }
+        }
+      }
+    },
+    "手机号": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手机号"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phone Number"
+          }
+        }
+      }
+    },
+    "手机号登录后可试用": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手机号登录后可试用"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in with a phone number to try"
+          }
+        }
+      }
+    },
+    "打开「屏幕录制」": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开「屏幕录制」"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Screen Recording"
+          }
+        }
+      }
+    },
+    "打开「辅助功能」": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开「辅助功能」"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Accessibility"
+          }
+        }
+      }
+    },
+    "打开后大约每天检查一次。有新版本时会写明更新了什么，可以选择稍后提醒或现在更新。更新没成功的话，正在用的版本会留着。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开后大约每天检查一次。有新版本时会写明更新了什么，可以选择稍后提醒或现在更新。更新没成功的话，正在用的版本会留着。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When enabled, updates are checked about once a day. You can review changes and update now or be reminded later. If the update fails, your current version remains installed."
+          }
+        }
+      }
+    },
+    "打开系统声音管理": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开系统声音管理"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open System Voice Settings"
+          }
+        }
+      }
+    },
+    "打开系统登录项设置": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开系统登录项设置"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Login Items Settings"
+          }
+        }
+      }
+    },
+    "打开设置…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开设置…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Settings…"
+          }
+        }
+      }
+    },
+    "抓取期间前台应用发生变化，请重新选择后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "抓取期间前台应用发生变化，请重新选择后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The active app changed while reading the selection. Select the text again."
+          }
+        }
+      }
+    },
+    "接口反复跳转，无法完成请求。请检查 Base URL 是否为服务商提供的 API 接口地址。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接口反复跳转，无法完成请求。请检查 Base URL 是否为服务商提供的 API 接口地址。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The API redirected too many times. Check that Base URL is the provider's API address."
+          }
+        }
+      }
+    },
+    "接口地址无效，请填写以 http:// 或 https:// 开头的 Base URL，且不要在地址中包含账号或密码。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接口地址无效，请填写以 http:// 或 https:// 开头的 Base URL，且不要在地址中包含账号或密码。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid API address. Enter a Base URL starting with http:// or https:// and do not include a username or password."
+          }
+        }
+      }
+    },
+    "接口或模型不存在，请在设置中检查 Base URL 和 Model 名称。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接口或模型不存在，请在设置中检查 Base URL 和 Model 名称。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The API or model was not found. Check Base URL and Model in Settings."
+          }
+        }
+      }
+    },
+    "描述太长了，请缩短后再提交。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "描述太长了，请缩短后再提交。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The description is too long. Shorten it and try again."
+          }
+        }
+      }
+    },
+    "提交": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提交"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submit"
+          }
+        }
+      }
+    },
+    "提交内容无法读取，请稍后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提交内容无法读取，请稍后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read the submission. Try again later."
+          }
+        }
+      }
+    },
+    "提交没有成功，请稍后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提交没有成功，请稍后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submission failed. Try again later."
+          }
+        }
+      }
+    },
+    "支持与条款": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "支持与条款"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Support and Terms"
+          }
+        }
+      }
+    },
+    "收起原文": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起原文"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse source text"
+          }
+        }
+      }
+    },
+    "文字识别失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文字识别失败"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text Recognition Failed"
+          }
+        }
+      }
+    },
+    "新版本的签名或公证没有通过，安装已经取消。正在使用的 TranslateHUD 没有被替换。可以过一会儿再试。如果一直这样，请到官网重新下载。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新版本的签名或公证没有通过，安装已经取消。正在使用的 TranslateHUD 没有被替换。可以过一会儿再试。如果一直这样，请到官网重新下载。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The new version failed signature or notarization verification, so installation was canceled. Your current version was not replaced. Try again later, or download it from the official website if the problem persists."
+          }
+        }
+      }
+    },
+    "无法找到 API 服务器，请检查 Base URL 拼写、网络 DNS 或代理设置。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法找到 API 服务器，请检查 Base URL 拼写、网络 DNS 或代理设置。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The API server could not be found. Check Base URL, DNS and proxy settings."
+          }
+        }
+      }
+    },
+    "无法读取选区": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取选区"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot Read Selection"
+          }
+        }
+      }
+    },
+    "无法连接 API 服务器，请检查服务地址、端口和代理；使用本地模型时，请确认服务已启动。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法连接 API 服务器，请检查服务地址、端口和代理；使用本地模型时，请确认服务已启动。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not connect to the API server. Check its address, port and proxy. For a local model, make sure its service is running."
+          }
+        }
+      }
+    },
+    "显示": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show"
+          }
+        }
+      }
+    },
+    "智谱 GLM": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智谱 GLM"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zhipu GLM"
+          }
+        }
+      }
+    },
+    "暂时读不到体验余额，请稍后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时读不到体验余额，请稍后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not load your trial balance. Try again later."
+          }
+        }
+      }
+    },
+    "更新": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updates"
+          }
+        }
+      }
+    },
+    "最多添加 4 张图片。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最多添加 4 张图片。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can add up to four images."
+          }
+        }
+      }
+    },
+    "月之暗面 Kimi": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月之暗面 Kimi"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moonshot Kimi"
+          }
+        }
+      }
+    },
+    "有图片太大了，请换一张小一点的。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有图片太大了，请换一张小一点的。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An image is too large. Choose a smaller image."
+          }
+        }
+      }
+    },
+    "有新版本。点「更新」查看说明并安装。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有新版本。点「更新」查看说明并安装。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An update is available. Select Update to review and install it."
+          }
+        }
+      }
+    },
+    "有新版本，更新": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有新版本，更新"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update Available"
+          }
+        }
+      }
+    },
+    "服务不支持当前请求格式，请确认 Base URL 支持 OpenAI 兼容接口。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务不支持当前请求格式，请确认 Base URL 支持 OpenAI 兼容接口。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service does not support this request format. Check that Base URL supports an OpenAI-compatible API."
+          }
+        }
+      }
+    },
+    "服务不支持此接口功能，请检查接口兼容性或更换服务。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务不支持此接口功能，请检查接口兼容性或更换服务。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service does not support this API feature. Check compatibility or switch services."
+          }
+        }
+      }
+    },
+    "服务内部发生错误，请稍后重试；若持续失败，请查看服务商状态或更换服务。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务内部发生错误，请稍后重试；若持续失败，请查看服务商状态或更换服务。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service encountered an internal error. Retry later; if it continues, check the provider's status or switch services."
+          }
+        }
+      }
+    },
+    "服务发送的流式数据无法读取，请重试或更换服务。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务发送的流式数据无法读取，请重试或更换服务。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The streamed data could not be read. Retry or switch services."
+          }
+        }
+      }
+    },
+    "服务响应不符合流式翻译接口格式，请确认接口兼容性或更换服务。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务响应不符合流式翻译接口格式，请确认接口兼容性或更换服务。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The response does not match the streaming API format. Check compatibility or switch services."
+          }
+        }
+      }
+    },
+    "服务响应中没有术语解释，请重试或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务响应中没有术语解释，请重试或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The response contained no term explanations. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "服务响应中没有译文，请重试或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务响应中没有译文，请重试或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service response contained no translation. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "服务响应无法读取或不完整，请稍后重试；若持续出现，请检查接口兼容性或更换服务。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务响应无法读取或不完整，请稍后重试；若持续出现，请检查接口兼容性或更换服务。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service response is unreadable or incomplete. Retry later; if it continues, check API compatibility or switch services."
+          }
+        }
+      }
+    },
+    "服务响应格式无法读取，请确认接口兼容性或更换服务后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务响应格式无法读取，请确认接口兼容性或更换服务后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The response format could not be read. Check API compatibility or switch services."
+          }
+        }
+      }
+    },
+    "服务在输出过程中返回错误，原因暂未确认。请稍后重试；若持续失败，请查看服务商状态。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务在输出过程中返回错误，原因暂未确认。请稍后重试；若持续失败，请查看服务商状态。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service returned an error while generating output. Try again later or check the provider's status."
+          }
+        }
+      }
+    },
+    "服务或代理要求额外认证，请检查服务授权或代理登录状态后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务或代理要求额外认证，请检查服务授权或代理登录状态后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service or proxy requires additional authentication. Check your authorization or proxy sign-in and retry."
+          }
+        }
+      }
+    },
+    "服务拒绝访问，请在服务商平台检查账号与模型权限，或联系服务商确认访问限制。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务拒绝访问，请在服务商平台检查账号与模型权限，或联系服务商确认访问限制。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Access was denied. Check your account and model permissions or contact the provider."
+          }
+        }
+      }
+    },
+    "服务暂时不可用或繁忙，请稍后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务暂时不可用或繁忙，请稍后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service is temporarily unavailable or busy. Try again later."
+          }
+        }
+      }
+    },
+    "服务未能完成请求，原因暂未确认。请稍后重试；若持续出现，请联系服务商。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务未能完成请求，原因暂未确认。请稍后重试；若持续出现，请联系服务商。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service could not complete the request for an unknown reason. Retry later or contact the provider."
+          }
+        }
+      }
+    },
+    "服务未能输出这段内容，请检查原文是否符合服务商的使用规则。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务未能输出这段内容，请检查原文是否符合服务商的使用规则。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service could not output this content. Check the provider's usage rules."
+          }
+        }
+      }
+    },
+    "服务未输出任何译文，请重试或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务未输出任何译文，请重试或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service produced no translation. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "服务端发生错误，请稍后重试；若持续失败，请查看服务商状态。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务端发生错误，请稍后重试；若持续失败，请查看服务商状态。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A server error occurred. Retry later; if it continues, check the provider's status."
+          }
+        }
+      }
+    },
+    "服务等待请求超时，请检查网络或代理后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务等待请求超时，请检查网络或代理后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service timed out waiting for the request. Check your network or proxy and retry."
+          }
+        }
+      }
+    },
+    "服务网关等待超时，请稍后重试；若持续出现，请查看代理或服务商状态。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务网关等待超时，请稍后重试；若持续出现，请查看代理或服务商状态。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service gateway timed out. Retry later; if it continues, check your proxy or provider status."
+          }
+        }
+      }
+    },
+    "服务要求或拒绝了客户端证书，当前无法完成认证。请联系服务商核对证书认证要求。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务要求或拒绝了客户端证书，当前无法完成认证。请联系服务商核对证书认证要求。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service requires or rejected a client certificate. Ask the provider about certificate authentication."
+          }
+        }
+      }
+    },
+    "服务返回了空译文，请重试或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务返回了空译文，请重试或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service returned an empty translation. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "服务返回的术语解释无法读取，请重试或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务返回的术语解释无法读取，请重试或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The returned term explanations could not be read. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "服务返回的译文无法读取，请重试或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务返回的译文无法读取，请重试或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The returned translation could not be read. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "服务限制了请求频率或可用额度。请稍后重试；若持续出现，请在服务商平台检查额度和用量上限。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务限制了请求频率或可用额度。请稍后重试；若持续出现，请在服务商平台检查额度和用量上限。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service limited the request rate or available quota. Retry later; if it continues, check your provider's quota and usage limits."
+          }
+        }
+      }
+    },
+    "朗读": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "朗读"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read Aloud"
+          }
+        }
+      }
+    },
+    "未填写模型名称，请在 Model 中填写服务商提供的模型名称。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未填写模型名称，请在 Model 中填写服务商提供的模型名称。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the model name supplied by your provider in Model."
+          }
+        }
+      }
+    },
+    "未收到有效的服务响应，请检查 Base URL 与网络或代理后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未收到有效的服务响应，请检查 Base URL 与网络或代理后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No valid response was received. Check Base URL and your network or proxy, then retry."
+          }
+        }
+      }
+    },
+    "未检测到选中文字": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未检测到选中文字"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Text Selected"
+          }
+        }
+      }
+    },
+    "未登录": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未登录"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Signed In"
+          }
+        }
+      }
+    },
+    "未能更改开机自动启动：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未能更改开机自动启动：%@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not change launch at login: %@"
+          }
+        }
+      }
+    },
+    "未能触发复制操作，请检查辅助功能权限，重新选中文字后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未能触发复制操作，请检查辅助功能权限，重新选中文字后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not copy the selection. Check Accessibility access, select the text again, and retry."
+          }
+        }
+      }
+    },
+    "未识别到文字，请重新框选包含清晰文字的区域。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未识别到文字，请重新框选包含清晰文字的区域。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No text found. Select an area containing clear text."
+          }
+        }
+      }
+    },
+    "未识别到文字，请重新框选文字区域": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未识别到文字，请重新框选文字区域"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No text found. Select an area containing text."
+          }
+        }
+      }
+    },
+    "查看截图": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看截图"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View screenshot"
+          }
+        }
+      }
+    },
+    "标题": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标题"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title"
+          }
+        }
+      }
+    },
+    "标题太长了，请缩短后再提交。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标题太长了，请缩短后再提交。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The title is too long. Shorten it and try again."
+          }
+        }
+      }
+    },
+    "检查更新": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查更新"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check for Updates"
+          }
+        }
+      }
+    },
+    "检查更新…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查更新…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check for Updates…"
+          }
+        }
+      }
+    },
+    "检查权限…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查权限…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Permissions…"
+          }
+        }
+      }
+    },
+    "模型不存在或当前账号无权访问，请检查 Model 名称和模型权限。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型不存在或当前账号无权访问，请检查 Model 名称和模型权限。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model does not exist or your account cannot access it. Check the Model name and permissions."
+          }
+        }
+      }
+    },
+    "模型拒绝翻译": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型拒绝翻译"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "model refused to translate"
+          }
+        }
+      }
+    },
+    "模型未返回完整译文，请重试或缩短原文；若持续出现，请更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型未返回完整译文，请重试或缩短原文；若持续出现，请更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model did not return a complete translation. Retry, shorten the source, or use another model."
+          }
+        }
+      }
+    },
+    "模型没有按要求返回术语列表，请重试或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型没有按要求返回术语列表，请重试或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model did not return the requested term list. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "模型没有按要求返回译文列表，请重试或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型没有按要求返回译文列表，请重试或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model did not return the requested translation list. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "模型返回了未翻译的原文": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型返回了未翻译的原文"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "model returned the untranslated source"
+          }
+        }
+      }
+    },
+    "模型返回的术语数据格式不正确，请重试或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型返回的术语数据格式不正确，请重试或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model returned invalid term data. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "模型返回的译文列表格式不正确，请重试或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型返回的译文列表格式不正确，请重试或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model returned an invalid translation list. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "模型返回的译文格式不符合要求，请重试或更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型返回的译文格式不符合要求，请重试或更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model returned an invalid translation format. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "模型连续两次未按要求返回中文解释，请更换模型后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型连续两次未按要求返回中文解释，请更换模型后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model failed twice to return a Chinese explanation as requested. Try another model."
+          }
+        }
+      }
+    },
+    "模型连续两次未按要求返回所选语言的解释，请更换模型后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型连续两次未按要求返回所选语言的解释，请更换模型后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model twice failed to return explanations in the selected language. Try another model."
+          }
+        }
+      }
+    },
+    "模型额外包裹了代码围栏": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型额外包裹了代码围栏"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "model added a code fence"
+          }
+        }
+      }
+    },
+    "正在使用自己的 API": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在使用自己的 API"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Using your own API"
+          }
+        }
+      }
+    },
+    "正在提交…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在提交…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submitting…"
+          }
+        }
+      }
+    },
+    "正在查找术语…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在查找术语…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finding terms…"
+          }
+        }
+      }
+    },
+    "正在读取体验余额": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取体验余额"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading trial balance"
+          }
+        }
+      }
+    },
+    "此 HTTP 接口被 macOS 安全策略阻止，请使用 HTTPS 接口；如需本地 HTTP 服务，请核对本地网络访问配置。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 HTTP 接口被 macOS 安全策略阻止，请使用 HTTPS 接口；如需本地 HTTP 服务，请核对本地网络访问配置。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS security policy blocked this HTTP API. Use HTTPS, or check local network configuration for a local HTTP service."
+          }
+        }
+      }
+    },
+    "没有可翻译的文字": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有可翻译的文字"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Text to Translate"
+          }
+        }
+      }
+    },
+    "没有可翻译的文字，请重新选中文字或框选包含文字的区域。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有可翻译的文字，请重新选中文字或框选包含文字的区域。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No text to translate. Select text or an area containing text and try again."
+          }
+        }
+      }
+    },
+    "没有读到图片，请再选一次。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有读到图片，请再选一次。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read the image. Select it again."
+          }
+        }
+      }
+    },
+    "没有需要解释的专有名词或术语。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有需要解释的专有名词或术语。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No terms need explanation."
+          }
+        }
+      }
+    },
+    "浅色": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浅色"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Light"
+          }
+        }
+      }
+    },
+    "测试": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test"
+          }
+        }
+      }
+    },
+    "测试连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试连接"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test Connection"
+          }
+        }
+      }
+    },
+    "深色": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深色"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dark"
+          }
+        }
+      }
+    },
+    "添加图片": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加图片"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Images"
+          }
+        }
+      }
+    },
+    "点设置里余额旁的刷新": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点设置里余额旁的刷新"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh the balance in Settings"
+          }
+        }
+      }
+    },
+    "用户协议": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用户协议"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "User Agreement"
+          }
+        }
+      }
+    },
+    "用手机号登录后同步体验额度": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用手机号登录后同步体验额度"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in with a phone number to sync your trial credit"
+          }
+        }
+      }
+    },
+    "界面语言": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "界面语言"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interface Language"
+          }
+        }
+      }
+    },
+    "登录": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign In"
+          }
+        }
+      }
+    },
+    "登录 Mac 后自动打开 TranslateHUD": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录 Mac 后自动打开 TranslateHUD"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open TranslateHUD automatically when you log in to your Mac"
+          }
+        }
+      }
+    },
+    "登录即表示已阅读": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录即表示已阅读"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By signing in, you acknowledge that you have read the"
+          }
+        }
+      }
+    },
+    "登录已失效。请重新登录后再提交反馈。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录已失效。请重新登录后再提交反馈。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your session has expired. Sign in again before submitting feedback."
+          }
+        }
+      }
+    },
+    "登录没有成功，请稍后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录没有成功，请稍后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign-in failed. Try again later."
+          }
+        }
+      }
+    },
+    "目标语言": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目标语言"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Target Language"
+          }
+        }
+      }
+    },
+    "目标语言：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目标语言：%@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Target language: %@"
+          }
+        }
+      }
+    },
+    "短信验证码": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "短信验证码"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS Verification Code"
+          }
+        }
+      }
+    },
+    "移除": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove"
+          }
+        }
+      }
+    },
+    "稍后": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稍后"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Later"
+          }
+        }
+      }
+    },
+    "简体中文": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "简体中文"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simplified Chinese"
+          }
+        }
+      }
+    },
+    "简体中文和 English 会按原文自动对调；其他语言保持不变。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "简体中文和 English 会按原文自动对调；其他语言保持不变。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simplified Chinese and English switch automatically based on the source; other languages stay unchanged."
+          }
+        }
+      }
+    },
+    "系统截图工具未能完成操作，请重新框选；若持续失败，请检查屏幕录制权限并重启软件。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统截图工具未能完成操作，请重新框选；若持续失败，请检查屏幕录制权限并重启软件。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The system screenshot tool could not complete the capture. Select the area again. If it continues, check screen recording access and restart the app."
+          }
+        }
+      }
+    },
+    "缺少屏幕录制权限，请到「系统设置 → 隐私与安全性 → 屏幕录制」允许 TranslateHUD。授权后如仍无法截图，请退出并重新打开软件。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "缺少屏幕录制权限，请到「系统设置 → 隐私与安全性 → 屏幕录制」允许 TranslateHUD。授权后如仍无法截图，请退出并重新打开软件。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen recording access is required. Allow TranslateHUD in System Settings → Privacy & Security → Screen Recording. If screenshots still fail, restart the app."
+          }
+        }
+      }
+    },
+    "网关未能取得有效响应，请稍后重试；若持续出现，请检查代理或服务商状态。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关未能取得有效响应，请稍后重试；若持续出现，请检查代理或服务商状态。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The gateway received an invalid response. Retry later; if it continues, check your proxy or provider status."
+          }
+        }
+      }
+    },
+    "网络不通，暂时读不到体验余额。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络不通，暂时读不到体验余额。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network unavailable. Could not load your trial balance."
+          }
+        }
+      }
+    },
+    "网络不通，请检查网络后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络不通，请检查网络后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network unavailable. Check your connection and try again."
+          }
+        }
+      }
+    },
+    "网络不通，请稍后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络不通，请稍后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network unavailable. Try again later."
+          }
+        }
+      }
+    },
+    "网络请求未完成，原因暂未确认（错误码 %ld）。请检查网络或代理后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络请求未完成，原因暂未确认（错误码 %ld）。请检查网络或代理后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The network request failed for an unknown reason (error %ld). Check your network or proxy and retry."
+          }
+        }
+      }
+    },
+    "网络请求等待超时，请检查网络或代理后重试；若持续出现，请查看服务商状态。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络请求等待超时，请检查网络或代理后重试；若持续出现，请查看服务商状态。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The network request timed out. Check your network or proxy and retry; if it continues, check the provider's status."
+          }
+        }
+      }
+    },
+    "置顶窗口": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶窗口"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pin window"
+          }
+        }
+      }
+    },
+    "翻译": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "翻译"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation"
+          }
+        }
+      }
+    },
+    "翻译中": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "翻译中"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translating"
+          }
+        }
+      }
+    },
+    "翻译为": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "翻译为"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate to"
+          }
+        }
+      }
+    },
+    "翻译完成": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "翻译完成"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation complete"
+          }
+        }
+      }
+    },
+    "翻译服务配置需要检查": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "翻译服务配置需要检查"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Translation Settings"
+          }
+        }
+      }
+    },
+    "翻译未能在请求次数上限内完成，请重新发起；若持续失败，请更换模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "翻译未能在请求次数上限内完成，请重新发起；若持续失败，请更换模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation could not be completed within the request limit. Retry or choose another model."
+          }
+        }
+      }
+    },
+    "翻译选中": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "翻译选中"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate Selection"
+          }
+        }
+      }
+    },
+    "自动选择最高质量": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动选择最高质量"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatically select highest quality"
+          }
+        }
+      }
+    },
+    "自定义": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自定义"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom"
+          }
+        }
+      }
+    },
+    "自定义 API": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自定义 API"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom API"
+          }
+        }
+      }
+    },
+    "英文声音": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "英文声音"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "English Voice"
+          }
+        }
+      }
+    },
+    "获取验证码": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "获取验证码"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get Code"
+          }
+        }
+      }
+    },
+    "触发": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "触发"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Triggers"
+          }
+        }
+      }
+    },
+    "设置": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        }
+      }
+    },
+    "译文与原文未能正确对应，部分内容缺失或重复。请重试或缩短原文。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译文与原文未能正确对应，部分内容缺失或重复。请重试或缩短原文。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The translation did not match the source; some content is missing or duplicated. Retry or shorten the source."
+          }
+        }
+      }
+    },
+    "译文为空": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译文为空"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "empty translation"
+          }
+        }
+      }
+    },
+    "译文数量与原文不一致，结果不完整。请重试或缩短原文。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译文数量与原文不一致，结果不完整。请重试或缩短原文。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The number of translations does not match the source. Retry or shorten the source."
+          }
+        }
+      }
+    },
+    "译文未通过检查：已尝试两次：%@。可缩短原文或更换模型后重试": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译文未通过检查：已尝试两次：%@。可缩短原文或更换模型后重试"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation validation failed after two attempts: %@. Shorten the text or try another model."
+          }
+        }
+      }
+    },
+    "译文缺少目标语言内容": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译文缺少目标语言内容"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "translation lacks target-language content"
+          }
+        }
+      }
+    },
+    "译文被模型长度限制截断，请缩短原文或更换支持更长输出的模型。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译文被模型长度限制截断，请缩短原文或更换支持更长输出的模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The translation was cut off by the model's length limit. Shorten the source or use a model with longer output."
+          }
+        }
+      }
+    },
+    "译：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译：%@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation: %@"
+          }
+        }
+      }
+    },
+    "试听": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "试听"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview"
+          }
+        }
+      }
+    },
+    "试听中文": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "试听中文"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview Chinese"
+          }
+        }
+      }
+    },
+    "试听英文": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "试听英文"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview English"
+          }
+        }
+      }
+    },
+    "语言": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语言"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Language"
+          }
+        }
+      }
+    },
+    "语速": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语速"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speaking Rate"
+          }
+        }
+      }
+    },
+    "请保持文字选中后重试；截图可使用单独的截图快捷键。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请保持文字选中后重试；截图可使用单独的截图快捷键。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep the text selected and try again. Use the screenshot shortcut to translate a screen area."
+          }
+        }
+      }
+    },
+    "请先在文本中选中要翻译的内容，再按翻译快捷键。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先在文本中选中要翻译的内容，再按翻译快捷键。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select the text to translate, then press the translation shortcut."
+          }
+        }
+      }
+    },
+    "请先用手机号登录，或在设置里填写你自己的 API Key。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先用手机号登录，或在设置里填写你自己的 API Key。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in with a phone number or enter your own API key in Settings."
+          }
+        }
+      }
+    },
+    "请先登录后再提交反馈。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先登录后再提交反馈。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in before submitting feedback."
+          }
+        }
+      }
+    },
+    "请先获取验证码。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先获取验证码。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request a verification code first."
+          }
+        }
+      }
+    },
+    "请在「系统设置 → 隐私与安全性 → 辅助功能」中允许 TranslateHUD。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在「系统设置 → 隐私与安全性 → 辅助功能」中允许 TranslateHUD。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow TranslateHUD in System Settings → Privacy & Security → Accessibility."
+          }
+        }
+      }
+    },
+    "请在系统设置中允许 TranslateHUD 开机自动启动。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在系统设置中允许 TranslateHUD 开机自动启动。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow TranslateHUD to open at login in System Settings."
+          }
+        }
+      }
+    },
+    "请填写标题。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请填写标题。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a title."
+          }
+        }
+      }
+    },
+    "请填写问题描述。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请填写问题描述。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Describe the issue."
+          }
+        }
+      }
+    },
+    "请打开设置检查 Base URL 和 Model。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请打开设置检查 Base URL 和 Model。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Base URL and Model in Settings."
+          }
+        }
+      }
+    },
+    "请求参数无法处理，请检查模型名称与接口兼容性，或更换模型后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求参数无法处理，请检查模型名称与接口兼容性，或更换模型后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service could not process the parameters. Check model and API compatibility or try another model."
+          }
+        }
+      }
+    },
+    "请求已中止，可重新发起。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求已中止，可重新发起。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The request was canceled. You can try again."
+          }
+        }
+      }
+    },
+    "请求未完成，原因暂未确认（错误码 %ld）。请稍后重试；若持续失败，请查看服务商状态。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求未完成，原因暂未确认（错误码 %ld）。请稍后重试；若持续失败，请查看服务商状态。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The request failed for an unknown reason (error %ld). Retry later or check the provider's status."
+          }
+        }
+      }
+    },
+    "请求格式或参数不被服务接受，请检查 Base URL 的接口兼容性和 Model 设置。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求格式或参数不被服务接受，请检查 Base URL 的接口兼容性和 Model 设置。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service rejected the request format or parameters. Check Base URL compatibility and Model settings."
+          }
+        }
+      }
+    },
+    "请求过于频繁或并发过多，请稍后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求过于频繁或并发过多，请稍后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too many requests or concurrent operations. Try again later."
+          }
+        }
+      }
+    },
+    "请登录或填写 API Key": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请登录或填写 API Key"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in or enter an API key"
+          }
+        }
+      }
+    },
+    "请输入 11 位中国大陆手机号。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入 11 位中国大陆手机号。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter an 11-digit mainland China mobile number."
+          }
+        }
+      }
+    },
+    "请输入 6 位验证码。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入 6 位验证码。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the six-digit verification code."
+          }
+        }
+      }
+    },
+    "请输入邀请码。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入邀请码。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter an invite code."
+          }
+        }
+      }
+    },
+    "读取中": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取中"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading"
+          }
+        }
+      }
+    },
+    "读取失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取失败"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not load"
+          }
+        }
+      }
+    },
+    "读取选区未完成，请重新选中文字后再试；若持续失败，可使用截图翻译。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取选区未完成，请重新选中文字后再试；若持续失败，可使用截图翻译。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read the selection. Select the text again and retry, or use screenshot translation."
+          }
+        }
+      }
+    },
+    "读取选区超时": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取选区超时"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reading Selection Timed Out"
+          }
+        }
+      }
+    },
+    "账号": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账号"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account"
+          }
+        }
+      }
+    },
+    "账户": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账户"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account"
+          }
+        }
+      }
+    },
+    "超出单次翻译上限": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "超出单次翻译上限"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation Limit Exceeded"
+          }
+        }
+      }
+    },
+    "超出单次翻译上限（体验额度单次最多 500 字）": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "超出单次翻译上限（体验额度单次最多 500 字）"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This translation exceeds the trial limit of 500 characters."
+          }
+        }
+      }
+    },
+    "跟随系统": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随系统"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        }
+      }
+    },
+    "软件更新": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "软件更新"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Software Updates"
+          }
+        }
+      }
+    },
+    "返回%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "返回%@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back to %@"
+          }
+        }
+      }
+    },
+    "还没有体验额度": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有体验额度"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Trial Credit"
+          }
+        }
+      }
+    },
+    "还没有可用的翻译接口": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有可用的翻译接口"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No translation service available"
+          }
+        }
+      }
+    },
+    "这个手机号已经注册。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个手机号已经注册。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This phone number is already registered."
+          }
+        }
+      }
+    },
+    "这个手机号还没注册。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个手机号还没注册。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This phone number is not registered."
+          }
+        }
+      }
+    },
+    "这份说明暂时打不开。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这份说明暂时打不开。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This document is currently unavailable."
+          }
+        }
+      }
+    },
+    "这是本机安装的版本，已关闭在线更新。本机安装会保持原样。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这是本机安装的版本，已关闭在线更新。本机安装会保持原样。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Online updates are disabled for this locally installed version."
+          }
+        }
+      }
+    },
+    "这次提交太大了，请少传几张图片。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这次提交太大了，请少传几张图片。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This submission is too large. Remove some images."
+          }
+        }
+      }
+    },
+    "这次没能开始检查更新。当前的 TranslateHUD 可以继续用。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这次没能开始检查更新。当前的 TranslateHUD 可以继续用。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not start checking for updates. You can continue using TranslateHUD."
+          }
+        }
+      }
+    },
+    "这次翻译没有返回用量，没有扣体验额度。请稍后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这次翻译没有返回用量，没有扣体验额度。请稍后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The translation did not return usage information. No credit was deducted. Try again later."
+          }
+        }
+      }
+    },
+    "这次请求太长了，请缩短原文后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这次请求太长了，请缩短原文后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The request is too long. Shorten the source text and try again."
+          }
+        }
+      }
+    },
+    "连接在译文完成前结束，结果不完整。请检查网络或代理后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接在译文完成前结束，结果不完整。请检查网络或代理后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection ended before translation completed. Check your network or proxy and retry."
+          }
+        }
+      }
+    },
+    "退出 TranslateHUD": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出 TranslateHUD"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit TranslateHUD"
+          }
+        }
+      }
+    },
+    "退出登录": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出登录"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign Out"
+          }
+        }
+      }
+    },
+    "选中文字: %ld 字符（不记录原文）": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选中文字: %ld 字符（不记录原文）"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected text: %ld characters (text is not recorded)"
+          }
+        }
+      }
+    },
+    "选中文字: nil（AX 和剪贴板嗅探都没拿到）": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选中文字: nil（AX 和剪贴板嗅探都没拿到）"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected text: nil (neither Accessibility nor clipboard fallback returned text)"
+          }
+        }
+      }
+    },
+    "选区(top-left): x=%ld y=%ld w=%ld h=%ld": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选区(top-left): x=%ld y=%ld w=%ld h=%ld"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selection (top-left): x=%ld y=%ld w=%ld h=%ld"
+          }
+        }
+      }
+    },
+    "选区坐标: 拿不到（可能走的 Cmd+C 兜底）": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选区坐标: 拿不到（可能走的 Cmd+C 兜底）"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selection bounds: unavailable (Cmd+C fallback may have been used)"
+          }
+        }
+      }
+    },
+    "选区已失效": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选区已失效"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selection Unavailable"
+          }
+        }
+      }
+    },
+    "逐行译文数量与原文不一致，结果不完整。请重试或缩短原文。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "逐行译文数量与原文不一致，结果不完整。请重试或缩短原文。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The line-by-line translation is incomplete. Retry or shorten the source text."
+          }
+        }
+      }
+    },
+    "通义千问": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通义千问"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen"
+          }
+        }
+      }
+    },
+    "通用": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通用"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General"
+          }
+        }
+      }
+    },
+    "邀请码": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "邀请码"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invite Code"
+          }
+        }
+      }
+    },
+    "邀请码不正确。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "邀请码不正确。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The invite code is invalid."
+          }
+        }
+      }
+    },
+    "邀请码次数用尽": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "邀请码次数用尽"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The invite code has no redemptions left."
+          }
+        }
+      }
+    },
+    "邀请码还没配置好。请稍后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "邀请码还没配置好。请稍后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The invite code is not configured. Try again later."
+          }
+        }
+      }
+    },
+    "配置 API…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置 API…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configure API…"
+          }
+        }
+      }
+    },
+    "重新翻译": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新翻译"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate again"
+          }
+        }
+      }
+    },
+    "重试": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重试"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try Again"
+          }
+        }
+      }
+    },
+    "问题反馈": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "问题反馈"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send Feedback"
+          }
+        }
+      }
+    },
+    "问题描述": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "问题描述"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Description"
+          }
+        }
+      }
+    },
+    "隐私政策": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐私政策"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy Policy"
+          }
+        }
+      }
+    },
+    "隐藏": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐藏"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide"
+          }
+        }
+      }
+    },
+    "需要登录": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要登录"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign-in Required"
+          }
+        }
+      }
+    },
+    "需要辅助功能权限": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要辅助功能权限"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accessibility Access Required"
+          }
+        }
+      }
+    },
+    "预览当前声音": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览当前声音"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview current voices"
+          }
+        }
+      }
+    },
+    "预设": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预设"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preset"
+          }
+        }
+      }
+    },
+    "首轮译文未通过校验，重试中": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "首轮译文未通过校验，重试中"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First translation failed validation; retrying"
+          }
+        }
+      }
+    },
+    "验证码": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "验证码"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verification Code"
+          }
+        }
+      }
+    },
+    "验证码不对，请重新输入。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "验证码不对，请重新输入。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incorrect verification code. Try again."
+          }
+        }
+      }
+    },
+    "验证码已发送，请查看短信。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "验证码已发送，请查看短信。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verification code sent. Check your messages."
+          }
+        }
+      }
+    },
+    "验证码已过期，请重新获取。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "验证码已过期，请重新获取。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The verification code has expired. Request a new one."
+          }
+        }
+      }
+    },
+    "验证码没有发出，请稍后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "验证码没有发出，请稍后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not send the verification code. Try again later."
+          }
+        }
+      }
+    },
+    "高级": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高级"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Premium"
+          }
+        }
+      }
+    },
+    "已兑换体验额度。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已兑换体验额度。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trial credit redeemed."
+          }
+        }
+      }
+    },
+    "兑换体验额度": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "兑换体验额度"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redeem Trial Credit"
+          }
+        }
+      }
+    },
+    "已登录。在下面输入邀请码，可兑换体验额度。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已登录。在下面输入邀请码，可兑换体验额度。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed in. Enter an invite code below to redeem trial credit."
+          }
+        }
+      }
+    },
+    "正在兑换…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在兑换…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redeeming…"
+          }
+        }
+      }
+    },
+    "登录后可兑换": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录后可兑换"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to redeem"
+          }
+        }
+      }
+    },
+    "已兑换体验额度，每个账号只能兑换一次。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已兑换体验额度，每个账号只能兑换一次。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trial credit redeemed. Each account may redeem once."
+          }
+        }
+      }
+    },
+    "每个账号只能兑换一次。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每个账号只能兑换一次。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Each account may redeem once."
+          }
+        }
+      }
+    },
+    "这个账号已经兑换过体验额度。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个账号已经兑换过体验额度。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This account has already redeemed trial credit."
+          }
+        }
+      }
+    },
+    "还没有体验额度。请在设置里输入邀请码兑换，或填写你自己的 API Key。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有体验额度。请在设置里输入邀请码兑换，或填写你自己的 API Key。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No trial credit is available. Redeem an invite code or enter your own API key in Settings."
+          }
+        }
+      }
+    },
+    "网络不通，邀请码暂时兑不了。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络不通，邀请码暂时兑不了。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network unavailable. The invite code cannot be redeemed now."
+          }
+        }
+      }
+    },
+    "邀请码没有兑换成功，请稍后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "邀请码没有兑换成功，请稍后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not redeem the invite code. Try again later."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

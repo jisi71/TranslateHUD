@@ -44,14 +44,14 @@ enum ScreenshotFlow {
             for: originals,
             configured: SettingsStore.shared.targetLanguage
         )
+        let progress = TranslationProgress()
         let termProgress = TermExplanationProgress(
             texts: originals,
-            language: .chinese,
+            outputLanguage: { progress.targetLanguage ?? target },
             explainer: { TranslationSession.explainer(for: source) }
         )
 
         // 4. 立刻展示浮窗（loading 状态 + 已识别的原文）
-        let progress = TranslationProgress()
         progress.failureSurface = .screenshotOCRTranslate
         let window = FloatingScreenshotWindow(
             image: image,

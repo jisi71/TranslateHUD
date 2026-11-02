@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct TranslationPanel: View {
+    @ObservedObject private var interfaceLanguage = InterfaceLanguageStore.shared
     let original: String
     var image: NSImage?
     @ObservedObject var progress: TranslationProgress
@@ -64,10 +65,12 @@ struct TranslationPanel: View {
         .background(colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(colors.border, lineWidth: 1))
+        .environment(\.locale, interfaceLanguage.locale)
         .environment(\.panelColors, colors)
         .preferredColorScheme(settings.appearancePreference == .system ? nil : colors.colorScheme)
         .environment(\.colorScheme, colors.colorScheme)
         .background(PanelWindowAppearanceAnchor(scheme: colors.scheme, followsSystem: settings.appearancePreference == .system))
+        .onChange(of: progress.targetLanguage) { _, _ in termProgress.targetLanguageChanged() }
         .onChange(of: layoutSignature) { _, _ in onLayoutChange() }
         .task(id: hasCopied) {
             guard hasCopied else { return }
@@ -117,7 +120,7 @@ struct TranslationPanel: View {
     private static let sourceControlGap: CGFloat = 8
 
     private var sourceBody: String {
-        original.isEmpty ? "未识别到文字，请重新框选包含清晰文字的区域。" : original
+        original.isEmpty ? interfaceLanguage.text("未识别到文字，请重新框选包含清晰文字的区域。") : original
     }
 
     /// Expand is offered only when the text is taller than the collapsed line cap.
@@ -251,15 +254,15 @@ struct TranslationPanel: View {
                         progress.retry(target: language)
                     } label: {
                         if language == progress.targetLanguage {
-                            Label(language.displayName, systemImage: "checkmark")
+                            Label(interfaceLanguage.text(language.displayName), systemImage: "checkmark")
                         } else {
-                            Text(language.displayName)
+                            Text(interfaceLanguage.text(language.displayName))
                         }
                     }
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Text(languageName)
+                    Text(interfaceLanguage.text(languageName))
                     Image(systemName: "chevron.down").font(.system(size: 10, weight: .medium))
                 }
                 .font(.system(size: 13))
@@ -270,7 +273,7 @@ struct TranslationPanel: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .help("目标语言")
-            .accessibilityLabel("目标语言：\(languageName)")
+            .accessibilityLabel(interfaceLanguage.format("目标语言：%@", interfaceLanguage.text(languageName)))
             iconButton(isPinned ? "pin.fill" : "pin", help: isPinned ? "取消置顶" : "置顶窗口", active: isPinned) {
                 isPinned.toggle()
                 onPin(isPinned)
@@ -289,20 +292,20 @@ struct TranslationPanel: View {
             switch progress.state {
             case .loading, .streaming:
                 ProgressView().controlSize(.mini)
-                Text("\(progress.retryReason ?? "翻译中") · \(progress.elapsedSeconds)s")
+                Text("\(interfaceLanguage.text(progress.retryReason ?? "翻译中")) · \(progress.elapsedSeconds)s")
                 Spacer()
                 Button("取消", action: onClose).buttonStyle(.plain)
             case .success(let pairs):
                 Image(systemName: "checkmark.circle")
-                Text(pairs.isEmpty ? "未识别到文字，请重新框选文字区域" : "翻译完成")
+                Text(interfaceLanguage.text(pairs.isEmpty ? "未识别到文字，请重新框选文字区域" : "翻译完成"))
                 Spacer()
             case .timedOut:
                 Image(systemName: "clock")
-                Text(progress.timeoutMessage).fixedSize(horizontal: false, vertical: true)
+                Text(progress.displayError.map { interfaceLanguage.error($0, operation: "翻译") } ?? interfaceLanguage.text(progress.timeoutMessage)).fixedSize(horizontal: false, vertical: true)
                 Spacer()
             case .failed(let message):
                 Image(systemName: "exclamationmark.circle")
-                Text(message).fixedSize(horizontal: false, vertical: true)
+                Text(progress.displayError.map { interfaceLanguage.error($0, operation: "翻译") } ?? interfaceLanguage.text(message)).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
         }
@@ -383,12 +386,12 @@ struct TranslationPanel: View {
         Menu {
             switch TranslationRoute.endpoint(routeInput) {
             case .trial:
-                Text(trial.balanceTitle)
+                Text(interfaceLanguage.text(trial.balanceTitle))
                 if trial.balanceState == .failed {
                     Text("点设置里余额旁的刷新")
                 }
             case .ownKey:
-                Text(providerName)
+                Text(interfaceLanguage.text(providerName))
                 Text(settings.model)
             case .unavailable:
                 Text("还没有可用的翻译接口")
@@ -410,12 +413,12 @@ struct TranslationPanel: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help(footerTitle)
+        .help(interfaceLanguage.text(footerTitle))
     }
 
     @ViewBuilder
     private func modelTitle(limit: CGFloat?) -> some View {
-        let title = Text(footerTitle)
+        let title = Text(interfaceLanguage.text(footerTitle))
             .font(.system(size: 14))
             .lineLimit(1)
             .truncationMode(.tail)
@@ -499,8 +502,8 @@ struct TranslationPanel: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(active ? colors.emphasis : colors.muted)
-        .help(help)
-        .accessibilityLabel(help)
+        .help(interfaceLanguage.text(help))
+        .accessibilityLabel(interfaceLanguage.text(help))
     }
 }
 

@@ -12,6 +12,11 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh-Hans</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
@@ -20,6 +25,10 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CloudBaseEnvId</key>
+	<string>$(CLOUDBASE_ENV_ID)</string>
+	<key>CloudBaseRegion</key>
+	<string>$(CLOUDBASE_REGION)</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
@@ -28,27 +37,19 @@
 	<string>© 2026</string>
 	<key>NSScreenCaptureDescription</key>
 	<string>TranslateHUD 需要屏幕录制权限来截取你选定的区域并翻译图中的文字。</string>
-	<key>CloudBaseEnvId</key>
-	<string>$(CLOUDBASE_ENV_ID)</string>
-	<key>CloudBaseRegion</key>
-	<string>$(CLOUDBASE_REGION)</string>
-	<key>TrialProxyBaseURL</key>
-	<string>$(TRIAL_PROXY_BASE_URL)</string>
-	<key>CFBundleLocalizations</key>
-	<array>
-		<string>zh-Hans</string>
-	</array>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<key>SUFeedURL</key>
 	<string>$(TRANSLATEHUD_UPDATE_FEED_URL)</string>
 	<key>SUPublicEDKey</key>
 	<string>$(SPARKLE_PUBLIC_ED_KEY)</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 	<key>SUVerifyUpdateBeforeExtraction</key>
 	<true/>
 	<key>TranslateHUDUpdatesEnabled</key>
 	<string>$(TRANSLATEHUD_UPDATES_ENABLED)</string>
+	<key>TrialProxyBaseURL</key>
+	<string>$(TRIAL_PROXY_BASE_URL)</string>
 </dict>
 </plist>

@@ -28,6 +28,9 @@ final class TranslationProgress: ObservableObject {
     let timeoutSeconds: TimeInterval
     var failureSurface: FailureEvent.Surface = .selectionTranslate
 
+    /// 选区保格式等场景：retry 时仍包一层同一翻译器。
+    var mapTranslator: (@Sendable (any Translator) -> any Translator)?
+
     private var task: Task<Void, Never>?
     private var elapsedTimer: Timer?
     private var lastOriginals: [String] = []
@@ -214,7 +217,7 @@ final class TranslationProgress: ObservableObject {
             stopElapsedTimer()
             return
         case .ready(let ready):
-            translator = ready.translator
+            translator = mapTranslator?(ready.translator) ?? ready.translator
         }
         if lastWasStreaming, let first = lastOriginals.first, lastOriginals.count == 1 {
             startStreaming(translator: translator, original: first, target: target, context: lastContext)

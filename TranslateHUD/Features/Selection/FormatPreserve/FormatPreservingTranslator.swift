@@ -55,7 +55,7 @@ struct FormatPreservingTranslator: Translator, @unchecked Sendable {
                         case .delta(let partial):
                             continuation.yield(.delta(prepared.restore(translatedSegments: [partial])))
                         case .reset(let reason):
-                            continuation.yield(.reset(reason))
+                            continuation.yield(.reset(reason: reason))
                         }
                     }
                     continuation.finish()

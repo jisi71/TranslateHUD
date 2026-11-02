@@ -90,4 +90,42 @@ final class SelectionFormatPreserveTests: XCTestCase {
         XCTAssertTrue(restored.contains("[docs](https://example.com)"))
         XCTAssertTrue(restored.contains("译:"))
     }
+
+    /// 标题与列表之间的空行，译后仍保留。
+    func testBlankLineBetweenHeadingAndListPreservedAfterTranslate() {
+        let source = "## Title\n\n- item1\n\n- item2"
+        let prepared = SelectionFormatPipeline.prepare(source)
+        let fake = prepared.segmentsToTranslate.map { "译:\($0)" }
+        let restored = prepared.restore(translatedSegments: fake)
+        XCTAssertEqual(restored, "译:## Title\n\n译:- item1\n\n译:- item2")
+    }
+
+    /// 列表项之间的空行，译后仍保留。
+    func testBlankLineBetweenListItemsPreservedAfterTranslate() {
+        let source = "- alpha\n\n- beta\n\n- gamma"
+        let prepared = SelectionFormatPipeline.prepare(source)
+        let fake = prepared.segmentsToTranslate.map { "T:\($0)" }
+        let restored = prepared.restore(translatedSegments: fake)
+        XCTAssertEqual(restored, "T:- alpha\n\nT:- beta\n\nT:- gamma")
+    }
+
+    /// 围栏代码块后的空行不被围栏正则或软合并吃掉。
+    func testBlankLineAfterFencePreserved() {
+        let source = "Before\n\n```\ncode\n```\n\nAfter"
+        let prepared = SelectionFormatPipeline.prepare(source)
+        let restored = prepared.restore(translatedSegments: prepared.segmentsToTranslate)
+        XCTAssertEqual(restored, source)
+    }
+
+    /// 只含空格的「空行」收成真正段落分隔，避免被软合并成空格。
+    func testWhitespaceOnlyBlankBecomesParagraphBreak() {
+        let prepared = SelectionFormatPipeline.prepare("Para one\n \nPara two")
+        XCTAssertEqual(prepared.workingText, "Para one\n\nPara two")
+    }
+
+    /// 标题后空段再跟软换行段落：空行保留，段内软换行仍合并。
+    func testHeadingBlankParagraphSoftMerge() {
+        let prepared = SelectionFormatPipeline.prepare("## Title\n\nPara was\nsplit here.\n\n- item")
+        XCTAssertEqual(prepared.workingText, "## Title\n\nPara was split here.\n\n- item")
+    }
 }

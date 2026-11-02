@@ -13,6 +13,7 @@ NL_MARK = "⟦NL⟧"
 
 def light_clean(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\u2028", "\n").replace("\u2029", "\n")
     return text.strip()
 
 
@@ -44,8 +45,9 @@ def protect_markdown(text: str) -> tuple[str, list[str]]:
     def repl_fence(m: re.Match) -> str:
         return save("fence", m.group(0))
 
+    # 闭合围栏：行末只吃横向空白，不吞后面的空行换行。
     text = re.sub(
-        r"(?m)^(```|~~~)[^\n]*\n.*?^\1\s*$",
+        r"(?m)^(```|~~~)[^\n]*\n.*?^\1[ \t]*$",
         repl_fence,
         text,
         flags=re.S,
@@ -91,9 +93,46 @@ def _expand_shields(line: str, shields: list[str]) -> str:
     return detect
 
 
+def _normalize_whitespace_only_lines(text: str) -> str:
+    lines = ["" if line.strip() == "" else line for line in text.split("\n")]
+    return "\n".join(lines)
+
+
+def _is_blank_line(line: str) -> bool:
+    return line.strip() == ""
+
+
+def _shield_only(line: str) -> bool:
+    return bool(re.fullmatch(r"⟦SH:\d+⟧", line.strip()))
+
+
+def _ends_with_placeholder(line: str) -> bool:
+    return bool(re.search(r"⟦SH:\d+⟧\s*$", line))
+
+
+def _starts_with_placeholder(line: str) -> bool:
+    return bool(re.search(r"^\s*⟦SH:\d+⟧", line))
+
+
+def _probe_after_para(line: str) -> str:
+    idx = line.rfind(PARA_MARK)
+    if idx >= 0:
+        return line[idx + len(PARA_MARK) :]
+    return line
+
+
+def _probe_before_para(line: str) -> str:
+    idx = line.find(PARA_MARK)
+    if idx >= 0:
+        return line[:idx]
+    return line
+
+
 def purify_clean(text: str, protect_md_boundaries: bool = True) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\u2028", "\n").replace("\u2029", "\n")
     text = re.sub(r"-\n", "", text)
+    text = _normalize_whitespace_only_lines(text)
 
     shields: list[str] = []
 
@@ -113,20 +152,24 @@ def purify_clean(text: str, protect_md_boundaries: bool = True) -> str:
         for i in range(1, len(parts)):
             prev = parts[i - 1]
             cur = parts[i]
-            prev_raw = prev
-            cur_raw = cur
-            prev_detect = _expand_shields(prev, shields)
-            cur_detect = _expand_shields(cur, shields)
-            # Only expand for MD structure detection on non-placeholder lines.
-            # Placeholder-only lines (fences/links/…) must keep hard breaks.
             keep = False
-            if protect_md_boundaries:
-                prev_is_ph = bool(re.fullmatch(r"⟦SH:\d+⟧", prev_raw.strip()))
-                cur_is_ph = bool(re.fullmatch(r"⟦SH:\d+⟧", cur_raw.strip()))
-                if prev_is_ph or cur_is_ph:
+            if _is_blank_line(prev) or _is_blank_line(cur):
+                keep = True
+            elif protect_md_boundaries:
+                prev_raw = prev
+                cur_raw = cur
+                if (
+                    _shield_only(prev_raw)
+                    or _shield_only(cur_raw)
+                    or _ends_with_placeholder(prev_raw)
+                    or _starts_with_placeholder(cur_raw)
+                ):
                     keep = True
-                elif is_md_structure_line(prev_detect) or is_md_structure_line(cur_detect):
-                    keep = True
+                else:
+                    prev_detect = _probe_after_para(_expand_shields(prev, shields))
+                    cur_detect = _probe_before_para(_expand_shields(cur, shields))
+                    if is_md_structure_line(prev_detect) or is_md_structure_line(cur_detect):
+                        keep = True
             if keep:
                 chunks.append(NL_MARK + cur)
             else:
@@ -282,6 +325,52 @@ def main() -> int:
     p = prepare(src)
     out = restore(p, list(p["segments_to_translate"]))
     ok &= check("roundtrip identity", out == "Hello.\n\nWorld was split.", repr(out))
+
+    # --- 空行保留（标题↔列表、列表项之间、围栏后、空白行）---
+    src = "## Title\n\n- item1\n\n- item2"
+    p = prepare(src)
+    fake = [f"译:{s}" for s in p["segments_to_translate"]]
+    out = restore(p, fake)
+    ok &= check(
+        "blank between heading and list",
+        out == "译:## Title\n\n译:- item1\n\n译:- item2",
+        repr(out),
+    )
+
+    src = "- alpha\n\n- beta\n\n- gamma"
+    p = prepare(src)
+    fake = [f"T:{s}" for s in p["segments_to_translate"]]
+    out = restore(p, fake)
+    ok &= check(
+        "blank between list items",
+        out == "T:- alpha\n\nT:- beta\n\nT:- gamma",
+        repr(out),
+    )
+
+    src = "Before\n\n```\ncode\n```\n\nAfter"
+    p = prepare(src)
+    out = restore(p, list(p["segments_to_translate"]))
+    ok &= check(
+        "blank after fence kept",
+        out == src,
+        repr(out),
+    )
+
+    src = "Para one\n \nPara two"
+    p = prepare(src)
+    ok &= check(
+        "whitespace-only blank becomes paragraph",
+        p["working"] == "Para one\n\nPara two",
+        repr(p["working"]),
+    )
+
+    src = "## Title\n\nPara was\nsplit here.\n\n- item"
+    p = prepare(src)
+    ok &= check(
+        "heading blank para soft-merge",
+        p["working"] == "## Title\n\nPara was split here.\n\n- item",
+        repr(p["working"]),
+    )
 
     print("---")
     print("ALL PASS" if ok else "SOME FAILED")

@@ -20,6 +20,9 @@ enum SmartPurify {
         var work = normalizeNewlines(text)
         work = work.replacingOccurrences(of: #"-\n"#, with: "", options: .regularExpression)
 
+        // 只含空格/Tab 的行当成空行，避免「看起来空、实际有空格」的行被软合并成空格。
+        work = normalizeWhitespaceOnlyLines(work)
+
         var shields: [String] = []
         work = shieldPlaceholders(work, store: &shields)
         work = work.replacingOccurrences(of: #"\n{2,}"#, with: paragraphMark, options: .regularExpression)
@@ -44,14 +47,23 @@ enum SmartPurify {
                 let prev = parts[i - 1]
                 let cur = parts[i]
                 let keep: Bool
-                if protectMarkdownBoundaries {
-                    let prevIsPlaceholder = isShieldOnlyLine(prev)
-                    let curIsPlaceholder = isShieldOnlyLine(cur)
-                    if prevIsPlaceholder || curIsPlaceholder {
+                let prevBlank = isBlankLine(prev)
+                let curBlank = isBlankLine(cur)
+                if prevBlank || curBlank {
+                    // 空行两侧必须硬换行，绝不能收成空格。
+                    keep = true
+                } else if protectMarkdownBoundaries {
+                    let prevExpanded = expandShields(prev, shields: shields)
+                    let curExpanded = expandShields(cur, shields: shields)
+                    // 整行占位，或行尾/行首贴着占位时，也要硬换行（防止围栏旁空行被软合并）。
+                    if isShieldOnlyLine(prev) || isShieldOnlyLine(cur)
+                        || endsWithPlaceholder(prev) || startsWithPlaceholder(cur)
+                    {
                         keep = true
                     } else {
-                        let prevDetect = expandShields(prev, shields: shields)
-                        let curDetect = expandShields(cur, shields: shields)
+                        // 结构判定只看「紧贴这个换行」的一侧，避免 PARA 把标题和后文粘在同一逻辑行里误判。
+                        let prevDetect = structureProbeAfterParagraphMarks(prevExpanded)
+                        let curDetect = structureProbeBeforeParagraphMarks(curExpanded)
                         keep = MarkdownStructureGuard.isStructureLine(prevDetect)
                             || MarkdownStructureGuard.isStructureLine(curDetect)
                     }
@@ -74,11 +86,50 @@ enum SmartPurify {
         text
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\u{2028}", with: "\n")
+            .replacingOccurrences(of: "\u{2029}", with: "\n")
+    }
+
+    /// 把「只含空格/Tab」的行收成真正的空行，便于后续按段落保留。
+    private static func normalizeWhitespaceOnlyLines(_ text: String) -> String {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
+            let s = String(line)
+            return s.trimmingCharacters(in: .whitespaces).isEmpty ? "" : s
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func isBlankLine(_ line: String) -> Bool {
+        line.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private static func isShieldOnlyLine(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         return trimmed.range(of: #"^⟦SH:\d+⟧$"#, options: .regularExpression) != nil
+    }
+
+    private static func endsWithPlaceholder(_ line: String) -> Bool {
+        line.range(of: #"⟦SH:\d+⟧\s*$"#, options: .regularExpression) != nil
+    }
+
+    private static func startsWithPlaceholder(_ line: String) -> Bool {
+        line.range(of: #"^\s*⟦SH:\d+⟧"#, options: .regularExpression) != nil
+    }
+
+    /// 换行落在行尾时，只看最后一个段落标记之后的文本（紧贴换行的那一段）。
+    private static func structureProbeAfterParagraphMarks(_ line: String) -> String {
+        if let range = line.range(of: paragraphMark, options: .backwards) {
+            return String(line[range.upperBound...])
+        }
+        return line
+    }
+
+    /// 换行落在行首时，只看第一个段落标记之前的文本。
+    private static func structureProbeBeforeParagraphMarks(_ line: String) -> String {
+        if let range = line.range(of: paragraphMark) {
+            return String(line[..<range.lowerBound])
+        }
+        return line
     }
 
     private static func shieldPlaceholders(_ text: String, store: inout [String]) -> String {

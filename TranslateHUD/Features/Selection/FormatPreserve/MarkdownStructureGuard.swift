@@ -23,7 +23,7 @@ enum MarkdownStructureGuard {
         // 成对围栏
         work = replaceMatches(
             in: work,
-            pattern: #"(?m)^(```|~~~)[^\n]*\n.*?^\1\s*$"#,
+            pattern: #"(?m)^(```|~~~)[^\n]*\n.*?^\1[ \t]*$"#,
             options: [.dotMatchesLineSeparators],
             transform: { save("fence", $0) }
         )

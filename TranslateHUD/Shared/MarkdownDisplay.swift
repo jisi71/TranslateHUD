@@ -25,12 +25,15 @@ enum MarkdownDisplay {
     }
 
     /// Parse Markdown. Prefers partial parse while streaming; on total failure returns plain text.
+    /// After a successful `.full` parse, reinjects newlines between block-level presentation intents
+    /// because Foundation drops inter-block `\n` from `characters` while keeping intents on runs.
     static func parse(_ markdown: String) -> AttributedString {
         guard !markdown.isEmpty else { return AttributedString("") }
         var options = AttributedString.MarkdownParsingOptions()
         options.interpretedSyntax = .full
         options.failurePolicy = .returnPartiallyParsedIfPossible
-        if let parsed = try? AttributedString(markdown: markdown, options: options) {
+        if var parsed = try? AttributedString(markdown: markdown, options: options) {
+            reinjectBlockBreaks(&parsed)
             return parsed
         }
         return AttributedString(markdown)
@@ -61,6 +64,80 @@ enum MarkdownDisplay {
             width: width,
             maxLines: maxLines
         )
+    }
+
+    // MARK: - Block breaks
+
+    /// Foundation's `.full` Markdown parse keeps `presentationIntent` on runs but strips
+    /// newlines between blocks from `characters` (e.g. `# A\n\n## B` → `AB`). SwiftUI `Text`
+    /// and TextKit then render sticky lines. Insert `\n` when adjacent runs belong to different
+    /// block-level intent identities; same-block inline splits (bold/italic) stay unjoined.
+    private static func reinjectBlockBreaks(_ attributed: inout AttributedString) {
+        let runs = Array(attributed.runs)
+        guard runs.count >= 2 else { return }
+
+        var insertionIndices: [AttributedString.Index] = []
+
+        for i in 1..<runs.count {
+            let previous = runs[i - 1]
+            let current = runs[i]
+            let previousID = blockIdentity(of: previous.presentationIntent)
+            let currentID = blockIdentity(of: current.presentationIntent)
+
+            // Same block identity → inline split inside one paragraph/header; no break.
+            if previousID != nil, previousID == currentID { continue }
+            // Neither run is a known block → leave as-is.
+            if previousID == nil, currentID == nil { continue }
+            // Different block identities (or block ↔ non-block): need a visible break.
+            guard previousID != currentID else { continue }
+
+            let previousChars = attributed[previous.range].characters
+            let currentChars = attributed[current.range].characters
+            if previousChars.last == "\n" || currentChars.first == "\n" { continue }
+
+            insertionIndices.append(current.range.lowerBound)
+        }
+
+        for index in insertionIndices.reversed() {
+            attributed.characters.insert(contentsOf: "\n", at: index)
+        }
+    }
+
+    /// Innermost block-level component identity, if any.
+    /// List items use the `listItem` identity so adjacent bullets get breaks even when they
+    /// share the parent `unorderedList` / `orderedList` identity.
+    private static func blockIdentity(of intent: PresentationIntent?) -> Int? {
+        guard let intent else { return nil }
+        var found: Int?
+        for component in intent.components {
+            if isBlockLevelKind(component.kind) {
+                found = component.identity
+            }
+        }
+        return found
+    }
+
+    private static func isBlockLevelKind(_ kind: PresentationIntent.Kind) -> Bool {
+        switch kind {
+        case .header:
+            return true
+        case .paragraph:
+            return true
+        case .codeBlock:
+            return true
+        case .blockQuote:
+            return true
+        case .thematicBreak:
+            return true
+        case .listItem:
+            return true
+        case .unorderedList:
+            return true
+        case .orderedList:
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - Typography

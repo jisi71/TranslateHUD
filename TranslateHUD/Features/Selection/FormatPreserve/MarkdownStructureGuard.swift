@@ -43,6 +43,13 @@ enum MarkdownStructureGuard {
             transform: { save("table", $0) }
         )
 
+        // 标题 / 列表 / 引用行首标记：占位后假换行不会误拼，译完再还原，避免模型剥掉 #/-/>。
+        work = replaceMatches(
+            in: work,
+            pattern: #"(?m)^([ \t]*)(#{1,6}[ \t]+|[-*+][ \t]+|\d+\.[ \t]+|>[ \t]?)"#,
+            transform: { save("bound", $0) }
+        )
+
         return Protection(text: work, store: store)
     }
 
@@ -64,6 +71,8 @@ enum MarkdownStructureGuard {
     static func isStructureLine(_ line: String) -> Bool {
         let s = String(line.drop(while: { $0 == " " || $0 == "\t" }))
         guard !s.isEmpty else { return false }
+        // 已占位的结构行首，仍视为结构边界（净化侧也会靠 placeholder 硬换行）。
+        if s.range(of: #"^⟦MD:bound:\d+⟧"#, options: .regularExpression) != nil { return true }
         if s.range(of: #"^#{1,6}\s+\S"#, options: .regularExpression) != nil { return true }
         if s.hasPrefix(">") { return true }
         if s.range(of: #"^[-*+]\s+\S"#, options: .regularExpression) != nil { return true }
@@ -73,6 +82,17 @@ enum MarkdownStructureGuard {
             options: .regularExpression
         ) != nil { return true }
         return false
+    }
+
+    /// 取出行首连续的 bound 占位，译后拼回，保证 # / - / > 等骨架还在。
+    static func leadingBoundPlaceholders(in part: String) -> String {
+        var rest = part
+        var prefix = ""
+        while let match = rest.range(of: #"^⟦MD:bound:\d+⟧"#, options: .regularExpression) {
+            prefix += rest[match]
+            rest = String(rest[match.upperBound...])
+        }
+        return prefix
     }
 
     static func isNonTranslatableSegment(_ segment: String) -> Bool {

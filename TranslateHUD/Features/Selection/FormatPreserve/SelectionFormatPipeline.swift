@@ -35,7 +35,9 @@ struct SelectionFormatPrepared: Sendable {
         for (i, part) in parts.enumerated() {
             if let idx = mapIndex[i] {
                 if translatedSegments.indices.contains(idx) {
-                    outParts.append(translatedSegments[idx])
+                    // 送译前会剥掉 bound；这里把行首 #/-/> 占位拼回译文，避免模型剥标记后骨架丢失。
+                    let bounds = MarkdownStructureGuard.leadingBoundPlaceholders(in: part)
+                    outParts.append(bounds + translatedSegments[idx])
                 } else {
                     outParts.append(part)
                 }
@@ -87,10 +89,12 @@ enum SelectionFormatPipeline {
             }
         }
 
+        // workingText 给调试/对账看还原后的可读形态；parts 仍保留占位供译后拼回。
+        let readableWorking = MarkdownStructureGuard.restore(working, store: store)
         return SelectionFormatPrepared(
             displayOriginal: text,
             segmentsToTranslate: segments,
-            workingText: working,
+            workingText: readableWorking,
             parts: parts,
             mapIndex: mapIndex,
             placeholderStore: store

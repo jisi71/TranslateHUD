@@ -21,6 +21,8 @@ def is_md_structure_line(line: str) -> bool:
     s = line.lstrip()
     if not s:
         return False
+    if re.match(r"⟦MD:bound:\d+⟧", s):
+        return True
     if re.match(r"#{1,6}\s+\S", s):
         return True
     if s.startswith(">"):
@@ -64,6 +66,12 @@ def protect_markdown(text: str) -> tuple[str, list[str]]:
     text = re.sub(
         r"(?m)^[ \t]*\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$",
         lambda m: save("table", m.group(0)),
+        text,
+    )
+    # 标题 / 列表 / 引用行首标记占位，译完再还原。
+    text = re.sub(
+        r"(?m)^([ \t]*)(#{1,6}[ \t]+|[-*+][ \t]+|\d+\.[ \t]+|>[ \t]?)",
+        lambda m: save("bound", m.group(0)),
         text,
     )
     return text, store
@@ -227,14 +235,27 @@ def prepare(text: str, smart_purify: bool = True, preserve_markdown: bool = True
             map_index.append(len(segments_to_translate))
             send = re.sub(r"⟦MD:bound:\d+⟧", "", p)
             segments_to_translate.append(send)
+    readable = restore_markdown(working, store)
     return {
         "display": text,
-        "working": working,
+        "working": readable,
         "store": store,
         "parts": parts,
         "map_index": map_index,
         "segments_to_translate": segments_to_translate,
     }
+
+
+def leading_bound_placeholders(part: str) -> str:
+    prefix = ""
+    rest = part
+    while True:
+        m = re.match(r"⟦MD:bound:\d+⟧", rest)
+        if not m:
+            break
+        prefix += m.group(0)
+        rest = rest[m.end() :]
+    return prefix
 
 
 def restore(prepared, translated_segments: list[str]) -> str:
@@ -244,7 +265,7 @@ def restore(prepared, translated_segments: list[str]) -> str:
         if idx is None:
             out_parts.append(p)
         elif idx < len(translated_segments):
-            out_parts.append(translated_segments[idx])
+            out_parts.append(leading_bound_placeholders(p) + translated_segments[idx])
         else:
             out_parts.append(p)
     return restore_markdown("\n".join(out_parts), prepared["store"])
@@ -333,7 +354,7 @@ def main() -> int:
     out = restore(p, fake)
     ok &= check(
         "blank between heading and list",
-        out == "译:## Title\n\n译:- item1\n\n译:- item2",
+        out == "## 译:Title\n\n- 译:item1\n\n- 译:item2",
         repr(out),
     )
 
@@ -343,7 +364,7 @@ def main() -> int:
     out = restore(p, fake)
     ok &= check(
         "blank between list items",
-        out == "T:- alpha\n\nT:- beta\n\nT:- gamma",
+        out == "- T:alpha\n\n- T:beta\n\n- T:gamma",
         repr(out),
     )
 
@@ -370,6 +391,88 @@ def main() -> int:
         "heading blank para soft-merge",
         p["working"] == "## Title\n\nPara was split here.\n\n- item",
         repr(p["working"]),
+    )
+
+    # --- Yahao 测试稿：标题层级 / 空行段落 / 无序列表（模型剥标记后骨架仍在）---
+    src = (
+        "## 一、标题层级\n\n"
+        "# 一级标题 H1\n"
+        "## 二级标题 H2\n"
+        "### 三级标题 H3\n"
+        "#### 四级标题 H4\n"
+        "##### 五级标题 H5\n"
+        "###### 六级标题 H6\n\n"
+        "正文普通段落：对照标题。"
+    )
+    p = prepare(src)
+    ok &= check(
+        "yahao headings not soft-merged",
+        p["working"].count("\n") >= 8 and "# 一级标题 H1" in p["working"] and "## 二级标题 H2" in p["working"],
+        repr(p["working"]),
+    )
+    # 模拟 DeepSeek 剥掉 # 后只回正文
+    stripped = []
+    for s in p["segments_to_translate"]:
+        stripped.append(s)  # 已不含行首标记
+    out = restore(p, stripped)
+    ok &= check(
+        "yahao headings markers reattached",
+        out.startswith("## 一、标题层级")
+        and "\n# 一级标题 H1\n" in out
+        and "\n## 二级标题 H2\n" in out
+        and "\n### 三级标题 H3\n" in out
+        and "\n\n正文普通段落" in out,
+        repr(out),
+    )
+    # 送译段本身不应再带行首 #，避免重复
+    ok &= check(
+        "yahao heading segments stripped for API",
+        all(not re.match(r"#{1,6}\s", s) for s in p["segments_to_translate"] if "标题" in s or "对照" in s or "一、" in s),
+        repr(p["segments_to_translate"]),
+    )
+
+    src = (
+        "第一段：假换行测试前先确认空行。\n\n"
+        "第二段：上面这一行和本段之间应有一个空行；译完后空行应还在。\n\n"
+        "第三段：下面列表前也应留空行。"
+    )
+    p = prepare(src)
+    out = restore(p, [f"译:{s}" for s in p["segments_to_translate"]])
+    ok &= check(
+        "yahao blank paragraphs kept",
+        out == "译:第一段：假换行测试前先确认空行。\n\n译:第二段：上面这一行和本段之间应有一个空行；译完后空行应还在。\n\n译:第三段：下面列表前也应留空行。",
+        repr(out),
+    )
+
+    src = (
+        "- 苹果\n"
+        "- 香蕉\n"
+        "- 樱桃\n\n"
+        "带空行的列表：\n\n"
+        "- 第一项\n\n"
+        "- 第二项（与上一项之间有空行）\n\n"
+        "- 第三项\n\n"
+        "嵌套：\n\n"
+        "- 外层 A\n"
+        "  - 内层 A1\n"
+        "  - 内层 A2\n"
+        "- 外层 B\n"
+        "  - 内层 B1"
+    )
+    p = prepare(src)
+    out = restore(p, list(p["segments_to_translate"]))
+    ok &= check(
+        "yahao lists markers and blanks",
+        out == src and "\n\n- 第二项" in out and "\n  - 内层 A1\n" in out,
+        repr(out),
+    )
+    # 模型剥 - 后仍能还原行首
+    out2 = restore(p, list(p["segments_to_translate"]))
+    # segments already stripped; restore reattaches
+    ok &= check(
+        "yahao list not glued to one line",
+        out2.count("\n") >= 10 and not re.search(r"- 苹果- 香蕉", out2),
+        repr(out2),
     )
 
     print("---")

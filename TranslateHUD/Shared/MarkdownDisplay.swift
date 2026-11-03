@@ -81,19 +81,41 @@ enum MarkdownDisplay {
             )
         }
         var total: CGFloat = 0
+        let paraGap = quoteParagraphSpacing(for: role)
         for (index, seg) in segs.enumerated() {
             if index > 0 {
                 total += spacing(before: seg, after: segs[index - 1])
             }
             let rail = quoteChromeWidth(for: seg)
             let bodyWidth = max(width - rail, 1)
-            let bodyMarkdown = seg.isQuote ? stripQuoteMarkers(seg.markdown) : seg.markdown
-            total += TextBlockMetrics.height(
-                attributed: styled(bodyMarkdown, role: role, colors: colors),
-                lineSpacing: role.lineSpacing,
-                width: bodyWidth,
-                maxLines: nil
-            )
+            if seg.isQuote {
+                let paragraphs = quoteBodyParagraphs(seg.markdown)
+                if paragraphs.isEmpty {
+                    total += TextBlockMetrics.height(
+                        attributed: styled(stripQuoteMarkers(seg.markdown), role: role, colors: colors),
+                        lineSpacing: role.lineSpacing,
+                        width: bodyWidth,
+                        maxLines: nil
+                    )
+                } else {
+                    for (pi, para) in paragraphs.enumerated() {
+                        if pi > 0 { total += paraGap }
+                        total += TextBlockMetrics.height(
+                            attributed: styled(para, role: role, colors: colors),
+                            lineSpacing: role.lineSpacing,
+                            width: bodyWidth,
+                            maxLines: nil
+                        )
+                    }
+                }
+            } else {
+                total += TextBlockMetrics.height(
+                    attributed: styled(seg.markdown, role: role, colors: colors),
+                    lineSpacing: role.lineSpacing,
+                    width: bodyWidth,
+                    maxLines: nil
+                )
+            }
         }
         return total
     }
@@ -113,6 +135,45 @@ enum MarkdownDisplay {
     /// Extra indent for quote *body* only (depth 2 sits a bit further in than depth 1).
     static func quoteBodyLeadingInset(depth: Int) -> CGFloat {
         CGFloat(max(depth - 1, 0)) * 4
+    }
+
+    /// Explicit gap between paragraphs inside one quote segment (empty `>` line).
+    /// Roughly one body line so quote blanks match prose `\n\n` feel.
+    static func quoteParagraphSpacing(for role: Role) -> CGFloat {
+        role.basePointSize + role.lineSpacing
+    }
+
+    /// True when a quote line has no body after stripping `>` markers (`>`, `> `, `> >`, …).
+    static func isEmptyQuoteLine(_ line: String) -> Bool {
+        stripQuoteMarkers(line).trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Split a same-depth quote segment on empty `>` lines into body paragraphs (markers stripped).
+    /// Tight `> A.\n> B.` stays one paragraph; `> A.\n>\n> B.` → ["A.", "B."].
+    static func quoteBodyParagraphs(_ markdown: String) -> [String] {
+        let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var paragraphs: [String] = []
+        var current: [String] = []
+
+        func flush() {
+            guard !current.isEmpty else { return }
+            let body = stripQuoteMarkers(current.joined(separator: "\n"))
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\n"))
+            if !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                paragraphs.append(body)
+            }
+            current = []
+        }
+
+        for line in lines {
+            if isEmptyQuoteLine(line) {
+                flush()
+            } else {
+                current.append(line)
+            }
+        }
+        flush()
+        return paragraphs
     }
 
     // MARK: - Block breaks
@@ -559,9 +620,10 @@ enum MarkdownDisplay {
                 textBlock(seg.markdown)
             case .quote(let depth):
                 let bars = max(depth, 1)
-                // Default (center) alignment lets Rectangle stretch to the text height so the
-                // bar stays continuous across soft wraps — unlike a leading "│" glyph.
-                // Bars share a common leading edge (no group leading pad); body gets nest indent.
+                let paragraphs = MarkdownDisplay.quoteBodyParagraphs(seg.markdown)
+                // Default (center) alignment lets Rectangle stretch across paragraphs + blank
+                // spacers so the rail stays continuous through quote-internal empty `>` lines.
+                // Bars share a common leading edge; nest indent is on the body column only.
                 HStack(spacing: 8) {
                     HStack(spacing: 3) {
                         ForEach(0..<bars, id: \.self) { _ in
@@ -571,8 +633,20 @@ enum MarkdownDisplay {
                         }
                     }
                     .padding(.leading, MarkdownDisplay.quoteBarLeadingInset(depth: bars))
-                    textBlock(MarkdownDisplay.stripQuoteMarkers(seg.markdown))
-                        .padding(.leading, MarkdownDisplay.quoteBodyLeadingInset(depth: bars))
+                    VStack(alignment: .leading, spacing: 0) {
+                        if paragraphs.isEmpty {
+                            textBlock(MarkdownDisplay.stripQuoteMarkers(seg.markdown))
+                        } else {
+                            ForEach(Array(paragraphs.enumerated()), id: \.offset) { index, para in
+                                if index > 0 {
+                                    Color.clear
+                                        .frame(height: MarkdownDisplay.quoteParagraphSpacing(for: role))
+                                }
+                                textBlock(para)
+                            }
+                        }
+                    }
+                    .padding(.leading, MarkdownDisplay.quoteBodyLeadingInset(depth: bars))
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }

@@ -483,6 +483,63 @@ final class MarkdownDisplayTests: XCTestCase {
         )
     }
 
+    func testQuoteEmptyMarkerLineSplitsBodyParagraphs() {
+        let paras = MarkdownDisplay.quoteBodyParagraphs("> A.\n>\n> B.")
+        XCTAssertEqual(paras, ["A.", "B."], "\(paras)")
+        // Tight consecutive quote lines stay one paragraph (no invented blank).
+        XCTAssertEqual(
+            MarkdownDisplay.quoteBodyParagraphs("> A.\n> B."),
+            ["A.\nB."]
+        )
+        XCTAssertTrue(MarkdownDisplay.isEmptyQuoteLine(">"))
+        XCTAssertTrue(MarkdownDisplay.isEmptyQuoteLine("> "))
+        XCTAssertTrue(MarkdownDisplay.isEmptyQuoteLine("> >"))
+        XCTAssertFalse(MarkdownDisplay.isEmptyQuoteLine("> body"))
+    }
+
+    func testQuoteInternalBlankLineIncreasesMeasuredHeight() {
+        let colors = PanelColors.dark
+        let width: CGFloat = 280
+        let withBlank = MarkdownDisplay.height(
+            "> First paragraph.\n>\n> Second paragraph.",
+            role: .translation,
+            colors: colors,
+            width: width,
+            maxLines: nil
+        )
+        let tight = MarkdownDisplay.height(
+            "> First paragraph.\n> Second paragraph.",
+            role: .translation,
+            colors: colors,
+            width: width,
+            maxLines: nil
+        )
+        XCTAssertGreaterThan(
+            withBlank,
+            tight,
+            "empty `>` between quote paragraphs must add explicit gap; withBlank=\(withBlank) tight=\(tight)"
+        )
+        let gap = MarkdownDisplay.quoteParagraphSpacing(for: .translation)
+        XCTAssertGreaterThanOrEqual(withBlank - tight, gap - 0.5)
+    }
+
+    func testNestedQuoteRailsStillSplitByDepthWithBlankOuter() {
+        let segs = MarkdownDisplay.segments(from: "> Outer A\n>\n> Outer B\n> > Nested")
+        let depths = segs.compactMap { seg -> Int? in
+            if case .quote(let d) = seg.kind { return d }
+            return nil
+        }
+        XCTAssertEqual(depths.first, 1, "\(segs)")
+        XCTAssertTrue(depths.contains(2), "\(segs)")
+        XCTAssertEqual(MarkdownDisplay.quoteBarLeadingInset(depth: 2), 0)
+        let outer = try! XCTUnwrap(segs.first { $0.quoteDepth == 1 })
+        XCTAssertEqual(
+            MarkdownDisplay.quoteBodyParagraphs(outer.markdown),
+            ["Outer A", "Outer B"],
+            outer.markdown
+        )
+    }
+
     func testStyledQuoteBodyUsesPrimaryNotMutedOnly() {
         let colors = PanelColors.dark
         let styled = MarkdownDisplay.styled("> Quoted body", role: .translation, colors: colors)

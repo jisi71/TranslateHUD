@@ -119,6 +119,31 @@ final class MarkdownDisplayTests: XCTestCase {
         )
     }
 
+    /// Feishu wiki「四、无序列表」regression: three CJK bullets must not collapse to one sticky line.
+    func testStyledChineseUnorderedListBreaksEachItem() {
+        let styled = MarkdownDisplay.styled("- 苹果\n- 香蕉\n- 樱桃", role: .translation, colors: .dark)
+        let characters = String(styled.characters)
+        XCTAssertTrue(characters.contains("•"), characters)
+        XCTAssertNotEqual(
+            characters.replacingOccurrences(of: "\n", with: ""),
+            characters,
+            "must contain newlines: \(characters)"
+        )
+        // Must not look like "• 苹果 · 香蕉 · 樱桃" on one visual line.
+        XCTAssertFalse(characters.contains("苹果香蕉樱桃"), characters)
+        XCTAssertFalse(characters.contains("·"), "must not use interpunct glue: \(characters)")
+        XCTAssertTrue(
+            characters.range(of: #"苹果\s*\n+[\s•]*香蕉"#, options: .regularExpression) != nil,
+            characters
+        )
+        XCTAssertTrue(
+            characters.range(of: #"香蕉\s*\n+[\s•]*樱桃"#, options: .regularExpression) != nil,
+            characters
+        )
+        let nonEmpty = characters.split(separator: "\n", omittingEmptySubsequences: true)
+        XCTAssertGreaterThanOrEqual(nonEmpty.count, 3, characters)
+    }
+
     func testStyledOrderedListShowsNumbers() {
         let styled = MarkdownDisplay.styled("1. alpha\n2. beta", role: .translation, colors: .dark)
         let characters = String(styled.characters)
@@ -144,6 +169,36 @@ final class MarkdownDisplayTests: XCTestCase {
         XCTAssertTrue(characters.contains("•"), characters)
         XCTAssertTrue(characters.contains("\n"), characters)
         XCTAssertTrue(characters.contains("outer") && characters.contains("inner"), characters)
+        XCTAssertFalse(characters.contains("outerinner"), "nested must break lines: \(characters)")
+        XCTAssertTrue(
+            characters.range(of: #"outer\s*\n+[\s•]*inner"#, options: .regularExpression) != nil,
+            characters
+        )
+    }
+
+    func testStyledChineseNestedListBreaksAndIndents() {
+        let markdown = "- 外层 A\n  - 内层 A1\n  - 内层 A2\n- 外层 B\n  - 内层 B1"
+        let styled = MarkdownDisplay.styled(markdown, role: .translation, colors: .dark)
+        let characters = String(styled.characters)
+        XCTAssertTrue(characters.contains("•"), characters)
+        XCTAssertFalse(characters.contains("外层 A内层"), "must not flatten nest: \(characters)")
+        XCTAssertTrue(
+            characters.range(of: #"外层 A\s*\n+[\s•]*内层 A1"#, options: .regularExpression) != nil,
+            characters
+        )
+        XCTAssertTrue(
+            characters.range(of: #"内层 A2\s*\n+[\s•]*外层 B"#, options: .regularExpression) != nil,
+            characters
+        )
+        var indents: [CGFloat] = []
+        for run in styled.runs {
+            if let style = run.appKit.paragraphStyle {
+                indents.append(style.firstLineHeadIndent)
+            }
+        }
+        XCTAssertGreaterThan((indents.max() ?? 0), (indents.min() ?? 0), "\(indents)")
+        let nonEmpty = characters.split(separator: "\n", omittingEmptySubsequences: true)
+        XCTAssertGreaterThanOrEqual(nonEmpty.count, 5, characters)
     }
 
     func testPlainTextStillStripsListMarkersForSpeech() {
@@ -166,10 +221,13 @@ final class MarkdownDisplayTests: XCTestCase {
             characters,
             characters
         )
+        XCTAssertFalse(characters.contains("甲乙"), "loose items must not glue: \(characters)")
         XCTAssertTrue(
             characters.range(of: #"甲\s*\n+[\s•]*乙"#, options: .regularExpression) != nil,
             characters
         )
+        let nonEmpty = characters.split(separator: "\n", omittingEmptySubsequences: true)
+        XCTAssertGreaterThanOrEqual(nonEmpty.count, 2, characters)
     }
 
     func testInlineStylesStayOnOneVisualLine() {

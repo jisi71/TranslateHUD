@@ -106,18 +106,20 @@ enum MarkdownDisplay {
         }
     }
 
-    /// Innermost block-level component identity, if any.
-    /// List items use the `listItem` identity so adjacent bullets get breaks even when they
-    /// share the parent `unorderedList` / `orderedList` identity.
+    /// Innermost non-container block identity, if any.
+    /// `PresentationIntent.components` is inner→outer. List items share one parent
+    /// `unorderedList` / `orderedList` identity; if we took the outermost block we would
+    /// treat every bullet as the same block and `reinjectBlockBreaks` would skip `\n`.
+    /// Skip those list containers and return the first (innermost) real block — usually
+    /// `.paragraph` or `.listItem` — so adjacent items get distinct identities.
     private static func blockIdentity(of intent: PresentationIntent?) -> Int? {
         guard let intent else { return nil }
-        var found: Int?
         for component in intent.components {
             if isBlockLevelKind(component.kind) {
-                found = component.identity
+                return component.identity
             }
         }
-        return found
+        return nil
     }
 
     private static func isBlockLevelKind(_ kind: PresentationIntent.Kind) -> Bool {
@@ -134,10 +136,9 @@ enum MarkdownDisplay {
             return true
         case .listItem:
             return true
-        case .unorderedList:
-            return true
-        case .orderedList:
-            return true
+        case .unorderedList, .orderedList:
+            // Shared list containers — not item identity; skip so adjacent bullets break.
+            return false
         default:
             return false
         }

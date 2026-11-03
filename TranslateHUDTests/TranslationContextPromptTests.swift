@@ -297,15 +297,18 @@ final class TranslationContextPromptTests: XCTestCase {
         let plain = try chatRequest(XCTUnwrap(plainBodies.first))
         let wrapped = try chatRequest(XCTUnwrap(wrappedBodies.first))
         let marked = texts.joined(separator: "\n")
+        let wrappedTranslation = try XCTUnwrap(section(wrapped.user, tag: "translate"))
+        let plainLines = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(plain.user.utf8)) as? NSArray)
+        let wrappedLines = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(wrappedTranslation.utf8)) as? NSArray)
+        XCTAssertEqual(wrappedLines, plainLines)
         let frame = try XCTUnwrap(TranslationContextPrompt.frame(
             marked: marked,
-            translating: plain.user,
+            translating: wrappedTranslation,
             context: context
         ))
 
         XCTAssertEqual(wrapped.user, frame.userMessage)
         XCTAssertEqual(wrapped.system, plain.system + frame.translationAddendum)
-        XCTAssertEqual(section(wrapped.user, tag: "translate"), plain.user)
         XCTAssertEqual(section(wrapped.user, tag: "reference_passage"), "See <<<\(marked)>>> now.")
         XCTAssertEqual(plain.object.keys.sorted(), wrapped.object.keys.sorted())
         XCTAssertEqual(plain.object["temperature"] as? NSNumber, wrapped.object["temperature"] as? NSNumber)

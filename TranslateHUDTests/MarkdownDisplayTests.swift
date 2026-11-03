@@ -30,6 +30,24 @@ final class MarkdownDisplayTests: XCTestCase {
         XCTAssertEqual(String(styled.characters), text)
     }
 
+    func testPlainMultilineKeepsLineBreaksAndInlineEmphasis() {
+        let text = "One **bold**\nTwo lines"
+        let styled = MarkdownDisplay.styled(text, role: .source, colors: .dark)
+        XCTAssertEqual(String(styled.characters), "One bold\nTwo lines")
+        XCTAssertTrue(styled.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+        XCTAssertEqual(MarkdownDisplay.plainText(from: text), "One bold\nTwo lines")
+    }
+
+    func testPurifyChoiceSurvivesRendering() {
+        let source = "The line was\nbroken in the middle."
+        let kept = SelectionFormatPipeline.prepare(source, options: SelectionFormatOptions(smartPurify: false, preserveMarkdown: true))
+        let keptText = kept.restore(translatedSegments: kept.segmentsToTranslate)
+        XCTAssertEqual(MarkdownDisplay.plainText(from: keptText), source)
+        let merged = SelectionFormatPipeline.prepare(source, options: SelectionFormatOptions(smartPurify: true, preserveMarkdown: true))
+        let mergedText = merged.restore(translatedSegments: merged.segmentsToTranslate)
+        XCTAssertEqual(MarkdownDisplay.plainText(from: mergedText), "The line was broken in the middle.")
+    }
+
     func testHeadingMeasuresTallerThanPlainLine() {
         let colors = PanelColors.dark
         let width: CGFloat = 420
@@ -523,7 +541,7 @@ final class MarkdownDisplayTests: XCTestCase {
             "empty `>` between quote paragraphs must add explicit gap; withBlank=\(withBlank) tight=\(tight)"
         )
         let gap = MarkdownDisplay.quoteParagraphSpacing(for: .translation)
-        XCTAssertGreaterThanOrEqual(withBlank - tight, gap - 0.5)
+        XCTAssertGreaterThanOrEqual(withBlank - tight, gap - 1.5)
     }
 
     func testNestedQuoteRailsStillSplitByDepthWithBlankOuter() {

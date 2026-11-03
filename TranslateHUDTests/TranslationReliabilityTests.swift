@@ -133,7 +133,8 @@ final class TranslationReliabilityTests: XCTestCase {
             .init(body: successfulStream)
         ])
         do { _ = try await collect(translator); XCTFail("The quality failure must exhaust the request limit") }
-        catch TranslationError.quality {} catch { XCTFail("Unexpected error: \(error)") }
+        catch TranslationError.qualityFailures(let failures) { XCTAssertFalse(failures.isEmpty) }
+        catch { XCTFail("Unexpected error: \(error)") }
         XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
     }
 
@@ -248,7 +249,7 @@ final class TranslationReliabilityTests: XCTestCase {
         let invalid = TranslationURLProtocol.Response(body: "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\ndata: [DONE]\n\n")
         let translator = mockTranslator(responses: [invalid, invalid])
         do { _ = try await collect(translator); XCTFail("An untranslated echo must remain an error") }
-        catch TranslationError.quality(let message) { XCTAssertTrue(message.contains("已尝试两次")) }
+        catch TranslationError.qualityFailures(let failures) { XCTAssertTrue(failures.contains(.echoedInput)) }
         catch { XCTFail("Unexpected error: \(error)") }
         XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
     }
@@ -277,8 +278,8 @@ final class TranslationReliabilityTests: XCTestCase {
         do {
             _ = try await collect(translator, source: source)
             XCTFail("Ordinary words left in English must remain an error")
-        } catch TranslationError.quality(let message) {
-            XCTAssertTrue(message.contains("已尝试两次"))
+        } catch TranslationError.qualityFailures(let failures) {
+            XCTAssertTrue(failures.contains(.underTranslated))
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
@@ -319,8 +320,8 @@ final class TranslationReliabilityTests: XCTestCase {
         do {
             _ = try await collect(translator, source: source)
             XCTFail("A caption around the original must remain an error")
-        } catch TranslationError.quality(let message) {
-            XCTAssertTrue(message.contains("已尝试两次"))
+        } catch TranslationError.qualityFailures(let failures) {
+            XCTAssertTrue(failures.contains(.underTranslated))
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
@@ -334,8 +335,8 @@ final class TranslationReliabilityTests: XCTestCase {
         do {
             _ = try await collect(translator, source: source)
             XCTFail("Barely translated code must remain an error")
-        } catch TranslationError.quality(let message) {
-            XCTAssertTrue(message.contains("已尝试两次"))
+        } catch TranslationError.qualityFailures(let failures) {
+            XCTAssertTrue(failures.contains(.underTranslated))
         } catch {
             XCTFail("Unexpected error: \(error)")
         }

@@ -33,6 +33,17 @@ enum MarkdownDisplay {
         options.interpretedSyntax = .full
         options.failurePolicy = .returnPartiallyParsedIfPossible
         if var parsed = try? AttributedString(markdown: markdown, options: options) {
+            let onlyProse = parsed.runs.allSatisfy { run in
+                guard let intent = run.presentationIntent else { return true }
+                return intent.components.allSatisfy { component in
+                    if case .paragraph = component.kind { return true }
+                    return false
+                }
+            }
+            if markdown.contains("\n"), onlyProse, !containsGFMTable(markdown) {
+                options.interpretedSyntax = .inlineOnlyPreservingWhitespace
+                if let plain = try? AttributedString(markdown: markdown, options: options) { return plain }
+            }
             reinjectBlockBreaks(&parsed, source: markdown)
             return parsed
         }

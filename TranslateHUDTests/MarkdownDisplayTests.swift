@@ -171,4 +171,30 @@ final class MarkdownDisplayTests: XCTestCase {
             characters
         )
     }
+
+    func testInlineStylesStayOnOneVisualLine() {
+        let markdown = "普通字，**粗体**，*斜体*，***粗斜体***，~~删除线~~，`path/to/file.swift`。"
+        let characters = String(MarkdownDisplay.styled(markdown, role: .translation, colors: .dark).characters)
+        // Must not insert hard breaks at every emphasis boundary.
+        let nonEmptyLines = characters.split(separator: "\n", omittingEmptySubsequences: true)
+        XCTAssertEqual(nonEmptyLines.count, 1, characters)
+        XCTAssertTrue(characters.contains("普通字"), characters)
+        XCTAssertTrue(characters.contains("粗体"), characters)
+        XCTAssertTrue(characters.contains("path/to/file.swift"), characters)
+        XCTAssertFalse(characters.contains("•"), "plain paragraph must not get list bullets: \(characters)")
+    }
+
+    func testInlineCodeKeepsBackgroundAttribute() {
+        let styled = MarkdownDisplay.styled("before `code` after", role: .translation, colors: .dark)
+        var sawCodeBackground = false
+        for run in styled.runs {
+            let text = String(styled[run.range].characters)
+            if text.contains("code"), run.appKit.backgroundColor != nil {
+                sawCodeBackground = true
+            }
+        }
+        XCTAssertTrue(sawCodeBackground, "inline code should keep a visible background")
+    }
+
+
 }

@@ -230,6 +230,10 @@ def inline_md(nodes) -> str:
                 inner = inline_md(n.children)
                 href = n.attrs.get("href", "")
                 out.append(f"[{inner}]({href})" if href else inner)
+            elif n.name in ("s", "strike", "del"):
+                inner = inline_md(n.children).strip()
+                if inner:
+                    out.append(f"~~{inner}~~")
             else:
                 out.append(inline_md(n.children))
     return "".join(out)
@@ -288,6 +292,16 @@ def list_item_body_text(nodes) -> str:
             inline_buf.append(n)
     flush()
     return "\n\n".join(paragraphs)
+
+
+
+def has_direct_block_child(nodes) -> bool:
+    block = {
+        "h1", "h2", "h3", "h4", "h5", "h6",
+        "p", "div", "ul", "ol", "li", "table", "tr", "thead", "tbody", "tfoot", "td", "th",
+        "blockquote", "pre", "hr", "section", "article", "main", "header", "footer", "aside", "figure",
+    }
+    return any(isinstance(n, Element) and n.name in block for n in nodes)
 
 
 def convert(html: str) -> str | None:
@@ -376,7 +390,8 @@ def convert(html: str) -> str | None:
             if body:
                 append_para(body)
         elif el.name in ("div", "section", "article", "main", "header", "footer", "aside", "figure", "blockquote"):
-            if any(isinstance(c, Element) for c in el.children):
+            # Only descend when a direct child is a real block; inline strong/em stay in one paragraph.
+            if has_direct_block_child(el.children):
                 for c in el.children:
                     append_blocks(c)
             else:
@@ -400,12 +415,13 @@ def convert(html: str) -> str | None:
         elif el.name == "pre":
             blocks.append("```\n" + plain_text(el.children) + "\n```")
         else:
-            if any(
-                isinstance(c, Element) and c.name in HEADINGS.union({"p", "div", "ul", "ol", "li", "br", "table"})
-                for c in el.children
-            ):
+            if has_direct_block_child(el.children):
                 for c in el.children:
                     append_blocks(c)
+            elif el.name in ("strong", "b", "em", "i", "s", "strike", "del", "code", "a"):
+                body = inline_md([el]).strip()
+                if body:
+                    append_para(body)
             else:
                 body = inline_md(el.children).strip()
                 if body:
@@ -475,6 +491,23 @@ def main() -> int:
 
     loose = convert("<ul><li><p>甲</p></li><li><p>乙</p></li></ul>")
     assert loose == "- 甲\n\n- 乙", loose
+
+    # 飞书 ace-line：行内样式必须留在同一段，不能在每个 strong/em 边界拆行
+    inline_html = (
+        '<div data-lark-html-role="root">'
+        '<div class="ace-line">普通字，<strong>粗体</strong>，<em>斜体</em>，'
+        '<strong><em>粗斜体</em></strong>，<s>删除线</s>，'
+        '<code>path/to/file.swift</code>。</div></div>'
+    )
+    inline_md_out = convert(inline_html)
+    assert inline_md_out is not None, "inline convert empty"
+    assert "\n" not in inline_md_out, inline_md_out
+    assert "**粗体**" in inline_md_out, inline_md_out
+    assert "*斜体*" in inline_md_out, inline_md_out
+    assert "***粗斜体***" in inline_md_out, inline_md_out
+    assert "~~删除线~~" in inline_md_out, inline_md_out
+    assert "`path/to/file.swift`" in inline_md_out, inline_md_out
+    assert inline_md_out.startswith("普通字，"), inline_md_out
 
     print("OK: all html→markdown self-checks passed")
     return 0

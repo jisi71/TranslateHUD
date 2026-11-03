@@ -72,9 +72,12 @@ enum MarkdownDisplay {
     // MARK: - Block breaks
 
     /// Foundation's `.full` Markdown parse keeps `presentationIntent` on runs but strips
-    /// newlines between blocks from `characters` (e.g. `# A\n\n## B` → `AB`). SwiftUI `Text`
-    /// and TextKit then render sticky lines. Insert `\n` when adjacent runs belong to different
-    /// block-level intent identities; same-block inline splits (bold/italic) stay unjoined.
+    /// newlines between blocks from `characters` (e.g. `# A
+
+## B` → `AB`). SwiftUI `Text`
+    /// and TextKit then render sticky lines. Insert `
+` only when both adjacent runs have
+    /// block-level identities that differ; inline splits (bold/italic/code) stay unjoined.
     private static func reinjectBlockBreaks(_ attributed: inout AttributedString) {
         let runs = Array(attributed.runs)
         guard runs.count >= 2 else { return }
@@ -87,12 +90,11 @@ enum MarkdownDisplay {
             let previousID = blockIdentity(of: previous.presentationIntent)
             let currentID = blockIdentity(of: current.presentationIntent)
 
-            // Same block identity → inline split inside one paragraph/header; no break.
-            if previousID != nil, previousID == currentID { continue }
-            // Neither run is a known block → leave as-is.
-            if previousID == nil, currentID == nil { continue }
-            // Different block identities (or block ↔ non-block): need a visible break.
-            guard previousID != currentID else { continue }
+            // Only break when BOTH runs carry a block identity and those identities differ.
+            // A nil identity is an inline split (bold/italic/code/strikethrough) inside a
+            // paragraph — never insert a hard newline there (would shatter「普通字，**粗体**」).
+            guard let previousID, let currentID else { continue }
+            if previousID == currentID { continue }
 
             let previousChars = attributed[previous.range].characters
             let currentChars = attributed[current.range].characters

@@ -87,9 +87,9 @@ enum HTMLToMarkdownConverter {
                 let body = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !body.isEmpty { appendParagraph(body, into: &blocks) }
             case "div", "section", "article", "main", "header", "footer", "aside", "figure", "blockquote":
-                // 块容器：子节点各自成块；无元素子节点时当段落
-                let hasElementChild = el.children.contains { if case .element = $0 { return true }; return false }
-                if hasElementChild {
+                // 仅当直接子节点含块级元素时下钻；飞书 ace-line 内 strong/em/code 等行内标签
+                // 必须整段走 inlineMarkdown，否则会把「普通字，**粗体**」拆成多块多行。
+                if hasDirectBlockChild(el.children) {
                     for child in el.children {
                         appendBlocks(from: child, into: &blocks)
                     }
@@ -121,8 +121,8 @@ enum HTMLToMarkdownConverter {
                     appendBlocks(from: child, into: &blocks)
                 }
             case "html", "body", "head", "fragment", "span", "a", "font", "label":
-                // span/a 在块级上下文：若含块级子节点则下钻，否则当段落
-                if containsBlockLevel(el.children) {
+                // span/a 在块级上下文：仅直接块级子节点才下钻；否则整段行内（保留 a/span 语义）
+                if hasDirectBlockChild(el.children) {
                     for child in el.children {
                         appendBlocks(from: child, into: &blocks)
                     }
@@ -131,10 +131,14 @@ enum HTMLToMarkdownConverter {
                     if !body.isEmpty { appendParagraph(body, into: &blocks) }
                 }
             default:
-                if containsBlockLevel(el.children) {
+                // 未识别标签：有直接块级子节点才下钻，避免把 b/strong 等拆成独立段落
+                if hasDirectBlockChild(el.children) {
                     for child in el.children {
                         appendBlocks(from: child, into: &blocks)
                     }
+                } else if isInlineEmphasisName(el.name) || el.name == "code" {
+                    let body = inlineMarkdown([.element(el)]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !body.isEmpty { appendParagraph(body, into: &blocks) }
                 } else {
                     let body = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
                     if !body.isEmpty { appendParagraph(body, into: &blocks) }
@@ -359,7 +363,10 @@ enum HTMLToMarkdownConverter {
                     } else {
                         out += "[\(inner)](\(href))"
                     }
-                case "span", "font", "label", "u", "s", "strike", "del", "mark", "sub", "sup", "small":
+                case "s", "strike", "del":
+                    let inner = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !inner.isEmpty { out += "~~\(inner)~~" }
+                case "span", "font", "label", "u", "mark", "sub", "sup", "small":
                     out += inlineMarkdown(el.children)
                 case "h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "ul", "ol", "li", "blockquote", "pre", "hr":
                     // 行内上下文遇到块级：插入空格分隔的纯文本，避免丢字
@@ -429,6 +436,28 @@ enum HTMLToMarkdownConverter {
 
     private static func isHeadingName(_ name: String) -> Bool {
         ["h1", "h2", "h3", "h4", "h5", "h6"].contains(name)
+    }
+
+    /// 直接子节点是否含块级元素。不含 br（软换行留在行内）；不含 strong/em 等行内标签。
+    private static func hasDirectBlockChild(_ nodes: [Node]) -> Bool {
+        for node in nodes {
+            if case .element(let el) = node, isBlockContainerName(el.name) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func isBlockContainerName(_ name: String) -> Bool {
+        [
+            "h1", "h2", "h3", "h4", "h5", "h6",
+            "p", "div", "ul", "ol", "li", "table", "tr", "thead", "tbody", "tfoot", "td", "th",
+            "blockquote", "pre", "hr", "section", "article", "main", "header", "footer", "aside", "figure"
+        ].contains(name)
+    }
+
+    private static func isInlineEmphasisName(_ name: String) -> Bool {
+        ["strong", "b", "em", "i", "s", "strike", "del", "code", "a"].contains(name)
     }
 
     private static func containsBlockLevel(_ nodes: [Node]) -> Bool {

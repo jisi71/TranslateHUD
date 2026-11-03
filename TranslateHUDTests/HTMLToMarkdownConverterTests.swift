@@ -92,6 +92,27 @@ final class HTMLToMarkdownConverterTests: XCTestCase {
         XCTAssertEqual(markdown, "- 甲\n\n- 乙")
     }
 
+
+    func testFeishuAceLineKeepsInlineStylesOnOneParagraph() {
+        let html = """
+        <div data-lark-html-role="root"><div class="ace-line">普通字，<strong>粗体</strong>，<em>斜体</em>，<strong><em>粗斜体</em></strong>，<s>删除线</s>，<code>path/to/file.swift</code>。</div></div>
+        """
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertFalse(markdown.contains("\n"), markdown)
+        XCTAssertTrue(markdown.contains("**粗体**"), markdown)
+        XCTAssertTrue(markdown.contains("*斜体*"), markdown)
+        XCTAssertTrue(markdown.contains("***粗斜体***"), markdown)
+        XCTAssertTrue(markdown.contains("~~删除线~~"), markdown)
+        XCTAssertTrue(markdown.contains("`path/to/file.swift`"), markdown)
+        XCTAssertTrue(markdown.hasPrefix("普通字，"), markdown)
+    }
+
+    func testStrikethroughAndBoldItalicInline() {
+        let html = "<p>a <del>x</del> <strong><em>y</em></strong> <code>z</code></p>"
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertEqual(markdown, "a ~~x~~ ***y*** `z`")
+    }
+
     private static func loadFixture(_ name: String) throws -> String {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

@@ -380,8 +380,8 @@ final class KeychainGateTests: XCTestCase {
         }
     }
 
-    func testIncompleteTrialSessionIsNotMarkedSaved() {
-        isolate { defaults, _, keychain in
+    func testIncompleteTrialSessionIsNotMarkedSaved() throws {
+        try isolate { defaults, _, keychain in
             XCTAssertThrowsError(try TrialKeychain.write(
                 accessToken: "",
                 refreshToken: "refresh",

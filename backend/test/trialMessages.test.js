@@ -112,6 +112,21 @@ test('screenshot-style blank lines still match the billed source for term explan
   }, source)
 })
 
+test('term explanation language is restricted to the supported client contract', () => {
+  const source = 'API'
+  const body = (system) => ({ model: 'trial', messages: [
+    { role: 'system', content: system },
+    { role: 'user', content: JSON.stringify({ texts: [source] }) }
+  ] })
+  const english = prepare(body('Every "explanation" must be concise English, one or two sentences. SENTINEL'), source)
+  assert.match(systemContent(english), /concise English/)
+  assert.doesNotMatch(systemContent(english), /SENTINEL/)
+  const retry = prepare(body('CRITICAL: The previous response used the wrong language. Every "explanation" must be concise English,'), source)
+  assert.match(systemContent(retry), /MUST be in English/)
+  const old = prepare(body('Return terms in English.'), source)
+  assert.match(systemContent(old), /concise Simplified Chinese/)
+})
+
 test('surrounding context is kept when it stays inside the app limit', () => {
   const source = '银行'
   const passage = `我去<<<${source}>>>取钱`
@@ -230,4 +245,22 @@ test('term context and suffixed selection tags round-trip the billed text', () =
   const section = translated.split('<translate>\n')[1].split('\n</translate>')[0]
   assert.deepEqual(JSON.parse(section).map((item) => item.text), lines)
   assert.equal(translated.includes('前<<<'), true)
+})
+
+
+test('term explanations preserve each supported translation target in normal and strict requests', () => {
+  const source = 'API'
+  for (const language of ['Simplified Chinese', 'English', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Italian', 'Portuguese', 'Russian', 'Arabic']) {
+    for (const strict of [false, true]) {
+      const prepared = prepare({
+        messages: [
+          { role: 'system', content: `${strict ? 'The previous response used the wrong language. ' : ''}Every "explanation" must be concise ${language}, one or two sentences. SENTINEL` },
+          { role: 'user', content: JSON.stringify({ texts: [source] }) }
+        ]
+      }, source)
+      assert.ok(systemContent(prepared).includes(`concise ${language},`))
+      assert.equal(systemContent(prepared).includes(`MUST be in ${language}.`), strict)
+      assert.equal(systemContent(prepared).includes('SENTINEL'), false)
+    }
+  }
 })

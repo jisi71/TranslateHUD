@@ -15,16 +15,18 @@ enum TrialCopy {
     static let sourceRequired = "体验翻译需要原文。请更新到最新版 TranslateHUD。"
     static let store = "体验余额暂时读不出来。请在设置里点余额旁的刷新。"
     static let concurrency = "同时进行的翻译太多了（同一账号最多 3 个）。请等当前翻译结束后再试。"
-    static let inviteRequired = "还没有体验额度。请在设置里输入邀请码领取，或填写你自己的 API Key。"
-    static let inviteClaimed = "这个账号已经领过体验额度。"
+    static let inviteRequired = "还没有体验额度。请在设置里输入邀请码兑换，或填写你自己的 API Key。"
+    static let inviteClaimed = "这个账号已经兑换过体验额度。"
 
-    /// Bottom status after a successful redeem. The amount is the gift that was just credited.
+    /// Bottom status after a successful redeem. Copy stays amount-free on purpose.
     static func inviteGranted(microYuan: Int) -> String {
-        "已领取 \(TrialPricing.yuanString(microYuan: microYuan)) 体验额度。"
+        _ = microYuan
+        return "已兑换体验额度。"
     }
 
     static func isInviteGranted(_ message: String) -> Bool {
-        message.hasPrefix("已领取 ¥") && message.hasSuffix(" 体验额度。")
+        message == "已兑换体验额度。"
+            || (message.hasPrefix("已领取 ¥") && message.hasSuffix(" 体验额度。"))
     }
     static let inviteInvalid = "邀请码不正确。"
     static let inviteExhausted = "邀请码次数用尽"

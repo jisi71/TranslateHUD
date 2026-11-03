@@ -5,6 +5,7 @@ enum TranslationError: Error, LocalizedError, Sendable {
     case http(code: Int, body: String)
     case parse(String)
     case quality(String)
+    case qualityFailures([TranslationValidator.Failure])
     case service(String)
     case empty
 
@@ -14,6 +15,8 @@ enum TranslationError: Error, LocalizedError, Sendable {
         case .http(let code, let body): return ServiceErrorMessage.http(code: code, body: body)
         case .parse(let m):         return "译文读取失败：\(m)"
         case .quality(let m):       return "译文未通过检查：\(m)"
+        case .qualityFailures(let failures):
+            return "译文未通过检查：已尝试两次：\(failures.map(\.explanation).joined(separator: "、"))。可缩短原文或更换模型后重试"
         case .service(let message): return message
         case .empty:                return "没有可翻译的文字，请重新选中文字或框选包含文字的区域。"
         }

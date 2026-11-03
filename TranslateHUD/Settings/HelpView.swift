@@ -25,6 +25,7 @@ enum SettingsRoute: Hashable {
 /// 这个设置窗口的标题栏不会自己长出返回按钮，所以在页面顶部放一个。
 struct SettingsBackContainer<Content: View>: View {
     @Environment(\.panelColors) private var colors
+    @ObservedObject private var language = InterfaceLanguageStore.shared
     var title: String
     var goBack: () -> Void
     var content: Content
@@ -38,12 +39,12 @@ struct SettingsBackContainer<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: goBack) {
-                Label(title, systemImage: "chevron.backward")
+                Label(LocalizedStringKey(title), systemImage: "chevron.backward")
             }
             .buttonStyle(.borderless)
             .foregroundStyle(colors.primaryText)
-            .help("返回\(title)")
-            .accessibilityLabel("返回\(title)")
+            .help(String(format: language.text("返回%@"), language.text(title)))
+            .accessibilityLabel(String(format: language.text("返回%@"), language.text(title)))
             .padding(.leading, 16)
             .padding(.top, 8)
             .padding(.bottom, 2)
@@ -68,7 +69,7 @@ struct HelpView: View {
     private func helpLink(_ title: String, route: SettingsRoute) -> some View {
         NavigationLink(value: route) {
             HStack {
-                Text(title)
+                Text(LocalizedStringKey(title))
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10))

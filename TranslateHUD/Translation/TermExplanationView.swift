@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TermExplanationView: View {
+    @ObservedObject private var interfaceLanguage = InterfaceLanguageStore.shared
     @ObservedObject var progress: TermExplanationProgress
 
     var body: some View {
@@ -66,7 +67,7 @@ struct TermExplanationView: View {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                Text(message)
+                Text(progress.displayError.map { interfaceLanguage.error($0, operation: "名词解释") } ?? interfaceLanguage.text(message))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

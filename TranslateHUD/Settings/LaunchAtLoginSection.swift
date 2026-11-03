@@ -7,6 +7,7 @@ struct LaunchAtLoginSection: View {
     @Environment(\.panelColors) private var colors
     @State private var status = SMAppService.mainApp.status
     @State private var errorMessage: String?
+    @ObservedObject private var language = InterfaceLanguageStore.shared
 
     var body: some View {
         SettingsCard("启动") {
@@ -29,7 +30,7 @@ struct LaunchAtLoginSection: View {
                         }
                         errorMessage = nil
                     } catch {
-                        errorMessage = "未能更改开机自动启动：\(error.localizedDescription)"
+                        errorMessage = error.localizedDescription
                     }
                     refreshStatus()
                 }
@@ -46,7 +47,7 @@ struct LaunchAtLoginSection: View {
                 }
             }
             if let errorMessage {
-                Text(errorMessage)
+                Text(language.format("未能更改开机自动启动：%@", errorMessage))
                     .font(.caption)
                     .foregroundStyle(colors.warning)
             }

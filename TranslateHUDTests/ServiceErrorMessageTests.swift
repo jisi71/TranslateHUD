@@ -169,7 +169,7 @@ final class ServiceErrorMessageTests: XCTestCase {
         guard case .failed = progress.state else { return XCTFail("Expected quota error") }
         let panel = NSHostingController(rootView: PopoverContent(
             original: "Intelligent UI", progress: progress,
-            termProgress: TermExplanationProgress(explainer: EmptyExplainer(), texts: ["Intelligent UI"], language: .chinese),
+            termProgress: TermExplanationProgress(explainer: EmptyExplainer(), texts: ["Intelligent UI"]),
             speech: SpeechController(), onCancel: {}, onRetry: {}
         ))
         let size = panel.sizeThatFits(in: NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.maxHeight))

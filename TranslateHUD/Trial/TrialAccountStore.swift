@@ -189,7 +189,7 @@ final class TrialAccountStore: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
-            let text = (error as? LocalizedError)?.errorDescription ?? "邀请码没有领到，请稍后再试。"
+            let text = (error as? LocalizedError)?.errorDescription ?? "邀请码没有兑换成功，请稍后再试。"
             if text == TrialCopy.authExpired || text == TrialCopy.envMismatch {
                 logout(message: text)
                 FailureReporter.report(error, surface: .inviteRedeem, path: .trial)
@@ -267,7 +267,7 @@ final class TrialAccountStore: ObservableObject {
             if announceGift {
                 statusMessage = snapshot.inviteRedeemed
                     ? "已登录。"
-                    : "已登录。在下面输入邀请码，可领取 ¥2.00 体验额度。"
+                    : "已登录。在下面输入邀请码，可兑换体验额度。"
             } else if statusMessage == TrialCopy.inviteClaimed || TrialCopy.isInviteGranted(statusMessage) {
                 statusMessage = snapshot.inviteRedeemed ? statusMessage : ""
             } else {

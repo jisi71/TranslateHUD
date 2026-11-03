@@ -51,7 +51,7 @@ final class PopoverContentSizingTests: XCTestCase {
         }
         guard case .success = progress.state else { return XCTFail("Fixture translation did not complete") }
         XCTAssertEqual(progress.targetLanguage, .chinese)
-        let terms = TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original], language: .chinese)
+        let terms = TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original])
         let host = NSHostingController(rootView: PopoverContent(
             original: original,
             progress: progress,
@@ -299,7 +299,7 @@ final class PopoverContentSizingTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         guard case .success = progress.state else { return XCTFail("Fixture translation did not complete") }
-        let terms = TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original], language: .chinese)
+        let terms = TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original])
         let host = NSHostingController(rootView: PopoverContent(
             original: original, progress: progress, termProgress: terms,
             speech: SpeechController(), onCancel: {}, onRetry: {}
@@ -308,6 +308,41 @@ final class PopoverContentSizingTests: XCTestCase {
         XCTAssertTrue(size.height.isFinite)
         XCTAssertLessThanOrEqual(size.height, PopoverContent.maxHeight)
         try attachPreview(host: host, size: size, name: "Long translation panel")
+    }
+
+    /// Translated GFM table must leave the popover tall enough for the full grid
+    /// (header + both data rows), not the short TextKit pipe-line estimate.
+    func testTranslatedGFMTablePopoverFitsFullGrid() async throws {
+        let original = """
+        | PARAM | VALUE |
+        | --- | --- |
+        | base_url (OpenAI) | https://api.deepseek.com |
+        | base_url (Anthropic) | https://api.deepseek.com/ |
+        """
+        let translated = """
+        | 参数 | 值 |
+        | --- | --- |
+        | 基础地址 (OpenAI) | https://api.deepseek.com |
+        | 基础地址 (Anthropic) | https://api.deepseek.com/ |
+        """
+        let colors = PanelColors.dark
+        let textWidth = PopoverContent.translationTextWidth
+        let tableH = MarkdownDisplay.height(
+            translated, role: .translation, colors: colors, width: textWidth, maxLines: nil
+        )
+        let pipeH = TextBlockMetrics.height(
+            attributed: MarkdownDisplay.styled(translated, role: .translation, colors: colors),
+            lineSpacing: MarkdownDisplay.Role.translation.lineSpacing,
+            width: textWidth,
+            maxLines: nil
+        )
+        XCTAssertGreaterThan(tableH, pipeH + 24)
+
+        let fitted = try await fittedTranslationHeight(original: original, translated: translated)
+        // Chrome + source table + status + translation table should clear one table's grid
+        // height twice, with room to spare for the status row — never the short pipe estimate.
+        XCTAssertGreaterThan(fitted, tableH + tableH * 0.6)
+        XCTAssertLessThanOrEqual(fitted, PopoverContent.maxHeight)
     }
 
     private func attachPreview<V: View>(host: NSHostingController<V>, size: NSSize, name: String) throws {
@@ -339,7 +374,7 @@ final class PopoverContentSizingTests: XCTestCase {
         let host = NSHostingController(rootView: PopoverContent(
             original: original,
             progress: progress,
-            termProgress: TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original], language: .chinese),
+            termProgress: TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original]),
             speech: SpeechController(),
             onCancel: {},
             onRetry: {}
@@ -350,8 +385,7 @@ final class PopoverContentSizingTests: XCTestCase {
     private func fittingSize(original: String) -> NSSize {
         let terms = TermExplanationProgress(
             explainer: EmptyTermExplainer(),
-            texts: [original],
-            language: .chinese
+            texts: [original]
         )
         let view = PopoverContent(
             original: original,

@@ -17,29 +17,33 @@ struct TranslateHUDApp: App {
 }
 
 private struct MenuBarMenu: View {
+    @ObservedObject private var interfaceLanguage = InterfaceLanguageStore.shared
     @ObservedObject private var trial = TrialAccountStore.shared
     @ObservedObject private var settings = SettingsStore.shared
 
     var body: some View {
-        Text(trialLabel)
-        Divider()
-        // 注：选区翻译只能走快捷键——点菜单会把焦点抢到我们 App，AX 就读不到原 App 的选中文字。
-        Button("截取屏幕区域翻译") {
-            ScreenshotFlow.start()
+        Group {
+            Text(interfaceLanguage.text(trialLabel))
+            Divider()
+            // 注：选区翻译只能走快捷键——点菜单会把焦点抢到我们 App，AX 就读不到原 App 的选中文字。
+            Button("截取屏幕区域翻译") {
+                ScreenshotFlow.start()
+            }
+            Divider()
+            Button("打开设置…") {
+                SettingsWindowController.shared.show()
+            }
+            Button("检查权限…") {
+                PermissionManager.shared.openSystemPanels()
+            }
+            UpdateActionButton()
+            Divider()
+            Button("退出 TranslateHUD") {
+                NSApplication.shared.terminate(nil)
+            }
+            .keyboardShortcut("q")
         }
-        Divider()
-        Button("打开设置…") {
-            SettingsWindowController.shared.show()
-        }
-        Button("检查权限…") {
-            PermissionManager.shared.openSystemPanels()
-        }
-        UpdateActionButton()
-        Divider()
-        Button("退出 TranslateHUD") {
-            NSApplication.shared.terminate(nil)
-        }
-        .keyboardShortcut("q")
+        .environment(\.locale, interfaceLanguage.locale)
     }
 
     private var trialLabel: String {

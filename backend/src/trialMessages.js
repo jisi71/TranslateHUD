@@ -237,7 +237,7 @@ function detectLanguage(system) {
 }
 
 function isStrict(system) {
-  return system.includes('previous attempt failed') || system.includes('previous response used English')
+  return system.includes('previous attempt failed') || system.includes('previous response used English') || system.includes('previous response used the wrong language')
 }
 
 function frameUser(passage, translating) {
@@ -341,11 +341,12 @@ function streamSystem(language, strict, framed) {
   return text
 }
 
-function termsSystem(strict, hasPassage) {
+function termsSystem(strict, hasPassage, explanationLanguage) {
+  const output = explanationLanguage
   const prefix = strict
-    ? 'CRITICAL: The previous response used English explanations. Every explanation MUST contain Simplified Chinese characters.\n'
+    ? `CRITICAL: The previous response used the wrong language. Every explanation MUST be in ${output}.\n`
     : ''
-  let text = prefix + TERMS_BODY
+  let text = prefix + TERMS_BODY.replace('concise Simplified Chinese', `concise ${output}`)
   if (hasPassage) text += explanationAddendum()
   return text
 }
@@ -359,7 +360,7 @@ function temperatureFor(body, mode) {
   return value
 }
 
-function buildMessages({ mode, language, strict, source, texts, passage }) {
+function buildMessages({ mode, language, strict, source, texts, passage, explanationLanguage }) {
   if (mode === 'stream') {
     const user = passage ? frameUser(passage, source) : { text: source }
     return [
@@ -370,7 +371,7 @@ function buildMessages({ mode, language, strict, source, texts, passage }) {
   if (mode === 'terms') {
     const payload = passage ? { texts, reference_passage: passage } : { texts }
     return [
-      { role: 'system', content: termsSystem(strict, Boolean(passage)) },
+      { role: 'system', content: termsSystem(strict, Boolean(passage), explanationLanguage) },
       { role: 'user', content: JSON.stringify(payload) }
     ]
   }
@@ -405,7 +406,10 @@ function bindUpstreamMessages(body, sourceText) {
     strict: isStrict(system),
     source: sourceText,
     texts: parsed.texts,
-    passage: parsed.passage
+    passage: parsed.passage,
+    explanationLanguage: ['Simplified Chinese', ...LANGUAGES].find(
+      (language) => system.includes(`Every "explanation" must be concise ${language},`)
+    ) || 'Simplified Chinese'
   })
   return {
     messages,

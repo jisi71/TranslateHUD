@@ -24,9 +24,13 @@ final class TranslationProgress: ObservableObject {
     @Published private(set) var targetLanguage: TargetLanguage?
     @Published private(set) var retryReason: String?
     @Published private(set) var timeoutMessage = ""
+    @Published private(set) var displayError: Error?
 
     let timeoutSeconds: TimeInterval
     var failureSurface: FailureEvent.Surface = .selectionTranslate
+
+    /// 选区保格式等场景：retry 时仍包一层同一翻译器。
+    var mapTranslator: (@Sendable (any Translator) -> any Translator)?
 
     private var task: Task<Void, Never>?
     private var elapsedTimer: Timer?
@@ -52,6 +56,7 @@ final class TranslationProgress: ObservableObject {
         lastWasStreaming = false
         targetLanguage = target
         state = .loading
+        displayError = nil
         retryReason = nil
         elapsedSeconds = 0
         startElapsedTimer()
@@ -74,6 +79,7 @@ final class TranslationProgress: ObservableObject {
                 AppLog.debug("翻译完成（\(self.elapsedSeconds)s 内）：\(originals.count) 条")
             } catch let error as TranslationTimeoutError {
                 guard self.requestID == currentID, !Task.isCancelled else { return }
+                self.displayError = error
                 self.timeoutMessage = ServiceErrorMessage.timeout(error, operation: "翻译")
                 AppLog.info(self.timeoutMessage)
                 self.state = .timedOut
@@ -82,6 +88,7 @@ final class TranslationProgress: ObservableObject {
                 AppLog.debug("翻译被取消")
             } catch {
                 guard self.requestID == currentID, !Task.isCancelled else { return }
+                self.displayError = error
                 let message = ServiceErrorMessage.describe(error)
                 AppLog.error("翻译失败：\(message)")
                 self.state = .failed(message)
@@ -107,6 +114,7 @@ final class TranslationProgress: ObservableObject {
         lastWasStreaming = true
         targetLanguage = target
         state = .loading
+        displayError = nil
         retryReason = nil
         elapsedSeconds = 0
         startElapsedTimer()
@@ -176,6 +184,7 @@ final class TranslationProgress: ObservableObject {
             } catch let error as TranslationTimeoutError {
                 await MainActor.run { [weak self] in
                     guard let self, self.requestID == currentID else { return }
+                    self.displayError = error
                     self.timeoutMessage = ServiceErrorMessage.timeout(error, operation: "翻译")
                     AppLog.info(self.timeoutMessage)
                     self.state = .timedOut
@@ -188,6 +197,7 @@ final class TranslationProgress: ObservableObject {
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self, self.requestID == currentID else { return }
+                    self.displayError = error
                     let message = ServiceErrorMessage.describe(error)
                     AppLog.error("流式翻译失败：\(message)")
                     self.state = .failed(message)
@@ -214,7 +224,7 @@ final class TranslationProgress: ObservableObject {
             stopElapsedTimer()
             return
         case .ready(let ready):
-            translator = ready.translator
+            translator = mapTranslator?(ready.translator) ?? ready.translator
         }
         if lastWasStreaming, let first = lastOriginals.first, lastOriginals.count == 1 {
             startStreaming(translator: translator, original: first, target: target, context: lastContext)

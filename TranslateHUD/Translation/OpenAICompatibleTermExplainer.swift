@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 struct OpenAICompatibleTermExplainer: TermExplainer {
     let config: ProviderConfig
@@ -23,7 +24,6 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
         in language: TargetLanguage,
         context: SelectionFetcher.TextContext? = nil
     ) async throws -> [TermExplanation] {
-        _ = language
         let cleanedTexts = texts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -37,32 +37,25 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
                 texts: cleanedTexts,
                 endpoint: endpoint,
                 strict: strict,
+                language: language,
                 context: context
             )
-            if terms.isEmpty || Self.explanationsAreChinese(terms) { return terms }
+            if terms.isEmpty || Self.explanationsMatch(terms, language: language) { return terms }
             if !strict {
-                AppLog.info("名词解释首轮包含非中文内容，执行一次严格中文重试")
+                AppLog.info("名词解释语言不匹配，执行一次严格重试")
             }
         }
-        throw TermExplanationError.invalidResponse("模型连续两次未按要求返回中文解释，请更换模型后重试。")
+        throw TermExplanationError.invalidResponse("模型连续两次未按要求返回所选语言的解释，请更换模型后重试。")
     }
 
     private func performRequest(
         texts: [String],
         endpoint: URL,
         strict: Bool,
+        language: TargetLanguage,
         context: SelectionFetcher.TextContext?
     ) async throws -> [TermExplanation] {
-        let strictInstruction = strict
-            ? "CRITICAL: The previous response used English explanations. Every explanation MUST contain Simplified Chinese characters.\n"
-            : ""
-
-        let systemPrompt = """
-        \(strictInstruction)Identify at most 5 proper nouns, abbreviations, acronyms, or domain-specific technical terms that need explanation.
-        Every "explanation" must be concise Simplified Chinese, one or two sentences. "term" may keep its original spelling. Skip ordinary words. Do not invent facts or infer specifics not supported by the term and supplied context.
-        If none qualify, return {"terms":[]}.
-        Return strict JSON only: {"terms":[{"term":"...","explanation":"..."}]}. No markdown or additional keys.
-        """
+        let systemPrompt = Self.systemPrompt(language: language, strict: strict)
         let framed = TranslationContextPrompt.frame(
             marked: texts.joined(separator: "\n"),
             translating: texts.joined(separator: "\n"),
@@ -130,6 +123,27 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
             throw TermExplanationError.invalidResponse("服务响应中没有术语解释，请重试或更换模型。")
         }
         return try Self.parseContent(content)
+    }
+
+    static func systemPrompt(language: TargetLanguage, strict: Bool) -> String {
+        let outputLanguage = language == .chinese ? "Simplified Chinese" : language.promptName
+        let strictInstruction = strict
+            ? "CRITICAL: The previous response used the wrong language. Every explanation MUST be in \(outputLanguage).\n"
+            : ""
+
+        return """
+        \(strictInstruction)Identify at most 5 proper nouns, abbreviations, acronyms, or domain-specific technical terms that need explanation.
+        Every "explanation" must be concise \(outputLanguage), one or two sentences. "term" may keep its original spelling. Skip ordinary words. Do not invent facts or infer specifics not supported by the term and supplied context.
+        If none qualify, return {"terms":[]}.
+        Return strict JSON only: {"terms":[{"term":"...","explanation":"..."}]}. No markdown or additional keys.
+        """
+    }
+
+    static func explanationsMatch(_ terms: [TermExplanation], language: TargetLanguage) -> Bool {
+        if language == .chinese { return explanationsAreChinese(terms) }
+        return terms.allSatisfy { item in
+            NLLanguageRecognizer.dominantLanguage(for: item.explanation)?.rawValue == language.rawValue
+        }
     }
 
     static func explanationsAreChinese(_ terms: [TermExplanation]) -> Bool {

@@ -172,4 +172,84 @@ final class TranslationQualityTests: XCTestCase {
             )
         }
     }
+
+    func testWikiCodeSectionPreservesFencedAndInlineCode() {
+        let input = """
+        七、代码
+        行内示例：`let x = 1`
+        ```swift
+        func hello() {
+            print("Hello, TranslateHUD")
+        }
+        ```
+        ```
+        plain fence
+        ```
+        """
+        let output = """
+        七、代码
+        行内示例：`let x = 1`
+        ```swift
+        func hello() {
+            print("Hello, TranslateHUD")
+        }
+        ```
+        ```
+        plain fence
+        ```
+        """
+        // 说明已是中文，代码故意保留 → 不应 underTranslated，也不应丢掉可读草稿
+        XCTAssertEqual(TranslationValidator.validate(input: input, output: output, target: .chinese), [])
+        XCTAssertTrue(TranslationValidator.shouldPreserveReadableOutput(input: input, output: output, target: .chinese))
+    }
+
+    func testWikiCodeSectionTranslatedCaptionsKeepCode() {
+        let input = """
+        Code samples
+        Inline: `let x = 1`
+        ```swift
+        func hello() {
+            print("Hello, TranslateHUD")
+        }
+        ```
+        ```
+        plain fence
+        ```
+        """
+        let output = """
+        代码示例
+        行内：`let x = 1`
+        ```swift
+        func hello() {
+            print("Hello, TranslateHUD")
+        }
+        ```
+        ```
+        plain fence
+        ```
+        """
+        XCTAssertEqual(TranslationValidator.validate(input: input, output: output, target: .chinese), [])
+        XCTAssertTrue(TranslationValidator.shouldPreserveReadableOutput(input: input, output: output, target: .chinese))
+    }
+
+    func testWikiLinkAndImageMarkdownAreNotUnderTranslated() {
+        let input = """
+        八、链接与图片
+        See [official repository](https://github.com/jisi71/TranslateHUD) and ![icon sketch](https://example.com/icon.png) for details.
+        """
+        let output = """
+        八、链接与图片
+        详见 [官方仓库](https://github.com/jisi71/TranslateHUD) 与 ![图标示意](https://example.com/icon.png)。
+        """
+        XCTAssertEqual(TranslationValidator.validate(input: input, output: output, target: .chinese), [])
+        XCTAssertTrue(TranslationValidator.shouldPreserveReadableOutput(input: input, output: output, target: .chinese))
+    }
+
+    func testMarkdownStructurePlaceholdersDoNotCountAsUntranslated() {
+        let input = "说明 ⟦MD:fence:0⟧ 与 ⟦MD:icode:1⟧ 还有 ⟦MD:link:2⟧ 请保留结构。"
+        let output = "说明 ⟦MD:fence:0⟧ 与 ⟦MD:icode:1⟧ 还有 ⟦MD:link:2⟧ 请保留结构。"
+        XCTAssertEqual(TranslationValidator.validate(input: input, output: output, target: .chinese), [])
+        XCTAssertTrue(TranslationValidator.shouldPreserveReadableOutput(input: input, output: output, target: .chinese))
+    }
+
 }

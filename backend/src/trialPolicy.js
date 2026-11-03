@@ -33,8 +33,8 @@ const MESSAGES = {
   source: '体验翻译需要原文。请更新到最新版 TranslateHUD。',
   store: '体验余额暂时读不出来。请在设置里点余额旁的刷新。',
   concurrency: '同时进行的翻译太多了（同一账号最多 3 个）。请等当前翻译结束后再试。',
-  inviteRequired: '还没有体验额度。请在设置里输入邀请码领取，或填写你自己的 API Key。',
-  inviteClaimed: '这个账号已经领过体验额度。',
+  inviteRequired: '还没有体验额度。请在设置里输入邀请码兑换，或填写你自己的 API Key。',
+  inviteClaimed: '这个账号已经兑换过体验额度。',
   inviteInvalid: '邀请码不正确。',
   inviteExhausted: '邀请码次数用尽',
   inviteUnconfigured: '邀请码还没配置好。请稍后再试。'

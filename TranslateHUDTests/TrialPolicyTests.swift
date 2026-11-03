@@ -25,8 +25,9 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(TrialDisplayId.format(99999), "99999")
         XCTAssertEqual(TrialDisplayId.format(100000), "100000")
         XCTAssertEqual(TrialDisplayId.format(0), "")
-        XCTAssertEqual(TrialCopy.inviteGranted(microYuan: 2_000_000), "已领取 ¥2.00 体验额度。")
-        XCTAssertEqual(TrialCopy.inviteGranted(microYuan: 150 * 10_000), "已领取 ¥1.50 体验额度。")
+        XCTAssertEqual(TrialCopy.inviteGranted(microYuan: 2_000_000), "已兑换体验额度。")
+        XCTAssertEqual(TrialCopy.inviteGranted(microYuan: 150 * 10_000), "已兑换体验额度。")
+        XCTAssertTrue(TrialCopy.isInviteGranted("已兑换体验额度。"))
         XCTAssertTrue(TrialCopy.isInviteGranted("已领取 ¥2.00 体验额度。"))
         XCTAssertFalse(TrialCopy.isInviteGranted("已领取体验额度。"))
         XCTAssertEqual(RotateCwMotion.fromDegrees, 0)
@@ -135,7 +136,7 @@ final class TrialPolicyTests: XCTestCase {
             return XCTFail("expected a block")
         }
         XCTAssertEqual(title, "还没有体验额度")
-        XCTAssertEqual(message, "还没有体验额度。请在设置里输入邀请码领取，或填写你自己的 API Key。")
+        XCTAssertEqual(message, "还没有体验额度。请在设置里输入邀请码兑换，或填写你自己的 API Key。")
     }
 
     func testTrialReceiptParsesTheProxyFields() {

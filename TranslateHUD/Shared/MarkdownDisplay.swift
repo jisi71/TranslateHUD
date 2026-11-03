@@ -109,23 +109,32 @@ enum MarkdownDisplay {
                     }
                 }
             } else {
-                total += TextBlockMetrics.height(
-                    attributed: styled(seg.markdown, role: role, colors: colors),
-                    lineSpacing: role.lineSpacing,
-                    width: bodyWidth,
-                    maxLines: nil
-                )
+                let edges = proseEdgeBlankCounts(seg.markdown)
+                total += blankLineSpacerHeight(count: edges.leading, role: role)
+                if !edges.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    total += TextBlockMetrics.height(
+                        attributed: styled(edges.body, role: role, colors: colors),
+                        lineSpacing: role.lineSpacing,
+                        width: bodyWidth,
+                        maxLines: nil
+                    )
+                }
+                total += blankLineSpacerHeight(count: edges.trailing, role: role)
             }
         }
         return total
     }
 
-    /// Gap between prose ↔ anything, or between separate quote clusters.
-    /// Adjacent quote segments (outer then nested inside one run) use 0 so rails stay continuous.
+    /// Legacy small gap (8pt). Not enough to read as a blank line next to quotes —
+    /// prefer `blankLineSpacing` / prose edge spacers for quote ↔ prose junctions.
     static let segmentSpacing: CGFloat = 8
 
+    /// Adjacent quote segments (outer then nested) use 0 so rails stay continuous.
+    /// Quote ↔ prose gaps come from `proseEdgeBlankCounts` spacers (blank-line height),
+    /// not this value — returning 0 avoids double-counting in `height`.
     static func spacing(before next: Segment, after previous: Segment) -> CGFloat {
         if previous.isQuote, next.isQuote { return 0 }
+        if previous.isQuote || next.isQuote { return 0 }
         return segmentSpacing
     }
 
@@ -137,10 +146,39 @@ enum MarkdownDisplay {
         CGFloat(max(depth - 1, 0)) * 4
     }
 
-    /// Explicit gap between paragraphs inside one quote segment (empty `>` line).
-    /// Roughly one body line so quote blanks match prose `\n\n` feel.
-    static func quoteParagraphSpacing(for role: Role) -> CGFloat {
+    /// One blank-line-tall gap (body size + line spacing). Used between quote paragraphs
+    /// and for leading/trailing empty lines around prose between quotes (Feishu `<br>`).
+    static func blankLineSpacing(for role: Role) -> CGFloat {
         role.basePointSize + role.lineSpacing
+    }
+
+    /// Explicit gap between paragraphs inside one quote segment (empty `>` line).
+    static func quoteParagraphSpacing(for role: Role) -> CGFloat {
+        blankLineSpacing(for: role)
+    }
+
+    /// Leading / trailing empty lines in a prose segment, plus trimmed body.
+    /// Feishu `</blockquote><div><br></div><div>嵌套引用：</div><div><br></div><blockquote>`
+    /// becomes MD with blanks around the label — Text ignores edge `\n`, so BlocksView
+    /// paints these counts as `Color.clear` spacers at blank-line height.
+    static func proseEdgeBlankCounts(_ markdown: String) -> (leading: Int, trailing: Int, body: String) {
+        let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var start = 0
+        while start < lines.count, lines[start].trimmingCharacters(in: .whitespaces).isEmpty {
+            start += 1
+        }
+        var end = lines.count
+        while end > start, lines[end - 1].trimmingCharacters(in: .whitespaces).isEmpty {
+            end -= 1
+        }
+        let body = lines[start..<end].joined(separator: "\n")
+        return (start, lines.count - end, body)
+    }
+
+    /// Spacer height for N blank lines at the given role's blank-line metrics.
+    static func blankLineSpacerHeight(count: Int, role: Role) -> CGFloat {
+        guard count > 0 else { return 0 }
+        return CGFloat(count) * blankLineSpacing(for: role)
     }
 
     /// True when a quote line has no body after stripping `>` markers (`>`, `> `, `> >`, …).
@@ -595,11 +633,12 @@ enum MarkdownDisplay {
         var body: some View {
             let segs = MarkdownDisplay.segments(from: markdown)
             let clusters = MarkdownDisplay.clusters(from: segs)
-            VStack(alignment: .leading, spacing: MarkdownDisplay.segmentSpacing) {
+            // spacing 0 — blank-line gaps come from prose edge spacers / quote paragraph gaps.
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(clusters.enumerated()), id: \.offset) { _, cluster in
                     switch cluster {
                     case .prose(let seg):
-                        segmentView(seg)
+                        proseClusterView(seg)
                     case .quotes(let quoteSegs):
                         // spacing 0 — outer/inner rails must meet with no gap.
                         VStack(alignment: .leading, spacing: 0) {
@@ -613,11 +652,30 @@ enum MarkdownDisplay {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
 
+        /// Paint leading/trailing empty lines as blank-line-tall spacers (Text drops edge `\n`).
+        @ViewBuilder
+        private func proseClusterView(_ seg: Segment) -> some View {
+            let edges = MarkdownDisplay.proseEdgeBlankCounts(seg.markdown)
+            let lineGap = MarkdownDisplay.blankLineSpacing(for: role)
+            VStack(alignment: .leading, spacing: 0) {
+                if edges.leading > 0 {
+                    Color.clear.frame(height: CGFloat(edges.leading) * lineGap)
+                }
+                if !edges.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    textBlock(edges.body)
+                }
+                if edges.trailing > 0 {
+                    Color.clear.frame(height: CGFloat(edges.trailing) * lineGap)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+
         @ViewBuilder
         private func segmentView(_ seg: Segment) -> some View {
             switch seg.kind {
             case .prose:
-                textBlock(seg.markdown)
+                proseClusterView(seg)
             case .quote(let depth):
                 let bars = max(depth, 1)
                 let paragraphs = MarkdownDisplay.quoteBodyParagraphs(seg.markdown)

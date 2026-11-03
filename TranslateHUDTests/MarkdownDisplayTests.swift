@@ -460,6 +460,7 @@ final class MarkdownDisplayTests: XCTestCase {
             0,
             "outer/inner rails must abut with no VStack gap"
         )
+        // Quote ↔ prose gaps are blank-line spacers from prose edges, not segmentSpacing.
         let afterHeading = MarkdownDisplay.segments(from: "## T\n\n> Q")
         guard afterHeading.count >= 2 else {
             XCTFail("\(afterHeading)")
@@ -467,8 +468,10 @@ final class MarkdownDisplayTests: XCTestCase {
         }
         XCTAssertEqual(
             MarkdownDisplay.spacing(before: afterHeading[1], after: afterHeading[0]),
-            MarkdownDisplay.segmentSpacing
+            0
         )
+        let edges = MarkdownDisplay.proseEdgeBlankCounts(afterHeading[0].markdown)
+        XCTAssertGreaterThanOrEqual(edges.trailing, 1, "heading prose should keep blank before quote: \(afterHeading[0].markdown)")
     }
 
     func testQuoteBarsShareLeadingEdgeAcrossDepths() {
@@ -537,6 +540,42 @@ final class MarkdownDisplayTests: XCTestCase {
             MarkdownDisplay.quoteBodyParagraphs(outer.markdown),
             ["Outer A", "Outer B"],
             outer.markdown
+        )
+    }
+
+    func testProseBetweenQuotesKeepsBlankLineSpacers() {
+        let md = "> A\n\n嵌套引用：\n\n> B"
+        let segs = MarkdownDisplay.segments(from: md)
+        XCTAssertEqual(segs.count, 3, "\(segs)")
+        XCTAssertTrue(segs[0].isQuote)
+        XCTAssertFalse(segs[1].isQuote)
+        XCTAssertTrue(segs[2].isQuote)
+
+        let edges = MarkdownDisplay.proseEdgeBlankCounts(segs[1].markdown)
+        XCTAssertEqual(edges.leading, 1, "\(segs[1].markdown)")
+        XCTAssertEqual(edges.trailing, 1, "\(segs[1].markdown)")
+        XCTAssertEqual(edges.body.trimmingCharacters(in: .whitespacesAndNewlines), "嵌套引用：")
+
+        let gap = MarkdownDisplay.blankLineSpacerHeight(count: 1, role: .translation)
+        XCTAssertEqual(gap, MarkdownDisplay.blankLineSpacing(for: .translation))
+        XCTAssertEqual(gap, MarkdownDisplay.quoteParagraphSpacing(for: .translation))
+        XCTAssertGreaterThan(gap, MarkdownDisplay.segmentSpacing, "blank-line gap must beat 8pt cluster spacing")
+
+        // Measured height must include both edge spacers (vs compact label with no blanks).
+        let colors = PanelColors.dark
+        let width: CGFloat = 280
+        let withGaps = MarkdownDisplay.height(md, role: .translation, colors: colors, width: width, maxLines: nil)
+        let compact = MarkdownDisplay.height(
+            "> A\n嵌套引用：\n> B",
+            role: .translation,
+            colors: colors,
+            width: width,
+            maxLines: nil
+        )
+        XCTAssertGreaterThanOrEqual(
+            withGaps - compact,
+            gap * 2 - 1,
+            "withGaps=\(withGaps) compact=\(compact) gap=\(gap)"
         )
     }
 

@@ -2,6 +2,30 @@ import XCTest
 @testable import TranslateHUD
 
 final class TrialPolicyTests: XCTestCase {
+    func testDailyQuotaParsingAndEmptyBalanceRouting() {
+        let fields: [String: Any] = ["dailyTokens": 12, "dailyCharacters": 99, "dailyLimit": 2000, "dailyResetsAt": 1_793_376_000_000 as Int64]
+        let quota = DailyTranslationQuota.parse(fields)
+        XCTAssertEqual(quota?.used, 12)
+        XCTAssertEqual(quota?.limit, 2000)
+        var input = TranslationRouteInput(hasOwnAPIKey: false, baseURL: "https://example.com", isLoggedIn: true,
+                                          proxyBaseURL: "https://proxy.example/v1", balanceFen: 0,
+                                          balanceMicroYuan: 0, sourceText: "Hello", dailyQuota: quota)
+        XCTAssertEqual(TranslationRoute.gate(input), .allowTrial)
+        input.dailyQuota = nil
+        XCTAssertNotEqual(TranslationRoute.gate(input), .allowTrial)
+    }
+
+    func testDailyQuotaReadFromSettlementAndHTTPHeaders() throws {
+        let fields: [String: Any] = ["costMicroYuan": 1, "chargedMicroYuan": 0, "balanceMicroYuan": 0,
+                                     "dailyTokens": 13, "dailyLimit": 2000, "dailyResetsAt": 1_793_376_000_000 as Int64]
+        XCTAssertEqual(TrialSettlement.parse(json: ["translatehud_trial": fields])?.dailyQuota?.used, 13)
+        let response = try XCTUnwrap(HTTPURLResponse(url: URL(string: "https://example.com")!, statusCode: 200, httpVersion: nil,
+            headerFields: ["X-Trial-Cost-Micro-Yuan": "1", "X-Trial-Charged-Micro-Yuan": "0",
+                           "X-Trial-Balance-Micro-Yuan": "0", "X-Trial-Daily-Tokens": "13",
+                           "X-Trial-Daily-Limit": "2000", "X-Trial-Daily-Resets-At": "1793376000000"]))
+        XCTAssertEqual(TrialSettlement.parse(response: response)?.dailyQuota?.used, 13)
+    }
+
     func testGraphemesAndPriceMatchTheServer() {
         XCTAssertEqual(TrialPricing.graphemeCount("你好"), 2)
         XCTAssertEqual(TrialPricing.graphemeCount("a\u{0301}"), 1)

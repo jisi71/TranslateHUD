@@ -40,21 +40,21 @@ struct TrialProxyTranslator: Translator {
         to target: TargetLanguage,
         context: SelectionFetcher.TextContext?
     ) async throws -> [String] {
-        let token = try await TrialActor.accessToken()
+        let credential = try await TrialActor.accessToken()
         let inner = OpenAICompatibleTranslator(
-            config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: token),
+            config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: credential.token),
             session: session,
             extraHTTPHeaders: TrialHeaders.source(texts.joined(separator: "\n")),
             onTrialSettlement: { settlement in
-                await TrialActor.apply(settlement)
+                await TrialActor.apply(settlement, generation: credential.generation)
             }
         )
         do {
             let result = try await inner.translate(texts, to: target, context: context)
-            await TrialActor.refreshBalance()
+            await TrialActor.refreshBalance(generation: credential.generation)
             return result
         } catch {
-            await TrialActor.refreshBalance(unless: error)
+            await TrialActor.refreshBalance(generation: credential.generation, unless: error)
             throw error
         }
     }
@@ -68,23 +68,25 @@ struct TrialProxyTranslator: Translator {
         let session = session
         return AsyncThrowingStream { continuation in
             let task = Task {
+                var generation: UUID?
                 do {
-                    let token = try await TrialActor.accessToken()
+                    let credential = try await TrialActor.accessToken()
+                    generation = credential.generation
                     let inner = OpenAICompatibleTranslator(
-                        config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: token),
+                        config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: credential.token),
                         session: session,
                         extraHTTPHeaders: TrialHeaders.source(text),
                         onTrialSettlement: { settlement in
-                            await TrialActor.apply(settlement)
+                            await TrialActor.apply(settlement, generation: credential.generation)
                         }
                     )
                     for try await event in inner.translateStreaming(text, to: target, context: context) {
                         continuation.yield(event)
                     }
-                    await TrialActor.refreshBalance()
+                    await TrialActor.refreshBalance(generation: credential.generation)
                     continuation.finish()
                 } catch {
-                    await TrialActor.refreshBalance(unless: error)
+                    if let generation { await TrialActor.refreshBalance(generation: generation, unless: error) }
                     continuation.finish(throwing: error)
                 }
             }
@@ -95,11 +97,20 @@ struct TrialProxyTranslator: Translator {
 }
 
 enum TrialActor {
-    static func accessToken() async throws -> String {
+    struct Credential: Sendable {
+        let token: String
+        let generation: UUID
+    }
+
+    static func accessToken() async throws -> Credential {
         try await withCheckedThrowingContinuation { continuation in
             Task { @MainActor in
                 do {
-                    continuation.resume(returning: try await TrialAccountStore.shared.validAccessToken())
+                    let store = TrialAccountStore.shared
+                    let generation = store.sessionGeneration
+                    let token = try await store.validAccessToken()
+                    guard store.sessionGeneration == generation else { throw CancellationError() }
+                    continuation.resume(returning: Credential(token: token, generation: generation))
                 } catch {
                     continuation.resume(throwing: error)
                 }
@@ -107,17 +118,18 @@ enum TrialActor {
         }
     }
 
-    static func apply(_ settlement: TrialSettlement) async {
+    static func apply(_ settlement: TrialSettlement, generation: UUID) async {
         await MainActor.run {
-            TrialAccountStore.shared.applySettlement(settlement)
+            TrialAccountStore.shared.applySettlement(settlement, generation: generation)
         }
     }
 
-    static func refreshBalance(unless error: Error? = nil) async {
+    static func refreshBalance(generation: UUID, unless error: Error? = nil) async {
         if error is CancellationError { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             Task { @MainActor in
-                await TrialAccountStore.shared.refreshFromServer()
+                let store = TrialAccountStore.shared
+                if store.sessionGeneration == generation { await store.refreshFromServer() }
                 continuation.resume()
             }
         }
@@ -138,21 +150,21 @@ struct TrialProxyTermExplainer: TermExplainer {
         in language: TargetLanguage,
         context: SelectionFetcher.TextContext?
     ) async throws -> [TermExplanation] {
-        let token = try await TrialActor.accessToken()
+        let credential = try await TrialActor.accessToken()
         let inner = OpenAICompatibleTermExplainer(
-            config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: token),
+            config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: credential.token),
             session: session,
             extraHTTPHeaders: TrialHeaders.source(texts.joined(separator: "\n")),
             onTrialSettlement: { settlement in
-                await TrialActor.apply(settlement)
+                await TrialActor.apply(settlement, generation: credential.generation)
             }
         )
         do {
             let terms = try await inner.explain(texts: texts, in: language, context: context)
-            await TrialActor.refreshBalance()
+            await TrialActor.refreshBalance(generation: credential.generation)
             return terms
         } catch {
-            await TrialActor.refreshBalance(unless: error)
+            await TrialActor.refreshBalance(generation: credential.generation, unless: error)
             throw error
         }
     }
@@ -215,7 +227,8 @@ enum TranslationSession {
             balanceFen: trial.balanceFen,
             balanceMicroYuan: trial.balanceMicroYuan,
             sourceText: sourceText,
-            inviteRedeemed: trial.inviteRedeemed
+            inviteRedeemed: trial.inviteRedeemed,
+            dailyQuota: trial.dailyQuota
         )
     }
 }

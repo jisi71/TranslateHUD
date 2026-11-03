@@ -9,6 +9,7 @@ struct TrialAccountSnapshot: Equatable, Sendable {
     var inviteRedeemed: Bool
     /// Micro-yuan credited by this redeem. Zero when the call did not grant.
     var giftMicroYuan: Int
+    var dailyQuota: DailyTranslationQuota? = nil
 
     var balanceFen: Int { TrialPricing.displayFen(microYuan: balanceMicroYuan) }
 }
@@ -96,7 +97,8 @@ enum TrialProxyClient {
             balanceMicroYuan: balance,
             giftedNow: giftedNow,
             inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow),
-            giftMicroYuan: giftAmount(json)
+            giftMicroYuan: giftAmount(json),
+            dailyQuota: DailyTranslationQuota.parse(json)
         )
     }
 
@@ -140,7 +142,8 @@ enum TrialProxyClient {
             balanceMicroYuan: balance,
             giftedNow: giftedNow,
             inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow),
-            giftMicroYuan: giftAmount(json)
+            giftMicroYuan: giftAmount(json),
+            dailyQuota: DailyTranslationQuota.parse(json)
         )
     }
 }

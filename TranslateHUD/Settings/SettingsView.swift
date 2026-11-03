@@ -489,9 +489,17 @@ struct SettingsView: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(interfaceLanguage.text(trial.isLoggedIn ? (trial.maskedPhone.isEmpty ? "已登录" : trial.maskedPhone) : "未登录"))
-                Text(trial.isLoggedIn ? "\(interfaceLanguage.text("体验余额")) \(interfaceLanguage.text(trial.balanceValueText))" : interfaceLanguage.text("用手机号登录后同步体验额度"))
-                    .font(.caption)
-                    .foregroundStyle(colors.muted)
+                if !trial.isLoggedIn || trial.balanceMicroYuan != 0 || trial.dailyQuota == nil {
+                    Text(trial.isLoggedIn ? "\(interfaceLanguage.text("体验余额")) \(interfaceLanguage.text(trial.balanceValueText))" : interfaceLanguage.text("用手机号登录后同步体验额度"))
+                        .font(.caption)
+                        .foregroundStyle(colors.muted)
+                }
+                if trial.isLoggedIn, let quota = trial.dailyQuota {
+                    Text(interfaceLanguage.format("每日免费额度：%ld/%ld", quota.used, quota.limit))
+                        .font(.caption)
+                        .foregroundStyle(colors.muted)
+                        .monospacedDigit()
+                }
             }
         }
     }

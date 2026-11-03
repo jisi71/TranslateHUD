@@ -90,6 +90,8 @@ enum ServiceErrorMessage {
     private static func trialCopy(_ code: String?) -> String? {
         switch code?.lowercased() {
         case "trial_length_limit": return TrialCopy.lengthLimit
+        case "trial_daily_limit": return "今日免费额度已用完，请明天再试，或在设置里填写自己的 API Key。"
+        case "trial_free_concurrency": return "当前有一笔免费翻译正在进行，请完成后再试。"
         case "trial_balance_exhausted": return TrialCopy.balanceExhausted
         case "trial_balance_insufficient": return TrialCopy.balanceInsufficient
         case "trial_auth": return TrialCopy.authExpired

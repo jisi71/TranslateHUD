@@ -1,6 +1,57 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "每日免费额度：%ld/%ld": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每日免费额度：%ld/%ld"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily free allowance: %ld/%ld"
+          }
+        }
+      }
+    },
+    "今日免费额度已用完，请明天再试，或在设置里填写自己的 API Key。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今日免费额度已用完，请明天再试，或在设置里填写自己的 API Key。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your daily free allowance is used up. Try again tomorrow, or enter your own API key in Settings."
+          }
+        }
+      }
+    },
+    "当前有一笔免费翻译正在进行，请完成后再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前有一笔免费翻译正在进行，请完成后再试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A free translation is already in progress. Wait for it to finish and try again."
+          }
+        }
+      }
+    },
     "%@总耗时超过 %@ 秒，已停止请求。请缩短原文或更换模型后重试。": {
       "extractionState": "manual",
       "localizations": {

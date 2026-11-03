@@ -252,7 +252,10 @@ def sole_heading(children):
     return None
 
 def is_list_line(line: str) -> bool:
-    rest = line.lstrip(" ")
+    first = line.split("\n", 1)[0]
+    rest = first.lstrip(" ")
+    if rest.startswith(("- [ ] ", "- [x] ", "- [X] ")):
+        return True
     return rest.startswith("- ") or rest == "-" or bool(re.match(r"^\d+\.\s", rest))
 
 
@@ -263,6 +266,16 @@ def is_loose_list(children) -> bool:
                 if isinstance(x, Element) and x.name == "p":
                     return True
     return False
+
+
+def is_blank_spacer_list(el: Element) -> bool:
+    """Feishu loose list: nested ul/ol with no li, only br/empty divs."""
+    if el.name not in ("ul", "ol"):
+        return False
+    for x in el.children:
+        if isinstance(x, Element) and x.name == "li":
+            return False
+    return not plain_text(el.children).strip()
 
 
 def list_item_body_text(nodes) -> str:
@@ -320,6 +333,68 @@ def convert(html: str) -> str | None:
         if t:
             blocks.append(t)
 
+    def finalize_local(bs: list[str]) -> str:
+        lines_l: list[str] = []
+        for block in bs:
+            tt = block.rstrip(" \t") if block is not None else ""
+            if not tt.strip():
+                if lines_l and lines_l[-1] != "":
+                    lines_l.append("")
+                continue
+            if lines_l and lines_l[-1] != "":
+                if not (is_list_line(lines_l[-1]) and is_list_line(tt)):
+                    lines_l.append("")
+            lines_l.append(tt)
+        while lines_l and lines_l[0] == "":
+            lines_l.pop(0)
+        while lines_l and lines_l[-1] == "":
+            lines_l.pop()
+        return "\n".join(lines_l).strip()
+
+    def append_blockquote(el):
+        nonlocal blocks
+        saved = blocks
+        blocks = []
+        for c in el.children:
+            append_blocks(c)
+        inner = finalize_local(blocks)
+        blocks = saved
+        if not inner:
+            return
+        quoted = "\n".join((">" if not ln else f"> {ln}") for ln in inner.split("\n"))
+        blocks.append(quoted)
+
+    def append_table(el):
+        rows: list[list[str]] = []
+
+        def collect(nodes):
+            for n in nodes:
+                if not isinstance(n, Element):
+                    continue
+                if n.name == "tr":
+                    cells = []
+                    for cell in n.children:
+                        if isinstance(cell, Element) and cell.name in ("td", "th"):
+                            raw = inline_md(cell.children).replace("\n", " ").strip().replace("|", "\\|")
+                            cells.append(raw if raw else " ")
+                    if cells:
+                        rows.append(cells)
+                else:
+                    collect(n.children)
+
+        collect(el.children)
+        if not rows:
+            return
+        header = rows[0]
+        width = len(header)
+        lines_t = ["| " + " | ".join(header) + " |"]
+        lines_t.append("| " + " | ".join(["---"] * width) + " |")
+        for row in rows[1:]:
+            padded = row + [" "] * max(0, width - len(row))
+            padded = padded[:width]
+            lines_t.append("| " + " | ".join(padded) + " |")
+        blocks.append("\n".join(lines_t))
+
     def append_list(children, ordered: bool, depth: int = 0):
         indent = " " * (depth * 2)
         loose = is_loose_list(children)
@@ -342,16 +417,27 @@ def convert(html: str) -> str | None:
 
             content = []
             nested_lists = []
+            trailing_spacer = False
             for x in c.children:
                 if isinstance(x, Element) and x.name in ("ul", "ol"):
-                    nested_lists.append(x)
+                    if is_blank_spacer_list(x):
+                        trailing_spacer = True
+                    else:
+                        nested_lists.append(x)
                 else:
                     content.append(x)
 
             body = list_item_body_text(content)
-            marker = f"{index}. " if ordered else "- "
-            if ordered:
+            data_list = (c.attrs.get("data-list") or "").lower()
+            if data_list == "done":
+                marker = "- [x] "
+            elif data_list == "check":
+                marker = "- [ ] "
+            elif ordered:
+                marker = f"{index}. "
                 index += 1
+            else:
+                marker = "- "
 
             if body:
                 paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
@@ -369,8 +455,9 @@ def convert(html: str) -> str | None:
             for nested in nested_lists:
                 append_list(nested.children, ordered=(nested.name == "ol"), depth=depth + 1)
 
-            if loose and seen < total_lis:
+            if (loose or trailing_spacer) and seen < total_lis:
                 blocks.append("")
+
 
     def append_blocks(node):
         if isinstance(node, str):
@@ -389,7 +476,7 @@ def convert(html: str) -> str | None:
             body = inline_md(el.children).strip()
             if body:
                 append_para(body)
-        elif el.name in ("div", "section", "article", "main", "header", "footer", "aside", "figure", "blockquote"):
+        elif el.name in ("div", "section", "article", "main", "header", "footer", "aside", "figure"):
             # Only descend when a direct child is a real block; inline strong/em stay in one paragraph.
             if has_direct_block_child(el.children):
                 for c in el.children:
@@ -398,6 +485,10 @@ def convert(html: str) -> str | None:
                 body = inline_md(el.children).strip()
                 if body:
                     append_para(body)
+        elif el.name == "blockquote":
+            append_blockquote(el)
+        elif el.name == "table":
+            append_table(el)
         elif el.name in ("ul", "ol"):
             append_list(el.children, ordered=(el.name == "ol"), depth=0)
         elif el.name == "li":
@@ -508,6 +599,95 @@ def main() -> int:
     assert "~~删除线~~" in inline_md_out, inline_md_out
     assert "`path/to/file.swift`" in inline_md_out, inline_md_out
     assert inline_md_out.startswith("普通字，"), inline_md_out
+
+    # Feishu spacer loose UL
+    loose_ul = (
+        '<ul class="list-bullet1">'
+        '<li data-list="bullet"><div>第一项</div>'
+        '<ul class="list-bullet2"><div class="ace-line"><br></div></ul></li>'
+        '<li data-list="bullet"><div>第二项（与上一项之间有空行）</div>'
+        '<ul class="list-bullet2"><div class="ace-line"><br></div></ul></li>'
+        '<li data-list="bullet"><div>第三项</div>'
+        '<ul class="list-bullet2"><div class="ace-line"><br></div></ul></li>'
+        '</ul>'
+    )
+    loose_ul_md = convert(loose_ul)
+    assert loose_ul_md == "- 第一项\n\n- 第二项（与上一项之间有空行）\n\n- 第三项", loose_ul_md
+
+    # Feishu spacer loose OL
+    loose_ol = (
+        '<ol class="list-number1 list-number1-1">'
+        '<li data-list="number"><div>步骤一</div>'
+        '<ol class="list-number2"><div class="ace-line"><br></div></ol></li>'
+        '<li data-list="number"><div>步骤二（中间空行）</div>'
+        '<ol class="list-number2"><div class="ace-line"><br></div></ol></li>'
+        '<li data-list="number"><div>步骤三</div>'
+        '<ol class="list-number2"><div class="ace-line"><br></div></ol></li>'
+        '</ol>'
+    )
+    loose_ol_md = convert(loose_ol)
+    assert loose_ol_md == "1. 步骤一\n\n2. 步骤二（中间空行）\n\n3. 步骤三", loose_ol_md
+
+    # Tight list with spacer only on last item stays tight
+    tight = (
+        '<ul><li data-list="bullet"><div>苹果</div></li>'
+        '<li data-list="bullet"><div>香蕉</div></li>'
+        '<li data-list="bullet"><div>樱桃</div>'
+        '<ul class="list-bullet2"><div class="ace-line"><br></div></ul></li></ul>'
+    )
+    assert convert(tight) == "- 苹果\n- 香蕉\n- 樱桃", convert(tight)
+
+    # Blockquote
+    bq = (
+        '<blockquote class="quote_container">'
+        '<div class="ace-line">这是一句引用。</div>'
+        '<div class="ace-line"><br></div>'
+        '<div class="ace-line">引用里也可以有第二段，中间应有空行。</div>'
+        '</blockquote>'
+    )
+    bq_md = convert(bq)
+    assert bq_md == "> 这是一句引用。\n>\n> 引用里也可以有第二段，中间应有空行。", bq_md
+
+    # Table
+    table = (
+        '<table class="ace-table"><colgroup><col/><col/><col/></colgroup>'
+        '<tr><td><div>功能</div></td><td><div>状态</div></td><td><div>备注</div></td></tr>'
+        '<tr><td><div>假换行</div></td><td><div>待测</div></td><td><div>PDF 软换行</div></td></tr>'
+        '<tr><td><div>空行</div></td><td><div>待测</div></td><td><div>段间空行</div></td></tr>'
+        '</table>'
+    )
+    table_md = convert(table)
+    assert "| 功能 | 状态 | 备注 |" in table_md, table_md
+    assert "| --- | --- | --- |" in table_md, table_md
+    assert "| 假换行 | 待测 | PDF 软换行 |" in table_md, table_md
+    assert table_md.count("\n") >= 3, table_md
+
+    # Task list
+    tasks = (
+        '<ul class="list-done1">'
+        '<li data-list="done"><div>已完成的任务</div></li>'
+        '<li data-list="check"><div>未完成的任务</div></li>'
+        '<li data-list="check"><div>再试一次划词</div>'
+        '<ul class="list-done2"><div class="ace-line"><br></div></ul></li>'
+        '</ul>'
+    )
+    tasks_md = convert(tasks)
+    assert tasks_md == "- [x] 已完成的任务\n- [ ] 未完成的任务\n- [ ] 再试一次划词", tasks_md
+
+    # Full wiki acceptance clip if present
+    specs = Path("/workspace/translatehud-specs")
+    clip = specs / "feishu-wiki-acceptance-clip.html"
+    if clip.exists():
+        wiki = convert(clip.read_text(encoding="utf-8"))
+        assert wiki, "wiki clip empty"
+        assert "- 第一项\n\n- 第二项（与上一项之间有空行）" in wiki, wiki[max(0, wiki.find("第一项")-5):wiki.find("第一项")+90]
+        assert "1. 步骤一\n\n2. 步骤二" in wiki, "loose ol missing"
+        assert "> 这是一句引用。" in wiki, "blockquote missing"
+        assert "| 功能 | 状态 | 备注 |" in wiki, "table header missing"
+        assert "- [x] 已完成的任务" in wiki and "- [ ] 未完成的任务" in wiki, "tasks missing"
+        assert "**粗体**" in wiki and "*斜体*" in wiki, "inline styles"
+        assert "```" in wiki, "fence"
+        assert "[官方仓库](" in wiki, "link"
 
     print("OK: all html→markdown self-checks passed")
     return 0

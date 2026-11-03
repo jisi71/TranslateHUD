@@ -86,7 +86,7 @@ enum HTMLToMarkdownConverter {
             case "p":
                 let body = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !body.isEmpty { appendParagraph(body, into: &blocks) }
-            case "div", "section", "article", "main", "header", "footer", "aside", "figure", "blockquote":
+            case "div", "section", "article", "main", "header", "footer", "aside", "figure":
                 // 仅当直接子节点含块级元素时下钻；飞书 ace-line 内 strong/em/code 等行内标签
                 // 必须整段走 inlineMarkdown，否则会把「普通字，**粗体**」拆成多块多行。
                 if hasDirectBlockChild(el.children) {
@@ -97,6 +97,8 @@ enum HTMLToMarkdownConverter {
                     let body = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
                     if !body.isEmpty { appendParagraph(body, into: &blocks) }
                 }
+            case "blockquote":
+                appendBlockquote(el, into: &blocks)
             case "ul":
                 appendList(el.children, ordered: false, into: &blocks)
             case "ol":
@@ -116,7 +118,10 @@ enum HTMLToMarkdownConverter {
             case "pre":
                 let code = plainText(el.children)
                 blocks.append("```\n\(code)\n```")
-            case "table", "thead", "tbody", "tfoot", "tr", "td", "th":
+            case "table":
+                appendTable(el, into: &blocks)
+            case "thead", "tbody", "tfoot", "tr", "td", "th", "colgroup", "col":
+                // 表格外偶然落到这些标签时下钻；正常路径由 appendTable 消化。
                 for child in el.children {
                     appendBlocks(from: child, into: &blocks)
                 }
@@ -183,17 +188,33 @@ enum HTMLToMarkdownConverter {
 
             var contentNodes: [Node] = []
             var nestedLists: [Element] = []
+            var trailingSpacerBlank = false
             for node in el.children {
                 if case .element(let childEl) = node, childEl.name == "ul" || childEl.name == "ol" {
-                    nestedLists.append(childEl)
+                    // 飞书用「无 li、仅 br」的嵌套 ul/ol 表示该项后空行（loose list）
+                    if isBlankSpacerList(childEl) {
+                        trailingSpacerBlank = true
+                    } else {
+                        nestedLists.append(childEl)
+                    }
                 } else {
                     contentNodes.append(node)
                 }
             }
 
             let body = listItemBodyText(contentNodes)
-            let marker = ordered ? "\(index). " : "- "
-            if ordered { index += 1 }
+            let dataList = (el.attributes["data-list"] ?? "").lowercased()
+            let marker: String
+            if dataList == "done" {
+                marker = "- [x] "
+            } else if dataList == "check" {
+                marker = "- [ ] "
+            } else if ordered {
+                marker = "\(index). "
+                index += 1
+            } else {
+                marker = "- "
+            }
 
             if !body.isEmpty {
                 let paragraphs = body
@@ -224,10 +245,21 @@ enum HTMLToMarkdownConverter {
                 )
             }
 
-            if loose, seenLis < totalLis {
+            if (loose || trailingSpacerBlank), seenLis < totalLis {
                 blocks.append("")
             }
         }
+    }
+
+    /// 飞书 loose：嵌套 ul/ol 内没有 li，只剩 br/空 div，表示项间空行。
+    private static func isBlankSpacerList(_ el: Element) -> Bool {
+        guard el.name == "ul" || el.name == "ol" else { return false }
+        for node in el.children {
+            if case .element(let child) = node, child.name == "li" {
+                return false
+            }
+        }
+        return plainText(el.children).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// CommonMark loose list：任一 li 直接含 <p> 时，项与项之间保留空行。
@@ -275,6 +307,61 @@ enum HTMLToMarkdownConverter {
         return paragraphs.joined(separator: "\n\n")
     }
 
+    private static func appendBlockquote(_ el: Element, into blocks: inout [String]) {
+        var innerBlocks: [String] = []
+        for child in el.children {
+            appendBlocks(from: child, into: &innerBlocks)
+        }
+        let inner = finalize(innerBlocks)
+        guard !inner.isEmpty else { return }
+        let quoted = inner
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                line.isEmpty ? ">" : "> \(line)"
+            }
+            .joined(separator: "\n")
+        blocks.append(quoted)
+    }
+
+    private static func appendTable(_ el: Element, into blocks: inout [String]) {
+        var rows: [[String]] = []
+        func collectRows(from nodes: [Node]) {
+            for node in nodes {
+                guard case .element(let child) = node else { continue }
+                if child.name == "tr" {
+                    var cells: [String] = []
+                    for cellNode in child.children {
+                        guard case .element(let cell) = cellNode,
+                              cell.name == "td" || cell.name == "th" else { continue }
+                        let raw = inlineMarkdown(cell.children)
+                            .replacingOccurrences(of: "\n", with: " ")
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                            .replacingOccurrences(of: "|", with: "\\|")
+                        cells.append(raw.isEmpty ? " " : raw)
+                    }
+                    if !cells.isEmpty {
+                        rows.append(cells)
+                    }
+                } else {
+                    collectRows(from: child.children)
+                }
+            }
+        }
+        collectRows(from: el.children)
+        guard let header = rows.first, !header.isEmpty else { return }
+        let width = header.count
+        var lines: [String] = []
+        lines.append("| " + header.joined(separator: " | ") + " |")
+        lines.append("| " + Array(repeating: "---", count: width).joined(separator: " | ") + " |")
+        for row in rows.dropFirst() {
+            var padded = row
+            while padded.count < width { padded.append(" ") }
+            if padded.count > width { padded = Array(padded.prefix(width)) }
+            lines.append("| " + padded.joined(separator: " | ") + " |")
+        }
+        blocks.append(lines.joined(separator: "\n"))
+    }
+
     private static func appendParagraph(_ text: String, into blocks: inout [String]) {
         let collapsed = collapseInlineWhitespace(text).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !collapsed.isEmpty else { return }
@@ -319,9 +406,19 @@ enum HTMLToMarkdownConverter {
         return String(line[..<end])
     }
 
-    /// 允许前导缩进的 `- ` / `1. ` 列表行（嵌套用 2 空格一级）。
+    /// 允许前导缩进的 `- ` / `- [ ] ` / `- [x] ` / `1. ` 列表行（嵌套用 2 空格一级）。
     private static func isMarkdownListLine(_ line: String) -> Bool {
-        let rest = String(line.drop(while: { $0 == " " }))
+        // 多行块（表格/引用）取首行判断
+        let firstLine: String
+        if let nl = line.firstIndex(of: "\n") {
+            firstLine = String(line[..<nl])
+        } else {
+            firstLine = line
+        }
+        let rest = String(firstLine.drop(while: { $0 == " " }))
+        if rest.hasPrefix("- [ ] ") || rest.hasPrefix("- [x] ") || rest.hasPrefix("- [X] ") {
+            return true
+        }
         if rest.hasPrefix("- ") || rest == "-" { return true }
         return listItemNumberPrefix(rest) != nil
     }

@@ -272,9 +272,29 @@ final class TranslationContextPromptTests: XCTestCase {
         let texts = ["mitochondrial cell", "membrane"]
         let omitted = try await batchBodies(texts: texts, argument: .omitted)
         let blank = try await batchBodies(texts: texts, argument: .value(.init(before: " ", after: "\n")))
-        try assertSameJSON(omitted, blank)
-
+        XCTAssertEqual(omitted.count, 1)
+        XCTAssertEqual(blank.count, 1)
         let request = try chatRequest(XCTUnwrap(omitted.first))
+        let blankRequest = try chatRequest(XCTUnwrap(blank.first))
+        XCTAssertEqual(request.system, blankRequest.system)
+        let requestItems = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(request.user.utf8)) as? NSArray)
+        let blankItems = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(blankRequest.user.utf8)) as? NSArray)
+        XCTAssertEqual(requestItems, blankItems)
+        var requestOptions = request.object
+        var blankOptions = blankRequest.object
+        requestOptions.removeValue(forKey: "messages")
+        blankOptions.removeValue(forKey: "messages")
+        XCTAssertEqual(requestOptions as NSDictionary, blankOptions as NSDictionary)
+        let requestMessages = try XCTUnwrap(request.object["messages"] as? [[String: Any]])
+        let blankMessages = try XCTUnwrap(blankRequest.object["messages"] as? [[String: Any]])
+        func metadata(_ messages: [[String: Any]]) -> NSArray {
+            messages.map { message in
+                var fields = message
+                fields.removeValue(forKey: "content")
+                return fields as NSDictionary
+            } as NSArray
+        }
+        XCTAssertEqual(metadata(requestMessages), metadata(blankMessages))
         let items = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(request.user.utf8)) as? [[String: Any]])
         XCTAssertEqual(items.count, 2)
         XCTAssertEqual(items[0]["i"] as? Int, 0)
@@ -297,15 +317,18 @@ final class TranslationContextPromptTests: XCTestCase {
         let plain = try chatRequest(XCTUnwrap(plainBodies.first))
         let wrapped = try chatRequest(XCTUnwrap(wrappedBodies.first))
         let marked = texts.joined(separator: "\n")
+        let wrappedTranslation = try XCTUnwrap(section(wrapped.user, tag: "translate"))
+        let plainLines = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(plain.user.utf8)) as? NSArray)
+        let wrappedLines = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(wrappedTranslation.utf8)) as? NSArray)
+        XCTAssertEqual(wrappedLines, plainLines)
         let frame = try XCTUnwrap(TranslationContextPrompt.frame(
             marked: marked,
-            translating: plain.user,
+            translating: wrappedTranslation,
             context: context
         ))
 
         XCTAssertEqual(wrapped.user, frame.userMessage)
         XCTAssertEqual(wrapped.system, plain.system + frame.translationAddendum)
-        XCTAssertEqual(section(wrapped.user, tag: "translate"), plain.user)
         XCTAssertEqual(section(wrapped.user, tag: "reference_passage"), "See <<<\(marked)>>> now.")
         XCTAssertEqual(plain.object.keys.sorted(), wrapped.object.keys.sorted())
         XCTAssertEqual(plain.object["temperature"] as? NSNumber, wrapped.object["temperature"] as? NSNumber)

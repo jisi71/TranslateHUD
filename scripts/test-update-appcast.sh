@@ -34,7 +34,7 @@ test ! -e "$ROOT/sparkle_eddsa_private_key"
 # shellcheck disable=SC1091
 source "$ROOT/scripts/sparkle-tools.sh"
 test "$(sparkle_bundle_identifier)" = "com.qi.TranslateHUD"
-test -z "$(sparkle_pinned_team_id "$ROOT/Config/DeveloperTeamID")"
+sparkle_team_id_is_valid "$(sparkle_pinned_team_id "$ROOT/Config/DeveloperTeamID")"
 printf '%s\n' '# comment' '' 'AB12CD34EF' > "$TMP/team"
 test "$(sparkle_pinned_team_id "$TMP/team")" = "AB12CD34EF"
 sparkle_team_id_is_valid "AB12CD34EF"
@@ -68,6 +68,7 @@ expect_release_refusal() {
 }
 
 # 没有钉住 Team 时，正式打包必须拒绝。预览可以看地址。
+printf '%s\n' '# deliberately empty for this test' > "$TEAM_FILE"
 expect_release_refusal "请先把 Team ID 写进 Config/DeveloperTeamID" \
     env DEVELOPER_ID_APP="Developer ID Application: Name (AB12CD34EF)" \
         DEVELOPER_ID_TEAM_ID="AB12CD34EF" \

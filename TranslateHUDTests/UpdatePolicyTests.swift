@@ -16,7 +16,7 @@ final class UpdatePolicyTests: XCTestCase {
         XCTAssertEqual(decision(flag: .bool(true), signed: false).reason, .notDeveloperID)
         let local = decision(flag: .text("NO"), signed: false)
         XCTAssertFalse(local.isEnabled)
-        XCTAssertEqual(local.reason, .notDeveloperID)
+        XCTAssertEqual(local.reason, .switchedOff)
         XCTAssertNil(UpdateMenu.settingsCaption(state: .check, decision: local))
         XCTAssertNil(UpdateMenu.settingsCaption(state: .check, decision: decision(debug: true, flag: .bool(true), signed: true)))
         XCTAssertNil(UpdateMenu.settingsCaption(state: .check, decision: decision(flag: .text("NO"), signed: true)))

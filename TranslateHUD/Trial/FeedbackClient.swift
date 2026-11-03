@@ -266,12 +266,12 @@ enum FeedbackImagePrep {
             pixelsWide: width,
             pixelsHigh: height,
             bitsPerSample: 8,
-            samplesPerPixel: 3,
-            hasAlpha: false,
+            samplesPerPixel: 4,
+            hasAlpha: true,
             isPlanar: false,
             colorSpaceName: .deviceRGB,
             bytesPerRow: 0,
-            bitsPerPixel: 24
+            bitsPerPixel: 32
         ) else { return nil }
         guard let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
         rep.size = NSSize(width: width, height: height)
@@ -282,7 +282,7 @@ enum FeedbackImagePrep {
         image.draw(
             in: NSRect(x: 0, y: 0, width: width, height: height),
             from: NSRect(origin: .zero, size: image.size),
-            operation: .copy,
+            operation: .sourceOver,
             fraction: 1
         )
         NSGraphicsContext.restoreGraphicsState()

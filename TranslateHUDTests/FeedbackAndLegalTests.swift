@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import TranslateHUD
 
@@ -177,6 +178,23 @@ final class FeedbackAndLegalTests: XCTestCase {
         XCTAssertEqual([UInt8](prepared.jpeg.prefix(3)), [0xFF, 0xD8, 0xFF])
         XCTAssertLessThanOrEqual(prepared.jpeg.count, FeedbackLimits.maxImageBytes)
         XCTAssertEqual(FeedbackImagePrep.classify(data: Data("<html>not</html>".utf8), filename: "a.html"), .unreadable)
+    }
+
+    func testTransparentPngIsFlattenedOnWhite() throws {
+        let rep = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 8, pixelsHigh: 8,
+                                                  bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                                  isPlanar: false, colorSpaceName: .deviceRGB,
+                                                  bytesPerRow: 0, bitsPerPixel: 32))
+        for y in 0..<8 { for x in 0..<8 { rep.setColor(.clear, atX: x, y: y) } }
+        let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        guard case .image(let prepared) = FeedbackImagePrep.classify(data: png, filename: "transparent.png") else {
+            return XCTFail("expected a jpeg")
+        }
+        let jpeg = try XCTUnwrap(NSBitmapImageRep(data: prepared.jpeg))
+        let pixel = try XCTUnwrap(jpeg.colorAt(x: 4, y: 4)?.usingColorSpace(.deviceRGB))
+        XCTAssertGreaterThan(pixel.redComponent, 0.95)
+        XCTAssertGreaterThan(pixel.greenComponent, 0.95)
+        XCTAssertGreaterThan(pixel.blueComponent, 0.95)
     }
 
     private func source(_ relative: String) throws -> String {

@@ -187,6 +187,20 @@ final class HTMLToMarkdownConverterTests: XCTestCase {
     }
 
 
+
+    func testFeishuNbspIndentInsideQuoteBecomesNestedMarkdown() {
+        let html = """
+        <blockquote data-type="quote_container">
+        <div><div><div>外层引用</div>
+        <div><div class="ace-line">&nbsp;&nbsp;内层引用还在不在？</div></div>
+        </div></div>
+        </blockquote>
+        """
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertTrue(markdown.contains("> 外层引用"), markdown)
+        XCTAssertTrue(markdown.contains("> > 内层引用还在不在？"), "Feishu nbsp indent must nest: \(markdown)")
+    }
+
     func testNestedBlockquoteProducesStackedMarkers() {
         let html = """
         <blockquote>

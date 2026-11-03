@@ -356,13 +356,85 @@ def convert(html: str) -> str | None:
         saved = blocks
         blocks = []
         for c in el.children:
-            append_blocks(c)
+            append_blocks_preserving_quote_indent(c)
         inner = finalize_local(blocks)
         blocks = saved
         if not inner:
             return
-        quoted = "\n".join((">" if not ln else f"> {ln}") for ln in inner.split("\n"))
-        blocks.append(quoted)
+        out_lines = []
+        for ln in inner.split("\n"):
+            if not ln:
+                out_lines.append(">")
+            elif ln.startswith(">"):
+                out_lines.append("> " + ln)
+            else:
+                spaces = len(ln) - len(ln.lstrip(" "))
+                if spaces >= 2:
+                    out_lines.append("> > " + ln.lstrip(" "))
+                else:
+                    out_lines.append("> " + ln)
+        blocks.append("\n".join(out_lines))
+
+    def append_blockquote_leaf(el):
+        raw = plain_text(el.children)
+        indent = 0
+        for ch in raw.lstrip("\r\n"):
+            if ch == " " or ch == "\t" or ord(ch) == 0xA0:
+                indent += 1
+            else:
+                break
+        body = inline_md(el.children).strip()
+        if not body:
+            return
+        if indent >= 2:
+            blocks.append("  " + body)
+        else:
+            append_para(body)
+
+    def append_blocks_preserving_quote_indent(node):
+        nonlocal blocks
+        if isinstance(node, str):
+            raw = decode(node)
+            indent = 0
+            for ch in raw.lstrip("\r\n"):
+                if ch == " " or ch == "\t" or ord(ch) == 0xA0:
+                    indent += 1
+                else:
+                    break
+            body = collapse(raw).strip()
+            if not body:
+                return
+            if indent >= 2:
+                blocks.append("  " + body)
+            else:
+                append_para(body)
+            return
+        if not isinstance(node, Element):
+            return
+        el = node
+        if el.name == "blockquote":
+            append_blockquote(el)
+        elif el.name == "br":
+            blocks.append("")
+        elif el.name == "hr":
+            blocks.append("---")
+        elif el.name == "ul":
+            append_list(el.children, ordered=False)
+        elif el.name == "ol":
+            append_list(el.children, ordered=True)
+        elif el.name == "pre":
+            blocks.append("```\n" + plain_text(el.children) + "\n```")
+        elif el.name == "table":
+            append_table(el)
+        elif el.name in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            append_blocks(node)
+        else:
+            if has_direct_block_child(el.children):
+                for c in el.children:
+                    append_blocks_preserving_quote_indent(c)
+            else:
+                append_blockquote_leaf(el)
+
 
     def append_table(el):
         rows: list[list[str]] = []

@@ -45,14 +45,13 @@ enum MarkdownDisplay {
     }
 
     /// Parse + apply panel typography/colors so SwiftUI Text and TextKit height agree.
-    /// List markers and quote bars are reinjected here (not in `parse`/`plainText`) so speech
-    /// stays marker-free while the popover shows bullets / numbers / Feishu-like quote rails.
+    /// List markers are reinjected here (not in `parse`/`plainText`) so speech stays marker-free
+    /// while the popover shows bullets / numbers. Quote chrome is drawn by `BlocksView`
+    /// (left border), not character rails — soft-wrapped lines keep a continuous bar.
     static func styled(_ markdown: String, role: Role, colors: PanelColors) -> AttributedString {
         var attributed = parse(markdown)
         decorateListMarkers(&attributed)
-        decorateBlockQuotes(&attributed)
         applyTypography(&attributed, role: role, colors: colors)
-        recolorQuoteRails(&attributed, colors: colors)
         return attributed
     }
 
@@ -63,13 +62,42 @@ enum MarkdownDisplay {
         width: CGFloat,
         maxLines: Int?
     ) -> CGFloat {
-        TextBlockMetrics.height(
-            attributed: styled(markdown, role: role, colors: colors),
-            lineSpacing: role.lineSpacing,
-            width: width,
-            maxLines: maxLines
-        )
+        // maxLines (collapsed source) stays a single TextKit pass on the full string.
+        if maxLines != nil {
+            return TextBlockMetrics.height(
+                attributed: styled(markdown, role: role, colors: colors),
+                lineSpacing: role.lineSpacing,
+                width: width,
+                maxLines: maxLines
+            )
+        }
+        let segs = segments(from: markdown)
+        guard segs.count > 1 || segs.first?.isQuote == true else {
+            return TextBlockMetrics.height(
+                attributed: styled(markdown, role: role, colors: colors),
+                lineSpacing: role.lineSpacing,
+                width: width,
+                maxLines: nil
+            )
+        }
+        var total: CGFloat = 0
+        for (index, seg) in segs.enumerated() {
+            if index > 0 { total += segmentSpacing }
+            let rail = quoteChromeWidth(for: seg)
+            let bodyWidth = max(width - rail, 1)
+            let bodyMarkdown = seg.isQuote ? stripQuoteMarkers(seg.markdown) : seg.markdown
+            total += TextBlockMetrics.height(
+                attributed: styled(bodyMarkdown, role: role, colors: colors),
+                lineSpacing: role.lineSpacing,
+                width: bodyWidth,
+                maxLines: nil
+            )
+        }
+        return total
     }
+
+    /// Vertical gap between prose / quote segments in `BlocksView` and height accounting.
+    static let segmentSpacing: CGFloat = 8
 
     // MARK: - Block breaks
 
@@ -321,91 +349,191 @@ enum MarkdownDisplay {
         return false
     }
 
-    // MARK: - Block quotes
+    // MARK: - Block quotes (segment chrome)
 
-    /// Foundation strips leading `>` under `.full` syntax and leaves only presentationIntent.
-    /// Reinject a visible left rail (`│ ` per nesting depth) so the popover reads like Feishu —
-    /// depth 1: `│ `, depth 2: `│ │ ` — without relying on muted body color alone.
-    /// Only `styled()` calls this; `plainText` / speech stay rail-free.
-    private static func decorateBlockQuotes(_ attributed: inout AttributedString) {
-        guard !attributed.characters.isEmpty else { return }
-
-        struct QuoteAnchor {
-            let index: AttributedString.Index
-            let depth: Int
-            let attributes: AttributeContainer
+    /// One top-level chunk of markdown for popover layout. Quote segments carry nesting depth
+    /// so `BlocksView` can draw 1/2 continuous left borders (Feishu-like) that survive soft wrap.
+    struct Segment: Equatable {
+        enum Kind: Equatable {
+            case prose
+            case quote(depth: Int)
         }
 
-        var anchors: [QuoteAnchor] = []
-        var seen = Set<Int>()
-        for run in attributed.runs {
-            guard let intent = run.presentationIntent else { continue }
-            let depth = blockQuoteDepth(of: intent)
-            guard depth > 0 else { continue }
-            // Innermost meaningful block (usually `.paragraph`) — one rail per quote paragraph,
-            // not once per inline split inside the same paragraph.
-            guard let identity = blockIdentity(of: intent) else { continue }
-            if !seen.insert(identity).inserted { continue }
-            var attrs = AttributeContainer()
-            attrs.presentationIntent = intent
-            anchors.append(
-                QuoteAnchor(
-                    index: run.range.lowerBound,
-                    depth: depth,
-                    attributes: attrs
-                )
-            )
+        var kind: Kind
+        var markdown: String
+
+        var isQuote: Bool {
+            if case .quote = kind { return true }
+            return false
         }
 
-        for anchor in anchors.reversed() {
-            let prefix = String(repeating: "│ ", count: anchor.depth)
-            var marker = AttributedString(prefix)
-            marker.setAttributes(anchor.attributes)
-            attributed.insert(marker, at: anchor.index)
+        var quoteDepth: Int {
+            if case .quote(let depth) = kind { return max(depth, 1) }
+            return 0
         }
     }
 
-    private static func blockQuoteDepth(of intent: PresentationIntent) -> Int {
-        var depth = 0
-        for component in intent.components {
-            if case .blockQuote = component.kind {
-                depth += 1
-            }
-        }
-        return depth
-    }
+    /// Split markdown into prose vs quote runs. Contiguous quote lines with the same `>` depth
+    /// become one segment so nested Feishu/`> >` lines get a second border + indent.
+    static func segments(from markdown: String) -> [Segment] {
+        let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard !lines.isEmpty else { return [Segment(kind: .prose, markdown: "")] }
 
-    private static func isQuoteBarPrefix(_ text: String) -> Bool {
-        guard text.contains("│") else { return false }
-        return text.allSatisfy { $0 == "│" || $0 == " " || $0 == "\n" }
-    }
-
-    /// `AttributedString.insert` often coalesces the rail with the quote body into one run
-    /// (same presentationIntent). Walk characters and paint only `│` / following space as border.
-    private static func recolorQuoteRails(_ attributed: inout AttributedString, colors: PanelColors) {
-        guard !attributed.characters.isEmpty else { return }
-        var index = attributed.startIndex
-        while index < attributed.endIndex {
-            let next = attributed.characters.index(after: index)
-            let intent = attributed[index..<next].presentationIntent
-            let inQuote = hasKind(in: intent) { if case .blockQuote = $0 { return true }; return false }
-            let ch = attributed.characters[index]
-            if inQuote, ch == "│" {
-                var end = next
-                if end < attributed.endIndex, attributed.characters[end] == " " {
-                    end = attributed.characters.index(after: end)
+        var result: [Segment] = []
+        var index = 0
+        while index < lines.count {
+            if let depth = quoteLineDepth(lines[index]) {
+                var run: [(depth: Int, line: String)] = []
+                var cursor = index
+                while cursor < lines.count {
+                    if let d = quoteLineDepth(lines[cursor]) {
+                        run.append((d, lines[cursor]))
+                        cursor += 1
+                    } else if lines[cursor].trimmingCharacters(in: .whitespaces).isEmpty,
+                              cursor + 1 < lines.count,
+                              quoteLineDepth(lines[cursor + 1]) != nil {
+                        // Blank line between quote paragraphs — keep inside the quote region.
+                        run.append((run.last?.depth ?? depth, ">"))
+                        cursor += 1
+                    } else {
+                        break
+                    }
                 }
-                var container = AttributeContainer()
-                container.appKit.foregroundColor = colors.nsBorder
-                attributed[index..<end].mergeAttributes(container, mergePolicy: .keepNew)
-                index = end
-                continue
+                var k = 0
+                while k < run.count {
+                    let d = max(run[k].depth, 1)
+                    var m = k + 1
+                    while m < run.count, max(run[m].depth, 1) == d {
+                        m += 1
+                    }
+                    let chunk = run[k..<m].map(\.line).joined(separator: "\n")
+                    result.append(Segment(kind: .quote(depth: d), markdown: chunk))
+                    k = m
+                }
+                index = cursor
+            } else {
+                var cursor = index
+                while cursor < lines.count, quoteLineDepth(lines[cursor]) == nil {
+                    cursor += 1
+                }
+                let chunk = lines[index..<cursor].joined(separator: "\n")
+                if !chunk.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || result.isEmpty {
+                    result.append(Segment(kind: .prose, markdown: chunk))
+                }
+                index = cursor
             }
-            index = next
+        }
+        if result.isEmpty {
+            result.append(Segment(kind: .prose, markdown: markdown))
+        }
+        return result
+    }
+
+    /// Depth of a CommonMark quote line (`>`, `> >`, …). `nil` if the line is not a quote.
+    static func quoteLineDepth(_ line: String) -> Int? {
+        var rest = Substring(line)
+        var depth = 0
+        while true {
+            var spaces = 0
+            while spaces < 3, rest.first == " " {
+                rest = rest.dropFirst()
+                spaces += 1
+            }
+            guard rest.first == ">" else {
+                return depth > 0 ? depth : nil
+            }
+            depth += 1
+            rest = rest.dropFirst()
+            if rest.first == " " {
+                rest = rest.dropFirst()
+            }
+        }
+    }
+
+    /// Strip leading `>` markers so quote body can sit beside a drawn border without doubled chrome.
+    static func stripQuoteMarkers(_ markdown: String) -> String {
+        markdown
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                var rest = Substring(line)
+                while true {
+                    var spaces = 0
+                    while spaces < 3, rest.first == " " {
+                        rest = rest.dropFirst()
+                        spaces += 1
+                    }
+                    guard rest.first == ">" else { break }
+                    rest = rest.dropFirst()
+                    if rest.first == " " {
+                        rest = rest.dropFirst()
+                    }
+                }
+                return String(rest)
+            }
+            .joined(separator: "\n")
+    }
+
+    static func quoteChromeWidth(for segment: Segment) -> CGFloat {
+        guard case .quote(let depth) = segment.kind else { return 0 }
+        let bars = CGFloat(max(depth, 1))
+        let barWidth: CGFloat = 2
+        let barGap: CGFloat = 3
+        let textGap: CGFloat = 8
+        let nestPad = CGFloat(max(depth - 1, 0)) * 4
+        return nestPad + bars * barWidth + max(bars - 1, 0) * barGap + textGap
+    }
+
+    /// Popover body: prose as styled Text; quotes as continuous left border(s) + body.
+    struct BlocksView: View {
+        let markdown: String
+        let role: Role
+        let colors: PanelColors
+
+        var body: some View {
+            let segs = MarkdownDisplay.segments(from: markdown)
+            VStack(alignment: .leading, spacing: MarkdownDisplay.segmentSpacing) {
+                ForEach(Array(segs.enumerated()), id: \.offset) { _, seg in
+                    segmentView(seg)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+
+        @ViewBuilder
+        private func segmentView(_ seg: Segment) -> some View {
+            switch seg.kind {
+            case .prose:
+                textBlock(seg.markdown)
+            case .quote(let depth):
+                let bars = max(depth, 1)
+                // Default (center) alignment lets Rectangle stretch to the text height so the
+                // bar stays continuous across soft wraps — unlike a leading "│" glyph.
+                HStack(spacing: 8) {
+                    HStack(spacing: 3) {
+                        ForEach(0..<bars, id: \.self) { _ in
+                            Rectangle()
+                                .fill(colors.border)
+                                .frame(width: 2)
+                        }
+                    }
+                    .padding(.leading, CGFloat(max(bars - 1, 0)) * 4)
+                    textBlock(MarkdownDisplay.stripQuoteMarkers(seg.markdown))
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+        }
+
+        private func textBlock(_ markdown: String) -> some View {
+            Text(MarkdownDisplay.styled(markdown, role: role, colors: colors))
+                .lineSpacing(role.lineSpacing)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
     // MARK: - Typography
+
 
     private static func applyTypography(
         _ attributed: inout AttributedString,
@@ -426,7 +554,6 @@ enum MarkdownDisplay {
             let inline = attributed[range].inlinePresentationIntent ?? []
             let headerLevel = Self.headerLevel(in: presentation)
             let isCodeBlock = Self.hasKind(in: presentation) { if case .codeBlock = $0 { return true }; return false }
-            let isBlockQuote = Self.hasKind(in: presentation) { if case .blockQuote = $0 { return true }; return false }
             let isThematicBreak = Self.hasKind(in: presentation) { if case .thematicBreak = $0 { return true }; return false }
 
             var font: NSFont
@@ -446,21 +573,15 @@ enum MarkdownDisplay {
                 font = italic
             }
 
-            let runText = String(attributed[range].characters)
-            let quoteBar = isBlockQuote && isQuoteBarPrefix(runText)
-
             let color: NSColor
             if isThematicBreak {
-                color = colors.nsBorder
-            } else if quoteBar {
-                // Rails use border/muted so they read as structure; body keeps readable text color.
                 color = colors.nsBorder
             } else if isCodeBlock || inline.contains(.code) {
                 color = colors.nsMuted
             } else if role == .source {
                 color = colors.nsMuted
             } else {
-                // Quote body uses primary (not muted-only) — depth is shown by the rail.
+                // Quote chrome is drawn by BlocksView; body stays readable primary text.
                 color = baseColor
             }
 

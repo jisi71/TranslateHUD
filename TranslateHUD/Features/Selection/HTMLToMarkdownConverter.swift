@@ -310,17 +310,105 @@ enum HTMLToMarkdownConverter {
     private static func appendBlockquote(_ el: Element, into blocks: inout [String]) {
         var innerBlocks: [String] = []
         for child in el.children {
-            appendBlocks(from: child, into: &innerBlocks)
+            appendBlocksPreservingQuoteIndent(from: child, into: &innerBlocks)
         }
         let inner = finalize(innerBlocks)
         guard !inner.isEmpty else { return }
+        // Prefix each line with `>`. Lines that kept a ≥2-space Feishu indent become nested
+        // `> > …` (same as a true nested <blockquote>). Existing `>` from recurse get one more.
         let quoted = inner
             .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { line -> String in
-                line.isEmpty ? ">" : "> \(line)"
+            .map { raw -> String in
+                let line = String(raw)
+                if line.isEmpty { return ">" }
+                if line.first == ">" {
+                    return "> \(line)"
+                }
+                let spaces = line.prefix(while: { $0 == " " }).count
+                if spaces >= 2 {
+                    let content = line.drop(while: { $0 == " " })
+                    return "> > \(content)"
+                }
+                return "> \(line)"
             }
             .joined(separator: "\n")
         blocks.append(quoted)
+    }
+
+    /// Like `appendBlocks`, but leaf text keeps a ≥2 leading `&nbsp;`/space indent as two
+    /// ASCII spaces so `appendBlockquote` can emit nested `> >` for Feishu fake nesting.
+    private static func appendBlocksPreservingQuoteIndent(from node: Node, into blocks: inout [String]) {
+        switch node {
+        case .text(let raw):
+            let decoded = decodeEntities(raw)
+            let indent = leadingIndentCount(decoded)
+            let text = collapseInlineWhitespace(decoded).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return }
+            if indent >= 2 {
+                blocks.append("  " + text)
+            } else {
+                appendParagraph(text, into: &blocks)
+            }
+        case .element(let el):
+            switch el.name {
+            case "blockquote":
+                appendBlockquote(el, into: &blocks)
+            case "br":
+                blocks.append("")
+            case "hr":
+                blocks.append("---")
+            case "ul":
+                appendList(el.children, ordered: false, into: &blocks)
+            case "ol":
+                appendList(el.children, ordered: true, into: &blocks)
+            case "pre":
+                let code = plainText(el.children)
+                blocks.append("```\n\(code)\n```")
+            case "table":
+                appendTable(el, into: &blocks)
+            case "h1", "h2", "h3", "h4", "h5", "h6":
+                appendBlocks(from: node, into: &blocks)
+            default:
+                if hasDirectBlockChild(el.children) {
+                    for child in el.children {
+                        appendBlocksPreservingQuoteIndent(from: child, into: &blocks)
+                    }
+                } else {
+                    appendBlockquoteLeaf(el, into: &blocks)
+                }
+            }
+        }
+    }
+
+    private static func appendBlockquoteLeaf(_ el: Element, into blocks: inout [String]) {
+        let raw = plainText(el.children)
+        let indent = leadingIndentCount(raw)
+        let body = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        if indent >= 2 {
+            // Nest signal for appendBlockquote — do not route through appendParagraph (trims).
+            blocks.append("  " + body)
+        } else {
+            appendParagraph(body, into: &blocks)
+        }
+    }
+
+    /// Count leading spaces / nbsp / tabs after optional leading newlines (Feishu indent nest).
+    private static func leadingIndentCount(_ text: String) -> Int {
+        var count = 0
+        var sawContentStart = false
+        for ch in text {
+            if !sawContentStart, ch == "\n" || ch == "\r" {
+                continue
+            }
+            sawContentStart = true
+            if ch == "\u{00A0}" || ch == " " || ch == "\t" {
+                count += 1
+            } else {
+                break
+            }
+        }
+        return count
     }
 
     private static func appendTable(_ el: Element, into blocks: inout [String]) {

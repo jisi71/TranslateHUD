@@ -174,6 +174,14 @@ final class MarkdownDisplayTests: XCTestCase {
             characters.range(of: #"outer\s*\n+[\s•]*inner"#, options: .regularExpression) != nil,
             characters
         )
+        let lines = characters.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        let outerLine = lines.first(where: { $0.contains("outer") }) ?? ""
+        let innerLine = lines.first(where: { $0.contains("inner") }) ?? ""
+        XCTAssertGreaterThan(
+            innerLine.prefix(while: { $0 == " " }).count,
+            outerLine.prefix(while: { $0 == " " }).count,
+            characters
+        )
     }
 
     func testStyledChineseNestedListBreaksAndIndents() {
@@ -190,15 +198,41 @@ final class MarkdownDisplayTests: XCTestCase {
             characters.range(of: #"内层 A2\s*\n+[\s•]*外层 B"#, options: .regularExpression) != nil,
             characters
         )
-        var indents: [CGFloat] = []
-        for run in styled.runs {
-            if let style = run.appKit.paragraphStyle {
-                indents.append(style.firstLineHeadIndent)
-            }
-        }
-        XCTAssertGreaterThan((indents.max() ?? 0), (indents.min() ?? 0), "\(indents)")
-        let nonEmpty = characters.split(separator: "\n", omittingEmptySubsequences: true)
+        let nonEmpty = characters.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
         XCTAssertGreaterThanOrEqual(nonEmpty.count, 5, characters)
+
+        func leadingSpaces(_ line: String) -> Int {
+            line.prefix(while: { $0 == " " }).count
+        }
+        func line(containing needle: String) -> String {
+            nonEmpty.first(where: { $0.contains(needle) }) ?? ""
+        }
+        let outerA = line(containing: "外层 A")
+        let innerA1 = line(containing: "内层 A1")
+        let innerA2 = line(containing: "内层 A2")
+        let outerB = line(containing: "外层 B")
+        let innerB1 = line(containing: "内层 B1")
+        XCTAssertFalse(outerA.isEmpty || innerA1.isEmpty || innerA2.isEmpty || outerB.isEmpty || innerB1.isEmpty, characters)
+        // Visible character indent (SwiftUI Text ignores AppKit headIndent).
+        XCTAssertGreaterThan(leadingSpaces(innerA1), leadingSpaces(outerA), "\(characters)")
+        XCTAssertGreaterThan(leadingSpaces(innerA2), leadingSpaces(outerA), "\(characters)")
+        XCTAssertGreaterThan(leadingSpaces(innerB1), leadingSpaces(outerB), "\(characters)")
+        XCTAssertEqual(leadingSpaces(outerA), leadingSpaces(outerB), "\(characters)")
+        XCTAssertTrue(outerA.contains("•") && innerA1.contains("•"), characters)
+    }
+
+    func testStyledNestedOrderedListHasVisibleIndent() {
+        // Foundation needs ≥3 spaces under `1. ` for a nested ordered list (2 spaces stays flat).
+        let styled = MarkdownDisplay.styled("1. 外\n   1. 内", role: .translation, colors: .dark)
+        let characters = String(styled.characters)
+        let lines = characters.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        XCTAssertGreaterThanOrEqual(lines.count, 2, characters)
+        let outer = lines.first(where: { $0.contains("外") }) ?? ""
+        let inner = lines.first(where: { $0.contains("内") }) ?? ""
+        let outerSpaces = outer.prefix(while: { $0 == " " }).count
+        let innerSpaces = inner.prefix(while: { $0 == " " }).count
+        XCTAssertGreaterThan(innerSpaces, outerSpaces, characters)
+        XCTAssertTrue(characters.contains("1."), characters)
     }
 
     func testPlainTextStillStripsListMarkersForSpeech() {

@@ -147,7 +147,8 @@ enum MarkdownDisplay {
     // MARK: - List markers
 
     /// Foundation strips `-` / `1.` under `.full` syntax. Reinject visible markers and indent by
-    /// nesting depth so unordered/ordered lists read as lists in the popover.
+    /// nesting depth (leading spaces in characters, not only paragraphStyle) so SwiftUI Text
+    /// shows nested levels in the popover.
     private static func decorateListMarkers(_ attributed: inout AttributedString) {
         guard !attributed.characters.isEmpty else { return }
 
@@ -180,12 +181,16 @@ enum MarkdownDisplay {
         }
 
         // Insert from the end so earlier indices stay valid (anchors are document order).
+        // Visible leading spaces are required: SwiftUI Text ignores AppKit headIndent, and
+        // TextBlockMetrics.height overwrites paragraphStyle — indent must live in characters.
+        let spacesPerLevel = 2
         for anchor in anchors.reversed() {
+            let leading = String(repeating: " ", count: max(anchor.depth - 1, 0) * spacesPerLevel)
             let marker = anchor.ordered ? "\(anchor.ordinal). " : "• "
-            attributed.characters.insert(contentsOf: marker, at: anchor.index)
+            attributed.characters.insert(contentsOf: leading + marker, at: anchor.index)
         }
 
-        // Paragraph indent by nesting depth (1 = flush with marker column).
+        // Paragraph indent kept as a supplement for AppKit paths; not relied on by SwiftUI Text.
         let step: CGFloat = 14
         let hang: CGFloat = 14
         for run in attributed.runs {
@@ -203,7 +208,9 @@ enum MarkdownDisplay {
     }
 
     private static func listItemIdentity(of intent: PresentationIntent) -> Int? {
-        for component in intent.components.reversed() {
+        // components are inner→outer; innermost listItem is this row's identity.
+        // Using .reversed() would return the outer parent and collapse nested rows into one anchor.
+        for component in intent.components {
             if case .listItem = component.kind {
                 return component.identity
             }
@@ -212,7 +219,7 @@ enum MarkdownDisplay {
     }
 
     private static func listItemOrdinal(of intent: PresentationIntent) -> Int? {
-        for component in intent.components.reversed() {
+        for component in intent.components {
             if case .listItem(ordinal: let ordinal) = component.kind {
                 return ordinal
             }
@@ -234,19 +241,18 @@ enum MarkdownDisplay {
     }
 
     private static func hasOrderedList(in intent: PresentationIntent) -> Bool {
-        // Prefer the innermost list container around the listItem.
-        var ordered: Bool?
+        // Innermost list container around this listItem (components are inner→outer).
         for component in intent.components {
             switch component.kind {
             case .orderedList:
-                ordered = true
+                return true
             case .unorderedList:
-                ordered = false
+                return false
             default:
-                break
+                continue
             }
         }
-        return ordered ?? false
+        return false
     }
 
     // MARK: - Typography

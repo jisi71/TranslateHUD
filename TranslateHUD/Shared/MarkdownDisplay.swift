@@ -82,7 +82,9 @@ enum MarkdownDisplay {
         }
         var total: CGFloat = 0
         for (index, seg) in segs.enumerated() {
-            if index > 0 { total += segmentSpacing }
+            if index > 0 {
+                total += spacing(before: seg, after: segs[index - 1])
+            }
             let rail = quoteChromeWidth(for: seg)
             let bodyWidth = max(width - rail, 1)
             let bodyMarkdown = seg.isQuote ? stripQuoteMarkers(seg.markdown) : seg.markdown
@@ -96,8 +98,22 @@ enum MarkdownDisplay {
         return total
     }
 
-    /// Vertical gap between prose / quote segments in `BlocksView` and height accounting.
+    /// Gap between prose ↔ anything, or between separate quote clusters.
+    /// Adjacent quote segments (outer then nested inside one run) use 0 so rails stay continuous.
     static let segmentSpacing: CGFloat = 8
+
+    static func spacing(before next: Segment, after previous: Segment) -> CGFloat {
+        if previous.isQuote, next.isQuote { return 0 }
+        return segmentSpacing
+    }
+
+    /// Bars always start at x=0 of the quote chrome — never shift the whole rail group.
+    static func quoteBarLeadingInset(depth: Int) -> CGFloat { 0 }
+
+    /// Extra indent for quote *body* only (depth 2 sits a bit further in than depth 1).
+    static func quoteBodyLeadingInset(depth: Int) -> CGFloat {
+        CGFloat(max(depth - 1, 0)) * 4
+    }
 
     // MARK: - Block breaks
 
@@ -479,11 +495,37 @@ enum MarkdownDisplay {
         let barWidth: CGFloat = 2
         let barGap: CGFloat = 3
         let textGap: CGFloat = 8
-        let nestPad = CGFloat(max(depth - 1, 0)) * 4
-        return nestPad + bars * barWidth + max(bars - 1, 0) * barGap + textGap
+        // nestPad indents the body only; bar column stays left-aligned across depths.
+        return bars * barWidth + max(bars - 1, 0) * barGap + textGap + quoteBodyLeadingInset(depth: Int(bars))
+    }
+
+    /// Contiguous quote segments share one cluster (0 spacing) so outer/inner rails abut.
+    private enum SegmentCluster: Equatable {
+        case prose(Segment)
+        case quotes([Segment])
+    }
+
+    private static func clusters(from segs: [Segment]) -> [SegmentCluster] {
+        var result: [SegmentCluster] = []
+        var index = 0
+        while index < segs.count {
+            if segs[index].isQuote {
+                var quotes: [Segment] = []
+                while index < segs.count, segs[index].isQuote {
+                    quotes.append(segs[index])
+                    index += 1
+                }
+                result.append(.quotes(quotes))
+            } else {
+                result.append(.prose(segs[index]))
+                index += 1
+            }
+        }
+        return result
     }
 
     /// Popover body: prose as styled Text; quotes as continuous left border(s) + body.
+    /// Nested depths share the same leftmost bar x; only body text gets extra indent.
     struct BlocksView: View {
         let markdown: String
         let role: Role
@@ -491,9 +533,20 @@ enum MarkdownDisplay {
 
         var body: some View {
             let segs = MarkdownDisplay.segments(from: markdown)
+            let clusters = MarkdownDisplay.clusters(from: segs)
             VStack(alignment: .leading, spacing: MarkdownDisplay.segmentSpacing) {
-                ForEach(Array(segs.enumerated()), id: \.offset) { _, seg in
-                    segmentView(seg)
+                ForEach(Array(clusters.enumerated()), id: \.offset) { _, cluster in
+                    switch cluster {
+                    case .prose(let seg):
+                        segmentView(seg)
+                    case .quotes(let quoteSegs):
+                        // spacing 0 — outer/inner rails must meet with no gap.
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(quoteSegs.enumerated()), id: \.offset) { _, seg in
+                                segmentView(seg)
+                            }
+                        }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -508,6 +561,7 @@ enum MarkdownDisplay {
                 let bars = max(depth, 1)
                 // Default (center) alignment lets Rectangle stretch to the text height so the
                 // bar stays continuous across soft wraps — unlike a leading "│" glyph.
+                // Bars share a common leading edge (no group leading pad); body gets nest indent.
                 HStack(spacing: 8) {
                     HStack(spacing: 3) {
                         ForEach(0..<bars, id: \.self) { _ in
@@ -516,8 +570,9 @@ enum MarkdownDisplay {
                                 .frame(width: 2)
                         }
                     }
-                    .padding(.leading, CGFloat(max(bars - 1, 0)) * 4)
+                    .padding(.leading, MarkdownDisplay.quoteBarLeadingInset(depth: bars))
                     textBlock(MarkdownDisplay.stripQuoteMarkers(seg.markdown))
+                        .padding(.leading, MarkdownDisplay.quoteBodyLeadingInset(depth: bars))
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }

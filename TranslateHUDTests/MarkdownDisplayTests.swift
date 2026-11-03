@@ -451,6 +451,38 @@ final class MarkdownDisplayTests: XCTestCase {
         XCTAssertEqual(MarkdownDisplay.quoteChromeWidth(for: .init(kind: .prose, markdown: "x")), 0)
     }
 
+    func testAdjacentQuoteSegmentsHaveZeroSpacing() {
+        let segs = MarkdownDisplay.segments(from: "> Outer\n> > Nested")
+        let quotes = segs.filter(\.isQuote)
+        XCTAssertGreaterThanOrEqual(quotes.count, 2, "\(segs)")
+        XCTAssertEqual(
+            MarkdownDisplay.spacing(before: quotes[1], after: quotes[0]),
+            0,
+            "outer/inner rails must abut with no VStack gap"
+        )
+        let afterHeading = MarkdownDisplay.segments(from: "## T\n\n> Q")
+        guard afterHeading.count >= 2 else {
+            XCTFail("\(afterHeading)")
+            return
+        }
+        XCTAssertEqual(
+            MarkdownDisplay.spacing(before: afterHeading[1], after: afterHeading[0]),
+            MarkdownDisplay.segmentSpacing
+        )
+    }
+
+    func testQuoteBarsShareLeadingEdgeAcrossDepths() {
+        // Depth must not shift the whole bar group — only body gets nest indent.
+        XCTAssertEqual(MarkdownDisplay.quoteBarLeadingInset(depth: 1), 0)
+        XCTAssertEqual(MarkdownDisplay.quoteBarLeadingInset(depth: 2), 0)
+        XCTAssertEqual(MarkdownDisplay.quoteBarLeadingInset(depth: 3), 0)
+        XCTAssertEqual(MarkdownDisplay.quoteBodyLeadingInset(depth: 1), 0)
+        XCTAssertGreaterThan(
+            MarkdownDisplay.quoteBodyLeadingInset(depth: 2),
+            MarkdownDisplay.quoteBodyLeadingInset(depth: 1)
+        )
+    }
+
     func testStyledQuoteBodyUsesPrimaryNotMutedOnly() {
         let colors = PanelColors.dark
         let styled = MarkdownDisplay.styled("> Quoted body", role: .translation, colors: colors)

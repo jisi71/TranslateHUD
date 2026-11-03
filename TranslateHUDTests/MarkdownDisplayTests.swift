@@ -277,6 +277,67 @@ final class MarkdownDisplayTests: XCTestCase {
         XCTAssertFalse(characters.contains("•"), "plain paragraph must not get list bullets: \(characters)")
     }
 
+    func testListMarkerAfterHeadingUsesBodyFontSize() {
+        let ordered = MarkdownDisplay.styled(
+            "## V. Ordered list\n\n1. alpha\n2. beta\n3. gamma",
+            role: .translation,
+            colors: .dark
+        )
+        let base = MarkdownDisplay.Role.translation.basePointSize
+        var markerSizes: [CGFloat] = []
+        var headingSizes: [CGFloat] = []
+        for run in ordered.runs {
+            let text = String(ordered[run.range].characters)
+            let size = run.appKit.font?.pointSize
+            if text.contains("1.") || text.contains("2.") || text.contains("3.") {
+                if let size { markerSizes.append(size) }
+                // Marker run must not carry a header intent.
+                let header = run.presentationIntent?.components.contains {
+                    if case .header = $0.kind { return true }
+                    return false
+                } ?? false
+                XCTAssertFalse(header, "marker must not stay in heading run: \(text)")
+            }
+            if text.contains("Ordered list") || text.contains("V."), let size {
+                headingSizes.append(size)
+            }
+        }
+        XCTAssertFalse(markerSizes.isEmpty, String(ordered.characters))
+        for size in markerSizes {
+            XCTAssertEqual(size, base, accuracy: 0.1, String(ordered.characters))
+        }
+        if let heading = headingSizes.first {
+            XCTAssertGreaterThan(heading, base, "heading should be larger than body")
+            for size in markerSizes {
+                XCTAssertGreaterThan(abs(size - heading), 0.5, "marker \(size) must differ from heading \(heading)")
+            }
+        }
+        // All ordered markers share one size.
+        XCTAssertEqual(Set(markerSizes.map { Int($0 * 10) }).count, 1, "\(markerSizes)")
+
+        let bullets = MarkdownDisplay.styled(
+            "## Unordered\n\n- one\n- two",
+            role: .translation,
+            colors: .dark
+        )
+        var bulletSizes: [CGFloat] = []
+        for run in bullets.runs {
+            let text = String(bullets[run.range].characters)
+            if text.contains("•"), let size = run.appKit.font?.pointSize {
+                bulletSizes.append(size)
+                let header = run.presentationIntent?.components.contains {
+                    if case .header = $0.kind { return true }
+                    return false
+                } ?? false
+                XCTAssertFalse(header, text)
+            }
+        }
+        XCTAssertFalse(bulletSizes.isEmpty, String(bullets.characters))
+        for size in bulletSizes {
+            XCTAssertEqual(size, base, accuracy: 0.1, String(bullets.characters))
+        }
+    }
+
     func testWikiSectionThreeParagraphsKeepBlankLines() {
         let markdown = """
         ## 三、空行与段落（重点测空行是否被吞）

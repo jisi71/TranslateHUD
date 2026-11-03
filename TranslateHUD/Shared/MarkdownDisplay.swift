@@ -212,6 +212,8 @@ enum MarkdownDisplay {
             let depth: Int
             let ordered: Bool
             let ordinal: Int
+            /// Semantic attrs from the list-item body (not the previous run).
+            let attributes: AttributeContainer
         }
 
         var anchors: [ListItemAnchor] = []
@@ -223,13 +225,17 @@ enum MarkdownDisplay {
             let depth = max(listNestingDepth(of: intent), 1)
             let ordered = hasOrderedList(in: intent)
             let ordinal = listItemOrdinal(of: intent) ?? 1
+            // Only presentationIntent — skip inline emphasis so markers stay regular weight.
+            var attrs = AttributeContainer()
+            attrs.presentationIntent = intent
             anchors.append(
                 ListItemAnchor(
                     identity: identity,
                     index: run.range.lowerBound,
                     depth: depth,
                     ordered: ordered,
-                    ordinal: ordinal
+                    ordinal: ordinal,
+                    attributes: attrs
                 )
             )
         }
@@ -237,11 +243,15 @@ enum MarkdownDisplay {
         // Insert from the end so earlier indices stay valid (anchors are document order).
         // Visible leading spaces are required: SwiftUI Text ignores AppKit headIndent, and
         // TextBlockMetrics.height overwrites paragraphStyle — indent must live in characters.
+        // Use AttributedString.insert with the list-item attributes — naked characters.insert
+        // inherits the previous run (often a heading) and paints `1.` / `•` at header size.
         let spacesPerLevel = 2
         for anchor in anchors.reversed() {
             let leading = String(repeating: " ", count: max(anchor.depth - 1, 0) * spacesPerLevel)
-            let marker = anchor.ordered ? "\(anchor.ordinal). " : "• "
-            attributed.characters.insert(contentsOf: leading + marker, at: anchor.index)
+            let markerText = anchor.ordered ? "\(anchor.ordinal). " : "• "
+            var marker = AttributedString(leading + markerText)
+            marker.setAttributes(anchor.attributes)
+            attributed.insert(marker, at: anchor.index)
         }
 
         // Paragraph indent kept as a supplement for AppKit paths; not relied on by SwiftUI Text.

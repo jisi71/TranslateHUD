@@ -51,7 +51,7 @@ final class PopoverContentSizingTests: XCTestCase {
         }
         guard case .success = progress.state else { return XCTFail("Fixture translation did not complete") }
         XCTAssertEqual(progress.targetLanguage, .chinese)
-        let terms = TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original], language: .chinese)
+        let terms = TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original])
         let host = NSHostingController(rootView: PopoverContent(
             original: original,
             progress: progress,
@@ -299,7 +299,7 @@ final class PopoverContentSizingTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         guard case .success = progress.state else { return XCTFail("Fixture translation did not complete") }
-        let terms = TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original], language: .chinese)
+        let terms = TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original])
         let host = NSHostingController(rootView: PopoverContent(
             original: original, progress: progress, termProgress: terms,
             speech: SpeechController(), onCancel: {}, onRetry: {}
@@ -374,7 +374,7 @@ final class PopoverContentSizingTests: XCTestCase {
         let host = NSHostingController(rootView: PopoverContent(
             original: original,
             progress: progress,
-            termProgress: TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original], language: .chinese),
+            termProgress: TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original]),
             speech: SpeechController(),
             onCancel: {},
             onRetry: {}
@@ -385,8 +385,7 @@ final class PopoverContentSizingTests: XCTestCase {
     private func fittingSize(original: String) -> NSSize {
         let terms = TermExplanationProgress(
             explainer: EmptyTermExplainer(),
-            texts: [original],
-            language: .chinese
+            texts: [original]
         )
         let view = PopoverContent(
             original: original,

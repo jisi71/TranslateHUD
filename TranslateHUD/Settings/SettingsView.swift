@@ -35,10 +35,12 @@ struct SettingsView: View {
     @ObservedObject private var store = SettingsStore.shared
     @ObservedObject private var trial = TrialAccountStore.shared
     @ObservedObject private var appearance = PanelAppearance.shared
+    @ObservedObject private var interfaceLanguage = InterfaceLanguageStore.shared
     @Environment(\.colorScheme) private var systemScheme
     @State private var preset = ProviderPreset.matching(baseURL: SettingsStore.shared.baseURL)
     @State private var showApiKey = false
     @State private var testStatus: TestStatus = .idle
+    @State private var testFailure: Error?
     @StateObject private var speechPreview = SpeechController()
     @State private var voiceRefreshToken = 0
     @State private var path: [SettingsRoute] = []
@@ -67,7 +69,7 @@ struct SettingsView: View {
                         HStack(spacing: 10) {
                             Image(systemName: pane.symbol)
                             .frame(width: 18)
-                            Text(pane.title)
+                            Text(LocalizedStringKey(pane.title))
                             Spacer()
                         }
                         .font(.system(size: 13.5, weight: activePane == pane ? .medium : .regular))
@@ -90,6 +92,7 @@ struct SettingsView: View {
             Rectangle().fill(colors.border).frame(width: 1)
             NavigationStack(path: $path) {
                 paneContent
+                    .navigationTitle(LocalizedStringKey(activePane.title))
                     .navigationDestination(for: SettingsRoute.self) { route in
                         settingsDestination(route)
                     }
@@ -115,11 +118,12 @@ struct SettingsView: View {
     private var paneContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                Text(activePane.title)
+                Text(LocalizedStringKey(activePane.title))
                 .font(.system(size: 22, weight: .semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
                     switch activePane {
                     case .general:
+                        languageSection
                         appearanceSection
                         LaunchAtLoginSection()
                     case .account:
@@ -151,7 +155,7 @@ struct SettingsView: View {
             SettingsLabeledRow(title: "预设") {
                 Picker("预设", selection: presetBinding) {
                     ForEach(ProviderPreset.all) { p in
-                        Text(p.displayName).tag(p)
+                        Text(interfaceLanguage.text(p.displayName)).tag(p)
                     }
                 }
                 .labelsHidden()
@@ -188,7 +192,7 @@ struct SettingsView: View {
                         }
                     }
                     .frame(maxWidth: 280, alignment: .leading)
-                    Button(showApiKey ? "隐藏" : "显示") { showApiKey.toggle() }
+                    Button(interfaceLanguage.text(showApiKey ? "隐藏" : "显示")) { showApiKey.toggle() }
                         .buttonStyle(SettingsButtonStyle())
                 }
             }
@@ -205,7 +209,7 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
             Picker("翻译为", selection: $store.targetLanguage) {
                 ForEach(TargetLanguage.allCases) { lang in
-                    Text(lang.displayName).tag(lang)
+                    Text(interfaceLanguage.text(lang.displayName)).tag(lang)
                 }
             }
                 .labelsHidden()
@@ -237,7 +241,7 @@ struct SettingsView: View {
             }
             statusView
             if let message = store.validationMessage {
-                Text(message)
+                Text(interfaceLanguage.text(message))
                     .font(.caption)
                     .foregroundStyle(colors.warning)
                     .fixedSize(horizontal: false, vertical: true)
@@ -252,7 +256,7 @@ struct SettingsView: View {
             Picker("中文声音", selection: $store.chineseVoiceIdentifier) {
                 Text("自动选择最高质量").tag("")
                 ForEach(SpeechController.voiceOptions(languagePrefix: "zh")) { voice in
-                    Text("\(voice.displayName) · \(voice.language)").tag(voice.identifier)
+                    Text("\(voice.localizedName(using: interfaceLanguage)) · \(voice.language)").tag(voice.identifier)
                 }
             }
                 .labelsHidden()
@@ -264,7 +268,7 @@ struct SettingsView: View {
             Picker("英文声音", selection: $store.englishVoiceIdentifier) {
                 Text("自动选择最高质量").tag("")
                 ForEach(SpeechController.voiceOptions(languagePrefix: "en")) { voice in
-                    Text("\(voice.displayName) · \(voice.language)").tag(voice.identifier)
+                    Text("\(voice.localizedName(using: interfaceLanguage)) · \(voice.language)").tag(voice.identifier)
                 }
                 }
                 .labelsHidden()
@@ -322,17 +326,31 @@ struct SettingsView: View {
         return PanelColors.resolve(preference: store.appearancePreference, systemScheme: systemScheme)
     }
 
+    private var languageSection: some View {
+        SettingsCard("界面语言") {
+            LabeledContent("语言") {
+                Picker("语言", selection: $interfaceLanguage.language) {
+                    ForEach(InterfaceLanguage.allCases) { language in
+                        Text(verbatim: language.title).tag(language)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 200)
+            }
+        }
+    }
+
     private var appearanceSection: some View {
         SettingsCard("外观") {
             LabeledContent("主题") {
             Picker("主题", selection: $store.appearancePreference) {
                 ForEach([AppearancePreference.light, .dark, .system]) { choice in
-                    Text(choice.title).tag(choice)
+                    Text(LocalizedStringKey(choice.title)).tag(choice)
                 }
             }
             .pickerStyle(.segmented)
                 .frame(width: 200)
-                .accessibilityLabel("主题")
+                .accessibilityLabel(interfaceLanguage.text("主题"))
                 .labelsHidden()
             }
         }
@@ -397,11 +415,12 @@ struct SettingsView: View {
             case .feedback:
                 FeedbackView()
             case .agreement:
-                LegalDocumentView(title: "用户协议", resource: "user-agreement")
+                LegalDocumentView(resource: "user-agreement")
             case .privacy:
-                LegalDocumentView(title: "隐私政策", resource: "privacy-policy")
+                LegalDocumentView(resource: "privacy-policy")
             }
         }
+        .navigationTitle(LocalizedStringKey(route.pageTitle))
     }
 
     @ViewBuilder
@@ -427,17 +446,17 @@ struct SettingsView: View {
                 accountIdentity
                 LabeledContent("手机号") {
                     TextField("", text: $trial.phone, prompt: Text("手机号"))
-                    .accessibilityLabel("手机号")
+                    .accessibilityLabel(interfaceLanguage.text("手机号"))
                     .panelTextInput()
                     .frame(width: 200)
                 }
                 LabeledContent("验证码") {
                     HStack(spacing: 8) {
                         TextField("", text: $trial.code, prompt: Text("短信验证码"))
-                        .accessibilityLabel("短信验证码")
+                        .accessibilityLabel(interfaceLanguage.text("短信验证码"))
                         .panelTextInput()
                         .frame(width: 100)
-                    Button(trial.codeCooldown > 0 ? "\(trial.codeCooldown) 秒后可重发" : "获取验证码") {
+                    Button(trial.codeCooldown > 0 ? String(format: interfaceLanguage.text("%d 秒后可重发"), trial.codeCooldown) : interfaceLanguage.text("获取验证码")) {
                         Task { await trial.sendCode() }
                     }
                     .disabled(trial.isBusy || trial.codeCooldown > 0)
@@ -454,7 +473,7 @@ struct SettingsView: View {
             }
 
             if !trial.statusMessage.isEmpty {
-                Text(trial.statusMessage)
+                Text(interfaceLanguage.text(trial.statusMessage))
                     .font(.caption)
                     .foregroundStyle(colors.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -469,8 +488,8 @@ struct SettingsView: View {
                 .foregroundStyle(colors.muted)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text(trial.isLoggedIn ? (trial.maskedPhone.isEmpty ? "已登录" : trial.maskedPhone) : "未登录")
-                Text(trial.isLoggedIn ? "体验余额 \(trial.balanceValueText)" : "用手机号登录后同步体验额度")
+                Text(interfaceLanguage.text(trial.isLoggedIn ? (trial.maskedPhone.isEmpty ? "已登录" : trial.maskedPhone) : "未登录"))
+                Text(trial.isLoggedIn ? "\(interfaceLanguage.text("体验余额")) \(interfaceLanguage.text(trial.balanceValueText))" : interfaceLanguage.text("用手机号登录后同步体验额度"))
                     .font(.caption)
                     .foregroundStyle(colors.muted)
             }
@@ -480,23 +499,21 @@ struct SettingsView: View {
     private var trialAllowanceSection: some View {
         SettingsCard("体验额度") {
             LabeledContent("邀请码") {
-            TextField("", text: $trial.inviteCode, prompt: Text("邀请码"))
-                .accessibilityLabel("邀请码")
-                .panelTextInput()
-                .disabled(!trial.isLoggedIn || trial.inviteRedeemed || trial.isBusy)
-                .frame(width: 200)
+                TextField("", text: $trial.inviteCode, prompt: Text("邀请码"))
+                    .accessibilityLabel(interfaceLanguage.text("邀请码"))
+                    .panelTextInput()
+                    .disabled(!trial.isLoggedIn || trial.inviteRedeemed || trial.isBusy)
+                    .frame(width: 200)
             }
-            Text(!trial.isLoggedIn ? "登录后可领取" : (trial.inviteRedeemed ? "已领取体验额度，每个账号只能领取一次。" : "每个账号只能领取一次。"))
-            .font(.caption)
-            .foregroundStyle(colors.muted)
+            // Permanent “once / sign-in to redeem” captions removed: already-redeemed
+            // feedback stays on statusMessage after a redeem attempt (login card).
             HStack {
-                Text("领取 ¥2 体验额度")
                 Spacer()
-            Button(trial.isBusy ? "正在领取…" : "领取 ¥2 体验额度") {
-                Task { await trial.redeemInvite() }
+                Button(interfaceLanguage.text(trial.isBusy ? "正在兑换…" : "兑换体验额度")) {
+                    Task { await trial.redeemInvite() }
+                }
+                .disabled(!trial.isLoggedIn || trial.inviteRedeemed || trial.isBusy || trial.balanceState == .loading || trial.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .disabled(!trial.isLoggedIn || trial.inviteRedeemed || trial.isBusy || trial.balanceState == .loading || trial.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
         }
     }
 
@@ -518,21 +535,22 @@ struct SettingsView: View {
         case .running:
             ProgressView().controlSize(.small)
         case .ok(let msg):
-            Label(msg, systemImage: "checkmark.circle.fill")
+            Label(interfaceLanguage.format("译：%@", msg), systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .font(.callout)
         case .fail(let msg):
-            Label(msg, systemImage: "xmark.octagon.fill")
+            Label(testFailure.map { interfaceLanguage.error($0, operation: "翻译") } ?? interfaceLanguage.text(msg), systemImage: "xmark.octagon.fill")
                 .foregroundStyle(colors.error)
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
-                .help(msg)
+                .help(testFailure.map { interfaceLanguage.error($0, operation: "翻译") } ?? interfaceLanguage.text(msg))
         }
     }
 
     @MainActor
     private func runTest() async {
         testStatus = .running
+        testFailure = nil
         switch TranslationSession.prepare(sourceText: "Hello, world") {
         case .blocked(_, let message):
             testStatus = .fail(message)
@@ -543,8 +561,9 @@ struct SettingsView: View {
                     to: store.targetLanguage,
                     context: nil
                 )
-                testStatus = .ok("译：\(res.first ?? "?")")
+                testStatus = .ok(res.first ?? "?")
             } catch {
+                testFailure = error
                 testStatus = .fail(ServiceErrorMessage.describe(error))
             }
         }
@@ -607,6 +626,7 @@ enum RotateCwMotion {
 }
 
 private struct TrialBalanceRefreshButton: View {
+    @ObservedObject private var interfaceLanguage = InterfaceLanguageStore.shared
     var loading: Bool
     var action: () -> Void
 
@@ -629,7 +649,7 @@ private struct TrialBalanceRefreshButton: View {
         .buttonStyle(SettingsButtonStyle())
         .disabled(loading)
         .help("刷新体验余额")
-        .accessibilityLabel("刷新体验余额")
+        .accessibilityLabel(interfaceLanguage.text("刷新体验余额"))
         .task(id: loading) {
             guard RotateCwMotion.shouldKeepTurning(loading: loading) else {
                 let target = RotateCwMotion.uprightTarget(from: angle)

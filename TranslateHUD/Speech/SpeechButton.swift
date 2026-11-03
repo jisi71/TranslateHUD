@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SpeechButton: View {
+    @ObservedObject private var language = InterfaceLanguageStore.shared
     let text: String
     let id: String
     @ObservedObject var speech: SpeechController
@@ -16,8 +17,8 @@ struct SpeechButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(isSpeaking ? Color.accentColor : Color.secondary)
-        .help(isSpeaking ? "停止朗读" : "朗读")
+        .help(language.text(isSpeaking ? "停止朗读" : "朗读"))
         .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        .accessibilityLabel(isSpeaking ? "停止朗读" : "朗读")
+        .accessibilityLabel(language.text(isSpeaking ? "停止朗读" : "朗读"))
     }
 }

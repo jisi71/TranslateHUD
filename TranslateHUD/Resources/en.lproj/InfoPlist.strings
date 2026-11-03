@@ -1,0 +1,4 @@
+CFBundleDisplayName = "TranslateHUD";
+CFBundleName = "TranslateHUD";
+NSScreenCaptureDescription = "TranslateHUD needs screen recording access to capture and translate text in the selected area.";
+NSAppleEventsUsageDescription = "TranslateHUD needs to send Apple events to read selected text in other apps.";

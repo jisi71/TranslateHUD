@@ -25,12 +25,14 @@ extension View {
 
 private struct PanelChromeModifier: ViewModifier {
     @ObservedObject private var appearance = PanelAppearance.shared
+    @ObservedObject private var interfaceLanguage = InterfaceLanguageStore.shared
     @ObservedObject private var settings = SettingsStore.shared
     @Environment(\.colorScheme) private var systemScheme
 
     func body(content: Content) -> some View {
         let colors = resolvedColors
         content
+            .environment(\.locale, interfaceLanguage.locale)
             .environment(\.panelColors, colors)
             .preferredColorScheme(settings.appearancePreference == .system ? nil : colors.colorScheme)
             .environment(\.colorScheme, colors.colorScheme)
@@ -343,7 +345,7 @@ struct SettingsCard<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(.system(size: 13, weight: .semibold))
             _VariadicView.Tree(SettingsCardRows()) { content }
                 .background(colors.settingsCard)
@@ -406,7 +408,7 @@ struct SettingsLabeledRow<Content: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .frame(width: labelWidth, alignment: .leading)
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)

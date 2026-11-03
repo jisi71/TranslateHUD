@@ -12,10 +12,11 @@ final class TermExplanationProgress: ObservableObject {
 
     @Published private(set) var state: State = .idle
     @Published private(set) var isExpanded = false
+    @Published private(set) var displayError: Error?
 
     private let explainerProvider: @MainActor () -> any TermExplainer
     private let texts: [String]
-    private let language: TargetLanguage
+    private let outputLanguage: @MainActor () -> TargetLanguage
     private let context: SelectionFetcher.TextContext?
     private let timeoutSeconds: TimeInterval
     private var task: Task<Void, Never>?
@@ -25,13 +26,11 @@ final class TermExplanationProgress: ObservableObject {
     convenience init(
         explainer: any TermExplainer,
         texts: [String],
-        language: TargetLanguage,
         context: SelectionFetcher.TextContext? = nil,
         timeoutSeconds: TimeInterval = 20
     ) {
         self.init(
             texts: texts,
-            language: language,
             context: context,
             timeoutSeconds: timeoutSeconds,
             explainer: { explainer }
@@ -40,14 +39,16 @@ final class TermExplanationProgress: ObservableObject {
 
     init(
         texts: [String],
-        language: TargetLanguage,
         context: SelectionFetcher.TextContext? = nil,
         timeoutSeconds: TimeInterval = 20,
+        outputLanguage: (@MainActor () -> TargetLanguage)? = nil,
         explainer: @escaping @MainActor () -> any TermExplainer
     ) {
         self.explainerProvider = explainer
         self.texts = texts
-        self.language = language
+        self.outputLanguage = outputLanguage ?? {
+            TargetLanguage.resolved(for: texts, configured: SettingsStore.shared.targetLanguage)
+        }
         self.context = context
         self.timeoutSeconds = timeoutSeconds
     }
@@ -79,13 +80,22 @@ final class TermExplanationProgress: ObservableObject {
         invalidateTask()
     }
 
+    func targetLanguageChanged() {
+        invalidateTask()
+        hasRequested = false
+        isExpanded = false
+        state = .idle
+        displayError = nil
+    }
+
     private func startRequest() {
         invalidateTask()
         state = .loading
+        displayError = nil
         let currentID = requestID
         let explainer = explainerProvider()
         let texts = self.texts
-        let language = self.language
+        let language = outputLanguage()
         let context = self.context
         let timeoutSeconds = self.timeoutSeconds
 
@@ -102,11 +112,13 @@ final class TermExplanationProgress: ObservableObject {
                 return
             } catch let error as TranslationTimeoutError {
                 guard let self, self.requestID == currentID else { return }
+                self.displayError = error
                 self.state = .failed(ServiceErrorMessage.timeout(error, operation: "名词解释"))
                 FailureReporter.report(error, surface: .termExplanation)
                 self.task = nil
             } catch {
                 guard let self, self.requestID == currentID else { return }
+                self.displayError = error
                 self.state = .failed(ServiceErrorMessage.describe(error))
                 FailureReporter.report(error, surface: .termExplanation)
                 self.task = nil

@@ -5,7 +5,23 @@ import SwiftUI
 final class SettingsWindowController {
     static let shared = SettingsWindowController()
     static let willShowNotification = Notification.Name("TranslateHUD.settingsWindow.willShow")
-    private init() {}
+    private let language: InterfaceLanguageStore
+    private var languageObserver: NSObjectProtocol?
+
+    init(language: InterfaceLanguageStore = .shared) {
+        self.language = language
+        languageObserver = NotificationCenter.default.addObserver(
+            forName: InterfaceLanguageStore.didChangeNotification, object: language, queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.window?.title = self.language.text("TranslateHUD 设置")
+        }
+    }
+
+    deinit {
+        if let languageObserver { NotificationCenter.default.removeObserver(languageObserver) }
+        if let appearanceObserver { NotificationCenter.default.removeObserver(appearanceObserver) }
+    }
 
     private var window: SettingsWindow?
     private var appearanceObserver: NSObjectProtocol?
@@ -29,12 +45,13 @@ final class SettingsWindowController {
         }
     }
 
-    private func makeWindow() -> SettingsWindow {
+    func makeWindow() -> SettingsWindow {
         let hosting = SettingsHostingController(rootView: SettingsView())
         hosting.view.wantsLayer = true
         let win = SettingsWindow(contentViewController: hosting)
-        win.title = "TranslateHUD 设置"
+        win.title = language.text("TranslateHUD 设置")
         win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        win.titleVisibility = .hidden
         win.setContentSize(NSSize(width: 760, height: 560))
         win.minSize = NSSize(width: 720, height: 560)
         win.center()

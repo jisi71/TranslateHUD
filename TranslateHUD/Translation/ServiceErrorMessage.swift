@@ -139,7 +139,7 @@ enum ServiceErrorMessage {
         return nil
     }
 
-    private static func network(_ error: NSError) -> String {
+    static func network(_ error: NSError, language: InterfaceLanguageStore? = nil) -> String {
         switch error.code {
         case URLError.cancelled.rawValue:
             return "请求已中止，可重新发起。"
@@ -175,7 +175,7 @@ enum ServiceErrorMessage {
         case URLError.cannotDecodeRawData.rawValue, URLError.cannotDecodeContentData.rawValue, URLError.badServerResponse.rawValue:
             return "服务响应无法读取或不完整，请稍后重试；若持续出现，请检查接口兼容性或更换服务。"
         default:
-            return "网络请求未完成，原因暂未确认（错误码 \(error.code)）。请检查网络或代理后重试。"
+            return language?.format("网络请求未完成，原因暂未确认（错误码 %ld）。请检查网络或代理后重试。", error.code) ?? "网络请求未完成，原因暂未确认（错误码 \(error.code)）。请检查网络或代理后重试。"
         }
     }
 }

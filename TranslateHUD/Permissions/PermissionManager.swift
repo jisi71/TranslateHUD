@@ -20,18 +20,7 @@ final class PermissionManager {
 
     /// 打开系统设置中的隐私页面，方便用户手工授权。
     func openSystemPanels() {
-        let alert = NSAlert()
-        alert.messageText = "TranslateHUD 需要两项权限"
-        alert.informativeText = """
-        • 屏幕录制：用于截取屏幕区域并 OCR
-        • 辅助功能：用于读取其他应用中的选中文字
-
-        点击下方按钮跳转系统设置 → 隐私与安全性，找到 TranslateHUD 后开启对应开关。
-        """
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "打开「屏幕录制」")
-        alert.addButton(withTitle: "打开「辅助功能」")
-        alert.addButton(withTitle: "稍后")
+        let alert = makePermissionAlert(language: .shared)
         let resp = alert.runModal()
         switch resp {
         case .alertFirstButtonReturn:
@@ -45,5 +34,16 @@ final class PermissionManager {
         default:
             break
         }
+    }
+
+    func makePermissionAlert(language: InterfaceLanguageStore) -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = language.text("TranslateHUD 需要两项权限")
+        alert.informativeText = language.text("• 屏幕录制：用于截取屏幕区域并 OCR\n• 辅助功能：用于读取其他应用中的选中文字\n\n点击下方按钮跳转系统设置 → 隐私与安全性，找到 TranslateHUD 后开启对应开关。")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: language.text("打开「屏幕录制」"))
+        alert.addButton(withTitle: language.text("打开「辅助功能」"))
+        alert.addButton(withTitle: language.text("稍后"))
+        return alert
     }
 }

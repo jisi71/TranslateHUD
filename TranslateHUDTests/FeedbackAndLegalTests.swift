@@ -60,7 +60,7 @@ final class FeedbackAndLegalTests: XCTestCase {
         )
     }
 
-    func testSubmitWithoutATokenDoesNotPost() async {
+    func testSubmitWithoutATokenDoesNotPost() async throws {
         FeedbackHTTPStub.requests = []
         FeedbackHTTPStub.bodies = []
         FeedbackHTTPStub.responder = { _ in

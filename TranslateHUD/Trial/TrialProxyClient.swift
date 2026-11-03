@@ -120,7 +120,7 @@ enum TrialProxyClient {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw TrialProxyError.message("网络不通，邀请码暂时领不了。")
+            throw TrialProxyError.message("网络不通，邀请码暂时兑不了。")
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
         let body = String(data: data, encoding: .utf8) ?? ""
@@ -130,7 +130,7 @@ enum TrialProxyClient {
         guard (200..<300).contains(status),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let balance = microBalance(json) else {
-            throw TrialProxyError.message("邀请码没有领到，请稍后再试。")
+            throw TrialProxyError.message("邀请码没有兑换成功，请稍后再试。")
         }
         let userId = (json["userId"] as? String) ?? ""
         let giftedNow = boolValue(json["giftedNow"])

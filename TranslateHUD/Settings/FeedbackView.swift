@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct FeedbackView: View {
     @Environment(\.panelColors) private var colors
+    @ObservedObject private var language = InterfaceLanguageStore.shared
     @ObservedObject private var trial = TrialAccountStore.shared
     @State private var title = ""
     @State private var bodyText = ""
@@ -17,9 +18,9 @@ struct FeedbackView: View {
         Form {
             Section {
                 TextField("", text: $title, prompt: Text("标题"))
-                    .accessibilityLabel("标题")
+                    .accessibilityLabel(language.text("标题"))
                     .panelTextInput()
-                PanelTextEditor(text: $bodyText, placeholder: "问题描述")
+                PanelTextEditor(text: $bodyText, placeholder: language.text("问题描述"))
                     .frame(height: 72)
                     .panelFieldSurface()
                 ForEach(attachments) { item in
@@ -46,18 +47,18 @@ struct FeedbackView: View {
                         .font(.caption)
                         .foregroundStyle(colors.muted)
                     Spacer()
-                    Button(submitting ? "正在提交…" : "提交") {
+                    Button(language.text(submitting ? "正在提交…" : "提交")) {
                         Task { await submit() }
                     }
                     .disabled(submitting || !trial.isLoggedIn)
                 }
                 if !trial.isLoggedIn {
-                    Text(FeedbackCopy.needLogin)
+                    Text(language.text(FeedbackCopy.needLogin))
                         .font(.caption)
                         .foregroundStyle(colors.muted)
                 }
                 if !statusText.isEmpty {
-                    Text(statusText)
+                    Text(language.text(statusText))
                         .font(.caption)
                         .foregroundStyle(succeeded ? Color.green : colors.error)
                         .fixedSize(horizontal: false, vertical: true)

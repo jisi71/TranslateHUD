@@ -17,13 +17,13 @@ enum SelectionFlow {
             configured: SettingsStore.shared.targetLanguage
         )
         let outcome = TranslationSession.prepare(sourceText: selection.text)
+        let progress = TranslationProgress()
         let termProgress = TermExplanationProgress(
             texts: [selection.text],
-            language: .chinese,
             context: selection.context,
+            outputLanguage: { progress.targetLanguage ?? target },
             explainer: { TranslationSession.explainer(for: selection.text) }
         )
-        let progress = TranslationProgress()
         progress.failureSurface = .selectionTranslate
         progress.mapTranslator = { FormatPreservingTranslator(base: $0, prepared: prepared) }
 

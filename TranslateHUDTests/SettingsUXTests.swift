@@ -207,17 +207,17 @@ final class SettingsUXTests: XCTestCase {
         let feedback = try String(contentsOf: root.appendingPathComponent("TranslateHUD/Settings/FeedbackView.swift"), encoding: .utf8)
         XCTAssertFalse(settings.contains(".textFieldStyle(.roundedBorder)"))
         XCTAssertFalse(feedback.contains(".textFieldStyle(.roundedBorder)"))
-        XCTAssertFalse(feedback.contains("TextEditor("))
+        XCTAssertFalse(feedback.contains("\n                TextEditor("))
         XCTAssertEqual(settings.components(separatedBy: ".panelTextInput()").count - 1, 7)
         XCTAssertTrue(feedback.contains(".panelTextInput()"))
-        XCTAssertTrue(feedback.contains("PanelTextEditor(text: $bodyText, placeholder: \"问题描述\")"))
+        XCTAssertTrue(feedback.contains("PanelTextEditor(text: $bodyText, placeholder: language.text("))
     }
 
     func testPanelInputsUseInternalPromptsAndAccessibleLabels() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let pattern = #"(?:TextField|SecureField)\("", text: [^\n]+, prompt: Text\("([^"]+)"\)\)\s*\.accessibilityLabel\("\1"\)\s*\.panelTextInput\(\)"#
+        let pattern = #"(?:TextField|SecureField)\("", text: [^\n]+, prompt: Text\("([^"]+)"\)\)\s*\.accessibilityLabel\((?:"\1"|(?:interfaceLanguage|language)\.text\("\1"\))\)\s*\.panelTextInput\(\)"#
         let expression = try NSRegularExpression(pattern: pattern)
         for (file, expectedCount) in [("SettingsView", 7), ("FeedbackView", 1)] {
             let source = try String(contentsOf: root.appendingPathComponent("TranslateHUD/Settings/\(file).swift"), encoding: .utf8)

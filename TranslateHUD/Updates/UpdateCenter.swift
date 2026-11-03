@@ -129,10 +129,10 @@ final class UpdateCenter: NSObject, SPUUpdaterDelegate, @preconcurrency SPUStand
     private func present(_ message: String) {
         NSApp.activate()
         let alert = NSAlert()
-        alert.messageText = UpdateCopy.checkTitle
-        alert.informativeText = message
+        alert.messageText = InterfaceLanguageStore.shared.text(UpdateCopy.checkTitle)
+        alert.informativeText = InterfaceLanguageStore.shared.text(message)
         alert.alertStyle = .informational
-        alert.addButton(withTitle: UpdateCopy.confirm)
+        alert.addButton(withTitle: InterfaceLanguageStore.shared.text(UpdateCopy.confirm))
         alert.runModal()
     }
 

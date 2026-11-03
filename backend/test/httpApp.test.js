@@ -166,11 +166,11 @@ test('trial translation bills the source, hides the server key, and lowers the b
   }
 })
 
-test('over 500 graphemes is rejected, the upstream is not called, and nothing is gifted or charged', async () => {
+test('over 1000 graphemes is rejected, the upstream is not called, and nothing is gifted or charged', async () => {
   const store = new MemoryAccountStore()
   const { server, base, calls } = await listen(store)
   try {
-    const source = '字'.repeat(501)
+    const source = '字'.repeat(1001)
     const result = await request(base, '/v1/chat/completions', {
       token: 'good-token',
       source,

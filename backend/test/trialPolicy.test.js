@@ -19,19 +19,19 @@ test('graphemes match extended clusters, including combining marks and emoji', (
   assert.equal(graphemeLength('你好'), 2)
   assert.equal(graphemeLength('a\u0301'), 1)
   assert.equal(graphemeLength('👨‍👩‍👧‍👦'), 1)
-  assert.equal(graphemeLength('字'.repeat(500)), 500)
+  assert.equal(graphemeLength('字'.repeat(1000)), 1000)
   assert.equal(graphemeLength('字\n字'), 3)
 })
 
-test('500 graphemes are allowed and 501 are rejected with the product message', () => {
+test('1000 graphemes are allowed and 1001 are rejected with the product message', () => {
   const allowed = quoteSource('字'.repeat(MAX_GRAPHEMES))
   assert.equal(allowed.ok, true)
-  assert.equal(allowed.graphemes, 500)
+  assert.equal(allowed.graphemes, 1000)
   assert.equal(Object.hasOwn(allowed, 'costFen'), false)
   const rejected = quoteSource('字'.repeat(MAX_GRAPHEMES + 1))
   assert.equal(rejected.ok, false)
   assert.equal(rejected.code, 'trial_length_limit')
-  assert.equal(rejected.message, '超出单次翻译上限（体验额度单次最多 500 字）')
+  assert.equal(rejected.message, '超出单次翻译上限（体验额度单次最多 1000 字）')
   assert.equal(rejected.message, MESSAGES.length)
   assert.equal(rejected.message.includes('字'.repeat(50)), false)
 })

@@ -583,7 +583,7 @@ html[data-lang="en"] .lang-switch [data-for-lang="en"] {
   padding: 0 12px;
   border-radius: 999px;
   background: #92bfee;
-  color: #16324a;
+  color: #fff;
   font-size: 13px;
   font-weight: 600;
 }

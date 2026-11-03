@@ -54,7 +54,8 @@ enum TranslationValidator {
     }
 
     /// 「翻了一半」：大量像普通英文词的片段原样留在译文里，而且几乎没有目标语言。
-    /// 不靠词表。不算进去的只有邮箱、网址、路径、版本号，以及无序字母串、密码类随机串。
+    /// 不靠词表。不算进去的：围栏代码（``` / ~~~）、行内代码（`…`）、Markdown 结构占位符
+    /// （⟦MD:fence|icode|link|table|bound|pipe:N⟧）、邮箱、网址、路径、版本号，以及无序字母串、密码类随机串。
     /// 「原名（中文）」或「中文（原名）」算这个词已经翻译。
     static func isUnderTranslated(input: String, output: String, target: TargetLanguage) -> Bool {
         let nonLatinTargets: Set<TargetLanguage> = [.chinese, .japanese, .korean, .russian, .arabic]
@@ -124,12 +125,11 @@ enum TranslationValidator {
     }
 
     /// 抽取输入里的「英文 identifier 候选」：长度 ≥4 的连续 [a-zA-Z_] 串。
-    /// 去重，只看 unique tokens。
+    /// 去重，只看 unique tokens。围栏/行内代码、MD 占位符与 protectedSpans 内的内容先抹掉。
     private static func extractIdentifierTokens(from text: String) -> Set<String> {
         var tokens = Set<String>()
         var current = ""
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        let lexicalText = protectedSpans.stringByReplacingMatches(in: text, range: range, withTemplate: " ")
+        let lexicalText = maskingLexicalProtection(text)
         for ch in lexicalText {
             if ch.isLetter && ch.isASCII || ch == "_" {
                 current.append(ch)
@@ -148,6 +148,53 @@ enum TranslationValidator {
         options: [.caseInsensitive]
     )
 
+    /// 抹掉围栏代码、行内代码、Markdown 结构占位符，再抹邮箱/网址/路径/版本号。
+    /// underTranslated 抽/搜 token 与 isEcho 判回吐共用，避免「故意保留的代码/链接」被当成没译或整段回吐。
+    private static func maskingLexicalProtection(_ text: String) -> String {
+        var work = text
+        // 成对围栏 ``` / ~~~（含语言标签）
+        work = replaceMatchesWithSpaces(
+            in: work,
+            pattern: #"(?m)^(```|~~~)[^\n]*\n.*?^\1[ \t]*$"#,
+            options: [.dotMatchesLineSeparators]
+        )
+        // 未闭合围栏到文末
+        work = replaceMatchesWithSpaces(
+            in: work,
+            pattern: #"(?m)^(```|~~~)[^\n]*\n.*\z"#,
+            options: [.dotMatchesLineSeparators]
+        )
+        // 行内代码 `…`
+        work = replaceMatchesWithSpaces(in: work, pattern: #"`[^`\n]+`"#)
+        // MarkdownStructureGuard 占位（还原前/还原后都不应当未翻译词）
+        work = replaceMatchesWithSpaces(
+            in: work,
+            pattern: #"⟦MD:(fence|icode|link|table|bound|pipe):\d+⟧"#
+        )
+        let range = NSRange(work.startIndex..<work.endIndex, in: work)
+        return protectedSpans.stringByReplacingMatches(in: work, range: range, withTemplate: " ")
+    }
+
+    private static func replaceMatchesWithSpaces(
+        in text: String,
+        pattern: String,
+        options: NSRegularExpression.Options = []
+    ) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else {
+            return text
+        }
+        let ns = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        var result = text
+        for match in matches.reversed() {
+            guard let range = Range(match.range, in: result) else { continue }
+            // NSRange.length 是 UTF-16；用 Swift Character 数会错位。这里用空格覆盖匹配段即可。
+            let spaceCount = result[range].count
+            result.replaceSubrange(range, with: String(repeating: " ", count: max(spaceCount, 1)))
+        }
+        return result
+    }
+
     private static func unresolvedOrdinaryWords(
         input: String,
         output: String,
@@ -155,7 +202,8 @@ enum TranslationValidator {
     ) -> (unresolved: Int, total: Int) {
         let tokens = extractIdentifierTokens(from: input).filter { !isOpaqueSecret($0) }
         guard !tokens.isEmpty else { return (0, 0) }
-        let searchable = maskingResolvedSpans(output, target: target)
+        // 输出侧同样先抹代码/占位/URL 等，再抹「中文（原名）」括注，再查 identifier 是否仍在正文。
+        let searchable = maskingResolvedSpans(maskingLexicalProtection(output), target: target)
         var unresolved = 0
         for token in tokens {
             if hasLocalizedGloss(token, in: output, target: target) { continue }
@@ -332,7 +380,8 @@ enum TranslationValidator {
 
         let tokens = extractIdentifierTokens(from: source)
         guard tokens.count >= 3 else { return false }
-        let kept = tokens.filter { containsIdentifier($0, in: rendered) }.count
+        let searchable = maskingLexicalProtection(rendered)
+        let kept = tokens.filter { containsIdentifier($0, in: searchable) }.count
         let keptRatio = Double(kept) / Double(tokens.count)
         return keptRatio >= 0.85 && density < 0.28 && script < 12
     }
@@ -442,13 +491,22 @@ enum TranslationValidator {
 
     // MARK: - 内部判断
 
+    /// 整段 input==output 时：先按 underTranslated 同一套抹法去掉围栏/行内/⟦MD:…⟧/URL 等，
+    /// 再看剩余可译正文。剩余已是目标语言、或几乎没有可译字母 → 不算 echoedInput（代码/链接故意保留）。
+    /// 真正把普通英文正文原样回吐仍会失败。
     private static func isEcho(input: String, output: String, target: TargetLanguage) -> Bool {
         guard input == output else { return false }
         guard !isProtectedLiteral(input) else { return false }
-        // 必须有足够字母才考虑「该被翻译」——纯数字 / 纯标点 / 版本号原样返回是正常的
-        let letterCount = input.unicodeScalars.filter { CharacterSet.letters.contains($0) }.count
+        let lexical = maskingLexicalProtection(input)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // 必须有足够字母才考虑「该被翻译」——纯数字 / 纯标点 / 版本号 / 仅剩代码结构原样返回是正常的
+        let letterCount = lexical.unicodeScalars.filter { CharacterSet.letters.contains($0) }.count
         guard letterCount >= 3 else { return false }
-        if isAlreadyInTarget(text: input, target: target) { return false }
+        if isAlreadyInTarget(text: lexical, target: target) { return false }
+        // 短中文说明 + 大量被抹掉的代码时，NL 可能不稳；目标文字密度够高也不当回吐
+        let script = targetScriptCount(in: lexical, target: target)
+        let density = Double(script) / Double(max(lexical.count, 1))
+        if script >= 4, density >= 0.34 { return false }
         return true
     }
 

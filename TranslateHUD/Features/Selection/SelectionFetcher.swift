@@ -3,7 +3,7 @@ import ApplicationServices
 import Carbon.HIToolbox
 
 /// 取当前焦点应用中的选中文字与选区屏幕坐标。
-/// 路径：先 AX (无副作用) → 兜底 Cmd+C 嗅探剪贴板（用完会还原原剪贴板）。
+/// 路径：AX 可先命中 → 仍 Cmd+C 嗅探剪贴板（用完还原）；剪贴板 HTML→Markdown 优先于 AX 扁文。
 enum SelectionFetcher {
     struct Selection: Equatable, Sendable {
         let text: String
@@ -99,7 +99,7 @@ enum SelectionFetcher {
 
     // MARK: - 真实抓取
 
-    /// 主入口：AX 重试 → Cmd+C 异步兜底 → AX 最终确认。
+    /// 主入口：AX 重试（命中不短路）→ Cmd+C 嗅探剪贴板（HTML 优先）→ 无剪贴板再退回 AX。
     /// 同键路由把“确认无选区”、复制超时，以及剪贴板变成图片或没有可读文字，交给截图。
     /// 分键只按了翻译选中时，后一种结果仍提示失败，不打开截图。
     @MainActor
@@ -267,7 +267,8 @@ private final class SystemSelectionProbeProvider: SelectionProbeProviding {
             if pasteboard.changeCount != beforeChange {
                 copyOccurred = true
                 // Text can arrive a moment after changeCount moves. Image types are classified once, at the end.
-                if let copied = PasteboardContentClassifier.readableText(in: pasteboard.string(forType: .string)) {
+                // 飞书等富文本：优先 HTML→Markdown，保留标题层级；无 HTML 再退回纯文字。
+                if let copied = PasteboardRichTextReader.preferredReadableText(from: pasteboard) {
                     return finishFound(copied, pasteboard: pasteboard, savedItems: savedItems)
                 }
             }
@@ -298,10 +299,13 @@ private final class SystemSelectionProbeProvider: SelectionProbeProviding {
         }
     }
 
-    /// Type identifiers only. Image bytes are never read; callers restore the original pasteboard.
+    /// Prefer HTML→Markdown when present; image bytes are never read.
     private func readPasteboard(_ pasteboard: NSPasteboard) -> PasteboardContentClassifier.Reading {
-        PasteboardContentClassifier.classify(
-            string: pasteboard.string(forType: .string),
+        if let preferred = PasteboardRichTextReader.preferredReadableText(from: pasteboard) {
+            return .readableText(preferred)
+        }
+        return PasteboardContentClassifier.classify(
+            string: nil,
             typeIdentifiers: Self.typeIdentifiers(on: pasteboard)
         )
     }

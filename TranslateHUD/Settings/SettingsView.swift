@@ -217,6 +217,19 @@ struct SettingsView: View {
             }
         }
 
+        SettingsCard("划词格式") {
+            Toggle("智能合并假换行", isOn: $store.smartPurify)
+            Text("从 PDF / 网页复制时，把句中软换行拼回连续句子；句末与空行仍分段。")
+                .font(.caption)
+                .foregroundStyle(colors.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Toggle("保留 Markdown 结构", isOn: $store.preserveMarkdown)
+            Text("标题、列表、引用、代码块与链接在翻译时尽量保持结构；代码块正文默认不送译。")
+                .font(.caption)
+                .foregroundStyle(colors.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
         SettingsCard("测试连接") {
             HStack {
                 Text("发送测试翻译 “Hello, world”")

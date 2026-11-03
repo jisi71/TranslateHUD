@@ -126,21 +126,20 @@ struct TranslationPanel: View {
     /// Expand is offered only when the text is taller than the collapsed line cap.
     /// Measuring at the wider width first (no chevron) avoids showing the control for text that already fits.
     private var sourceLayout: (textHeight: CGFloat, showsExpand: Bool) {
-        let font = NSFont.systemFont(ofSize: 14)
         let openWidth = sourceTextWidth(showsExpand: false)
-        let full = TextBlockMetrics.height(
-            text: sourceBody, font: font, lineSpacing: 4, width: openWidth, maxLines: nil
+        let full = MarkdownDisplay.height(
+            sourceBody, role: .source, colors: colors, width: openWidth, maxLines: nil
         )
-        let capped = TextBlockMetrics.height(
-            text: sourceBody, font: font, lineSpacing: 4, width: openWidth, maxLines: Self.collapsedSourceLines
+        let capped = MarkdownDisplay.height(
+            sourceBody, role: .source, colors: colors, width: openWidth, maxLines: Self.collapsedSourceLines
         )
         let showsExpand = full > capped + 1
         guard showsExpand else { return (full, false) }
         let narrow = sourceTextWidth(showsExpand: true)
-        let visible = TextBlockMetrics.height(
-            text: sourceBody,
-            font: font,
-            lineSpacing: 4,
+        let visible = MarkdownDisplay.height(
+            sourceBody,
+            role: .source,
+            colors: colors,
             width: narrow,
             maxLines: isOriginalExpanded ? nil : Self.collapsedSourceLines
         )
@@ -165,7 +164,7 @@ struct TranslationPanel: View {
                         isOriginalExpanded.toggle()
                     }
                 }
-                SpeechButton(text: original, id: "translation.original", speech: speech)
+                SpeechButton(text: MarkdownDisplay.plainText(from: original), id: "translation.original", speech: speech)
                     .frame(width: Self.sourceSpeechSide, height: Self.sourceSpeechSide)
             }
         }
@@ -176,13 +175,7 @@ struct TranslationPanel: View {
     /// while the full text scrolls inside it. Buttons stay outside that scroller.
     @ViewBuilder
     private func sourceText(_ layout: (textHeight: CGFloat, showsExpand: Bool)) -> some View {
-        let label = Text(sourceBody)
-            .font(.system(size: 14))
-            .lineSpacing(4)
-            .foregroundStyle(colors.muted)
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+        let label = MarkdownDisplay.BlocksView(markdown: sourceBody, role: .source, colors: colors)
 
         if layout.showsExpand && !isOriginalExpanded {
             // Propose the six-line cap so HeightFitting scrolls, instead of
@@ -204,21 +197,17 @@ struct TranslationPanel: View {
     }
 
     private var translationSection: some View {
-        let textHeight = TextBlockMetrics.height(
-            text: translated,
-            font: .systemFont(ofSize: 15),
-            lineSpacing: 5,
-            width: max(PopoverContent.translationTextWidth, 1),
+        let width = max(PopoverContent.translationTextWidth, 1)
+        let textHeight = MarkdownDisplay.height(
+            translated,
+            role: .translation,
+            colors: colors,
+            width: width,
             maxLines: nil
         )
         // Stay on the first line while text streams in. Do not follow the tail.
         return HeightFitting {
-            Text(translated)
-                .font(.system(size: 15))
-                .lineSpacing(5)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            MarkdownDisplay.BlocksView(markdown: translated, role: .translation, colors: colors)
         }
         .frame(maxHeight: textHeight, alignment: .topLeading)
         .panelSectionRole(.translation)
@@ -335,7 +324,7 @@ struct TranslationPanel: View {
                     copyButton
                     termButton
                     if image != nil { screenshotButton }
-                    SpeechButton(text: translated, id: "translation.translated", speech: speech)
+                    SpeechButton(text: MarkdownDisplay.plainText(from: translated), id: "translation.translated", speech: speech)
                         .frame(width: FooterToolbarPlan.toolSide, height: FooterToolbarPlan.toolSide)
                     retryButton
                 }
@@ -519,10 +508,46 @@ enum TextBlockMetrics {
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byWordWrapping
         style.lineSpacing = lineSpacing
-        let storage = NSTextStorage(attributedString: NSAttributedString(
-            string: content,
-            attributes: [.font: font, .paragraphStyle: style]
-        ))
+        return height(
+            attributed: NSAttributedString(
+                string: content,
+                attributes: [.font: font, .paragraphStyle: style]
+            ),
+            fallbackFont: font,
+            width: width,
+            maxLines: maxLines
+        )
+    }
+
+    /// Height for Markdown-styled content. Uses AppKit attributes already on the string.
+    static func height(
+        attributed: AttributedString,
+        lineSpacing: CGFloat,
+        width: CGFloat,
+        maxLines: Int?
+    ) -> CGFloat {
+        let ns = NSMutableAttributedString(attributedString: NSAttributedString(attributed))
+        if ns.length == 0 {
+            ns.append(NSAttributedString(string: " ", attributes: [
+                .font: NSFont.systemFont(ofSize: 15)
+            ]))
+        }
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byWordWrapping
+        style.lineSpacing = lineSpacing
+        ns.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: ns.length))
+        let fallback = (ns.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+            ?? NSFont.systemFont(ofSize: 15)
+        return height(attributed: ns, fallbackFont: fallback, width: width, maxLines: maxLines)
+    }
+
+    private static func height(
+        attributed: NSAttributedString,
+        fallbackFont: NSFont,
+        width: CGFloat,
+        maxLines: Int?
+    ) -> CGFloat {
+        let storage = NSTextStorage(attributedString: attributed)
         let container = NSTextContainer(size: NSSize(width: max(width, 1), height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0
         if let maxLines, maxLines > 0 {
@@ -534,7 +559,7 @@ enum TextBlockMetrics {
         storage.addLayoutManager(manager)
         _ = manager.glyphRange(for: container)
         let used = manager.usedRect(for: container).height
-        let line = font.ascender - font.descender + font.leading
+        let line = fallbackFont.ascender - fallbackFont.descender + fallbackFont.leading
         // SwiftUI's line spacing can sit a couple of points above TextKit.
         return max(ceil(used), ceil(line)) + 4
     }

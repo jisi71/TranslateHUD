@@ -114,8 +114,8 @@ import importlib.util
 spec = importlib.util.spec_from_file_location("update_appcast", "$PYTHON")
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
-url = mod.download_url("$BASE", "0.4.1", "TranslateHUD-0.4.1-universal.zip")
-assert url == "$BASE/v0.4.1/TranslateHUD-0.4.1-universal.zip", url
+url = mod.download_url("$BASE", "0.4.1", "TranslateHUD-0.4.1.zip")
+assert url == "$BASE/v0.4.1/TranslateHUD-0.4.1.zip", url
 html = mod.notes_html("- **修复**网络提示\n- 第二件\n不是列表")
 assert html.startswith("<ul><li>修复网络提示</li>")
 assert "]]>" not in html
@@ -130,7 +130,7 @@ python3 "$PYTHON" \
     --appcast "$APPCAST" \
     --version 0.4.1 \
     --build 11 \
-    --download-url "$BASE/v0.4.1/TranslateHUD-0.4.1-universal.zip" \
+    --download-url "$BASE/v0.4.1/TranslateHUD-0.4.1.zip" \
     --ed-signature "$SIG_A" \
     --length 1200 \
     --notes $'- 可以在软件里更新\n- **签名**对不上就取消安装' \
@@ -140,7 +140,7 @@ python3 "$PYTHON" \
     --appcast "$APPCAST" \
     --version 0.4.2 \
     --build 12 \
-    --download-url "$BASE/v0.4.2/TranslateHUD-0.4.2-universal.zip" \
+    --download-url "$BASE/v0.4.2/TranslateHUD-0.4.2.zip" \
     --ed-signature "$SIG_B" \
     --length 1300 \
     --notes "一句说明" \
@@ -150,7 +150,7 @@ python3 "$PYTHON" \
     --appcast "$APPCAST" \
     --version 0.4.2 \
     --build 12 \
-    --download-url "$BASE/v0.4.2/TranslateHUD-0.4.2-universal.zip" \
+    --download-url "$BASE/v0.4.2/TranslateHUD-0.4.2.zip" \
     --ed-signature "$SIG_B" \
     --length 1301 \
     --notes $'- 重新签过的 0.4.2\n- 含有 ]]> 也不截断' \

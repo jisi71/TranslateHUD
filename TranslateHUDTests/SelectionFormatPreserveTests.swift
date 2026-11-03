@@ -175,8 +175,8 @@ final class SelectionFormatPreserveTests: XCTestCase {
         let restored = prepared.restore(translatedSegments: ["标题", "第一项", "第二项"])
         XCTAssertEqual(restored, "# 标题\n- 第一项\n- 第二项")
     }
-    /// 九、表格：整表占位，译后管道行列仍在。
-    func testWholeGFMTableProtectedThroughPrepareRestore() {
+    /// 九、表格：竖线/分隔行保留，单元格进译段并可拼回译文。
+    func testGFMTableCellsTranslateWhileKeepingPipes() {
         let source = """
         前说明
 
@@ -188,17 +188,59 @@ final class SelectionFormatPreserveTests: XCTestCase {
         后说明
         """
         let prepared = SelectionFormatPipeline.prepare(source)
-        // Table body should not be sent as shatterable plain lines.
+        // 单元格正文要进译管线；整行带 `|` 的原文不应再被整表占位吃掉。
+        for cell in ["功能", "状态", "备注", "假换行", "待测", "PDF", "空行", "段间"] {
+            XCTAssertTrue(
+                prepared.segmentsToTranslate.contains(cell),
+                "missing cell \(cell) in \(prepared.segmentsToTranslate)"
+            )
+        }
         XCTAssertFalse(
             prepared.segmentsToTranslate.contains(where: { $0.contains("| 功能 |") }),
+            "pipe row should be split into cells, got \(prepared.segmentsToTranslate)"
+        )
+
+        let fake = prepared.segmentsToTranslate.map { "译:\($0)" }
+        let restored = prepared.restore(translatedSegments: fake)
+        XCTAssertTrue(restored.contains("| 译:功能 | 译:状态 | 译:备注 |"), restored)
+        XCTAssertTrue(restored.contains("| --- | --- | --- |"), restored)
+        XCTAssertTrue(restored.contains("| 译:假换行 | 译:待测 | 译:PDF |"), restored)
+        XCTAssertTrue(restored.contains("| 译:空行 | 译:待测 | 译:段间 |"), restored)
+        XCTAssertTrue(restored.contains("译:前说明") || restored.contains("前说明"), restored)
+        XCTAssertTrue(restored.contains("译:后说明") || restored.contains("后说明"), restored)
+
+        // 结构仍能被弹窗表格检测吃到。
+        let pieces = MarkdownDisplay.prosePieces(from: restored)
+        XCTAssertTrue(pieces.contains(where: {
+            if case .table(let rows) = $0 {
+                return rows.count == 3
+                    && rows[0] == ["译:功能", "译:状态", "译:备注"]
+                    && rows[1] == ["译:假换行", "译:待测", "译:PDF"]
+                    && rows[2] == ["译:空行", "译:待测", "译:段间"]
+            }
+            return false
+        }), "\(pieces)")
+    }
+
+    /// 九、表格：单元格里的行内代码仍走 icode 占位，不把竖线拆散。
+    func testGFMTableCellInlineCodeStaysProtected() {
+        let source = """
+        | 名称 | 样例 |
+        | --- | --- |
+        | 命令 | `echo | wc` |
+        """
+        let prepared = SelectionFormatPipeline.prepare(source)
+        XCTAssertTrue(prepared.segmentsToTranslate.contains("名称"), "\(prepared.segmentsToTranslate)")
+        XCTAssertTrue(prepared.segmentsToTranslate.contains("样例"), "\(prepared.segmentsToTranslate)")
+        XCTAssertTrue(prepared.segmentsToTranslate.contains("命令"), "\(prepared.segmentsToTranslate)")
+        // 行内代码整段占位进单元格，竖线在 code 内不应再切列。
+        XCTAssertTrue(
+            prepared.segmentsToTranslate.contains(where: { $0.contains("⟦MD:icode:") }),
             "\(prepared.segmentsToTranslate)"
         )
         let restored = prepared.restore(translatedSegments: prepared.segmentsToTranslate)
-        XCTAssertTrue(restored.contains("| 功能 | 状态 | 备注 |"), restored)
-        XCTAssertTrue(restored.contains("| --- | --- | --- |"), restored)
-        XCTAssertTrue(restored.contains("| 假换行 | 待测 | PDF |"), restored)
-        XCTAssertTrue(restored.contains("前说明"), restored)
-        XCTAssertTrue(restored.contains("后说明"), restored)
+        XCTAssertTrue(restored.contains("| --- | --- |"), restored)
+        XCTAssertTrue(restored.contains("`echo | wc`"), restored)
     }
 
 

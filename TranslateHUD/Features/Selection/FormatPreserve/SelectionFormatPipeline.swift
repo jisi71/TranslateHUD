@@ -18,8 +18,17 @@ struct SelectionFormatPrepared: Sendable {
     let workingText: String
 
     fileprivate let parts: [String]
-    fileprivate let mapIndex: [Int?]
+    fileprivate let partMaps: [PartMap]
     fileprivate let placeholderStore: [String]
+
+    fileprivate enum PartMap: Sendable {
+        /// 整段不可译（空行、纯占位等），原样保留。
+        case keep
+        /// 普通行：一个译段下标。
+        case single(Int)
+        /// GFM 表头/数据行：每格一个译段下标（与列对齐）。
+        case tableCells([Int])
+    }
 
     /// 流式路径用来估换行兜底的源文本（已净化，避免假换行触发误 fallback）。
     var streamingSourceText: String {
@@ -33,7 +42,10 @@ struct SelectionFormatPrepared: Sendable {
         var outParts: [String] = []
         outParts.reserveCapacity(parts.count)
         for (i, part) in parts.enumerated() {
-            if let idx = mapIndex[i] {
+            switch partMaps[i] {
+            case .keep:
+                outParts.append(part)
+            case .single(let idx):
                 if translatedSegments.indices.contains(idx) {
                     // 送译前会剥掉 bound；这里把行首 #/-/> 占位拼回译文，避免模型剥标记后骨架丢失。
                     let bounds = MarkdownStructureGuard.leadingBoundPlaceholders(in: part)
@@ -41,8 +53,20 @@ struct SelectionFormatPrepared: Sendable {
                 } else {
                     outParts.append(part)
                 }
-            } else {
-                outParts.append(part)
+            case .tableCells(let idxs):
+                let originals = MarkdownStructureGuard.cellsFromPipeProtectedRow(part)
+                var cells: [String] = []
+                cells.reserveCapacity(idxs.count)
+                for (cellOffset, segIdx) in idxs.enumerated() {
+                    if translatedSegments.indices.contains(segIdx) {
+                        cells.append(translatedSegments[segIdx])
+                    } else if originals.indices.contains(cellOffset) {
+                        cells.append(originals[cellOffset])
+                    } else {
+                        cells.append("")
+                    }
+                }
+                outParts.append(MarkdownStructureGuard.rebuildPipeProtectedRow(part, cells: cells))
             }
         }
         return MarkdownStructureGuard.restore(outParts.joined(separator: "\n"), store: placeholderStore)
@@ -74,12 +98,28 @@ enum SelectionFormatPipeline {
 
         let parts = working.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         var segments: [String] = []
-        var mapIndex: [Int?] = []
+        var partMaps: [SelectionFormatPrepared.PartMap] = []
+        partMaps.reserveCapacity(parts.count)
+
         for part in parts {
-            if MarkdownStructureGuard.isNonTranslatableSegment(part) {
-                mapIndex.append(nil)
+            if MarkdownStructureGuard.isPipeProtectedRow(part) {
+                let cells = MarkdownStructureGuard.cellsFromPipeProtectedRow(part)
+                var idxs: [Int] = []
+                idxs.reserveCapacity(cells.count)
+                for cell in cells {
+                    idxs.append(segments.count)
+                    let send = cell.replacingOccurrences(
+                        of: #"⟦MD:bound:\d+⟧"#,
+                        with: "",
+                        options: .regularExpression
+                    )
+                    segments.append(send)
+                }
+                partMaps.append(.tableCells(idxs))
+            } else if MarkdownStructureGuard.isNonTranslatableSegment(part) {
+                partMaps.append(.keep)
             } else {
-                mapIndex.append(segments.count)
+                partMaps.append(.single(segments.count))
                 let send = part.replacingOccurrences(
                     of: #"⟦MD:bound:\d+⟧"#,
                     with: "",
@@ -96,7 +136,7 @@ enum SelectionFormatPipeline {
             segmentsToTranslate: segments,
             workingText: readableWorking,
             parts: parts,
-            mapIndex: mapIndex,
+            partMaps: partMaps,
             placeholderStore: store
         )
     }

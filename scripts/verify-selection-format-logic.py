@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 import sys
 
-PLACEHOLDER_RE = re.compile(r"⟦MD:(fence|icode|link|table|bound):(\d+)⟧")
+PLACEHOLDER_RE = re.compile(r"⟦MD:(fence|icode|link|table|bound|pipe):(\d+)⟧")
+PIPE_TOKEN_RE = re.compile(r"⟦MD:pipe:\d+⟧")
 SHIELD_RE = re.compile(r"⟦SH:(\d+)⟧")
 PARA_MARK = "⟦PARA⟧"
 NL_MARK = "⟦NL⟧"
@@ -23,6 +24,8 @@ def is_md_structure_line(line: str) -> bool:
         return False
     if re.match(r"⟦MD:bound:\d+⟧", s):
         return True
+    if re.match(r"⟦MD:pipe:\d+⟧", s):
+        return True
     if re.match(r"#{1,6}\s+\S", s):
         return True
     if s.startswith(">"):
@@ -32,6 +35,8 @@ def is_md_structure_line(line: str) -> bool:
     if re.match(r"\d+\.\s+\S", s):
         return True
     if re.match(r"\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$", s):
+        return True
+    if s.startswith("|") and s.count("|") >= 2:
         return True
     return False
 
@@ -68,6 +73,7 @@ def protect_markdown(text: str) -> tuple[str, list[str]]:
         lambda m: save("table", m.group(0)),
         text,
     )
+    text = protect_pipe_data_rows(text, save)
     # 标题 / 列表 / 引用行首标记占位，译完再还原。
     text = re.sub(
         r"(?m)^([ \t]*)(#{1,6}[ \t]+|[-*+][ \t]+|\d+\.[ \t]+|>[ \t]?)",
@@ -75,6 +81,73 @@ def protect_markdown(text: str) -> tuple[str, list[str]]:
         text,
     )
     return text, store
+
+
+def _is_alignment_separator(trimmed: str) -> bool:
+    return bool(re.match(r"^\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$", trimmed))
+
+
+def parse_gfm_table_cells(line: str) -> list[str]:
+    trimmed = line.strip()
+    if trimmed.startswith("|"):
+        trimmed = trimmed[1:]
+    if trimmed.endswith("|"):
+        trimmed = trimmed[:-1]
+    return [c.strip() for c in trimmed.split("|")]
+
+
+def protect_pipe_data_rows(text: str, save) -> str:
+    out_lines = []
+    for line in text.split("\n"):
+        trimmed = line.strip()
+        if (
+            trimmed.startswith("|")
+            and trimmed.count("|") >= 2
+            and not _is_alignment_separator(trimmed)
+            and not re.fullmatch(r"⟦MD:(fence|icode|link|table|bound|pipe):\d+⟧", trimmed)
+        ):
+            cells = parse_gfm_table_cells(line)
+            if cells:
+                leading = re.match(r"^[ \t]*", line).group(0)
+                rebuilt = leading
+                for idx, cell in enumerate(cells):
+                    rebuilt += save("pipe", "| " if idx == 0 else " | ")
+                    rebuilt += cell
+                rebuilt += save("pipe", " |")
+                out_lines.append(rebuilt)
+                continue
+        out_lines.append(line)
+    return "\n".join(out_lines)
+
+
+def is_pipe_protected_row(line: str) -> bool:
+    return PIPE_TOKEN_RE.search(line) is not None
+
+
+def cells_from_pipe_protected_row(line: str) -> list[str]:
+    matches = list(PIPE_TOKEN_RE.finditer(line))
+    if len(matches) < 2:
+        return []
+    cells = []
+    for i in range(len(matches) - 1):
+        cells.append(line[matches[i].end() : matches[i + 1].start()])
+    return cells
+
+
+def rebuild_pipe_protected_row(line: str, cells: list[str]) -> str:
+    matches = list(PIPE_TOKEN_RE.finditer(line))
+    if len(matches) < 2:
+        return line
+    result = line[: matches[0].start()]
+    cell_i = 0
+    for i, m in enumerate(matches):
+        result += m.group(0)
+        if i < len(matches) - 1:
+            if cell_i < len(cells):
+                result += cells[cell_i]
+            cell_i += 1
+    result += line[matches[-1].end() :]
+    return result
 
 
 def restore_markdown(text: str, store: list[str]) -> str:
@@ -208,7 +281,7 @@ def is_non_translatable_segment(seg: str) -> bool:
         return True
     if PLACEHOLDER_RE.fullmatch(s):
         kind = PLACEHOLDER_RE.match(s).group(1)
-        return kind in ("fence", "icode", "link", "table", "bound")
+        return kind in ("fence", "icode", "link", "table", "bound", "pipe")
     tmp = PLACEHOLDER_RE.sub("", s).strip()
     if tmp == "" and PLACEHOLDER_RE.search(s):
         return True
@@ -227,12 +300,20 @@ def prepare(text: str, smart_purify: bool = True, preserve_markdown: bool = True
 
     parts = split_segments(working)
     segments_to_translate = []
-    map_index = []
+    part_maps = []
     for p in parts:
-        if is_non_translatable_segment(p):
-            map_index.append(None)
+        if is_pipe_protected_row(p):
+            cells = cells_from_pipe_protected_row(p)
+            idxs = []
+            for cell in cells:
+                idxs.append(len(segments_to_translate))
+                send = re.sub(r"⟦MD:bound:\d+⟧", "", cell)
+                segments_to_translate.append(send)
+            part_maps.append(("cells", idxs))
+        elif is_non_translatable_segment(p):
+            part_maps.append(("keep", None))
         else:
-            map_index.append(len(segments_to_translate))
+            part_maps.append(("single", len(segments_to_translate)))
             send = re.sub(r"⟦MD:bound:\d+⟧", "", p)
             segments_to_translate.append(send)
     readable = restore_markdown(working, store)
@@ -241,7 +322,7 @@ def prepare(text: str, smart_purify: bool = True, preserve_markdown: bool = True
         "working": readable,
         "store": store,
         "parts": parts,
-        "map_index": map_index,
+        "part_maps": part_maps,
         "segments_to_translate": segments_to_translate,
     }
 
@@ -261,11 +342,26 @@ def leading_bound_placeholders(part: str) -> str:
 def restore(prepared, translated_segments: list[str]) -> str:
     out_parts = []
     for i, p in enumerate(prepared["parts"]):
-        idx = prepared["map_index"][i]
-        if idx is None:
+        kind, payload = prepared["part_maps"][i]
+        if kind == "keep":
             out_parts.append(p)
-        elif idx < len(translated_segments):
-            out_parts.append(leading_bound_placeholders(p) + translated_segments[idx])
+        elif kind == "single":
+            idx = payload
+            if idx is not None and idx < len(translated_segments):
+                out_parts.append(leading_bound_placeholders(p) + translated_segments[idx])
+            else:
+                out_parts.append(p)
+        elif kind == "cells":
+            originals = cells_from_pipe_protected_row(p)
+            cells = []
+            for offset, seg_idx in enumerate(payload):
+                if seg_idx < len(translated_segments):
+                    cells.append(translated_segments[seg_idx])
+                elif offset < len(originals):
+                    cells.append(originals[offset])
+                else:
+                    cells.append("")
+            out_parts.append(rebuild_pipe_protected_row(p, cells))
         else:
             out_parts.append(p)
     return restore_markdown("\n".join(out_parts), prepared["store"])
@@ -473,6 +569,40 @@ def main() -> int:
         "yahao list not glued to one line",
         out2.count("\n") >= 10 and not re.search(r"- 苹果- 香蕉", out2),
         repr(out2),
+    )
+
+    # --- 九、表格：单元格可译，竖线/分隔行保留 ---
+    src = (
+        "前说明\n\n"
+        "| 功能 | 状态 | 备注 |\n"
+        "| --- | --- | --- |\n"
+        "| 假换行 | 待测 | PDF |\n"
+        "| 空行 | 待测 | 段间 |\n\n"
+        "后说明"
+    )
+    p = prepare(src)
+    for cell in ["功能", "状态", "备注", "假换行", "待测", "PDF", "空行", "段间"]:
+        ok &= check(
+            f"table cell in segments:{cell}",
+            cell in p["segments_to_translate"],
+            repr(p["segments_to_translate"]),
+        )
+    ok &= check(
+        "table rows not sent as raw pipe lines",
+        not any("| 功能 |" in s for s in p["segments_to_translate"]),
+        repr(p["segments_to_translate"]),
+    )
+    fake = [f"译:{s}" for s in p["segments_to_translate"]]
+    out = restore(p, fake)
+    ok &= check(
+        "table cells translated with pipes kept",
+        "| 译:功能 | 译:状态 | 译:备注 |" in out
+        and "| --- | --- | --- |" in out
+        and "| 译:假换行 | 译:待测 | 译:PDF |" in out
+        and "| 译:空行 | 译:待测 | 译:段间 |" in out
+        and ("译:前说明" in out or "前说明" in out)
+        and ("译:后说明" in out or "后说明" in out),
+        repr(out),
     )
 
     print("---")

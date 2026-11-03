@@ -55,7 +55,7 @@ enum TranslationValidator {
 
     /// 「翻了一半」：大量像普通英文词的片段原样留在译文里，而且几乎没有目标语言。
     /// 不靠词表。不算进去的：围栏代码（``` / ~~~）、行内代码（`…`）、Markdown 结构占位符
-    /// （⟦MD:fence|icode|link|table|bound:N⟧）、邮箱、网址、路径、版本号，以及无序字母串、密码类随机串。
+    /// （⟦MD:fence|icode|link|table|bound|pipe:N⟧）、邮箱、网址、路径、版本号，以及无序字母串、密码类随机串。
     /// 「原名（中文）」或「中文（原名）」算这个词已经翻译。
     static func isUnderTranslated(input: String, output: String, target: TargetLanguage) -> Bool {
         let nonLatinTargets: Set<TargetLanguage> = [.chinese, .japanese, .korean, .russian, .arabic]
@@ -169,7 +169,7 @@ enum TranslationValidator {
         // MarkdownStructureGuard 占位（还原前/还原后都不应当未翻译词）
         work = replaceMatchesWithSpaces(
             in: work,
-            pattern: #"⟦MD:(fence|icode|link|table|bound):\d+⟧"#
+            pattern: #"⟦MD:(fence|icode|link|table|bound|pipe):\d+⟧"#
         )
         let range = NSRange(work.startIndex..<work.endIndex, in: work)
         return protectedSpans.stringByReplacingMatches(in: work, range: range, withTemplate: " ")

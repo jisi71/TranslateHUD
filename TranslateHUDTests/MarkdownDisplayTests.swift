@@ -462,17 +462,23 @@ final class MarkdownDisplayTests: XCTestCase {
         let styled = MarkdownDisplay.styled("> Quoted body", role: .translation, colors: colors)
         var sawRailBorder = false
         var sawBodyPrimary = false
-        for run in styled.runs {
-            let text = String(styled[run.range].characters)
-            let color = run.appKit.foregroundColor
-            if text.contains("│"), text.allSatisfy({ $0 == "│" || $0 == " " || $0 == "\n" }) {
-                XCTAssertEqual(color, colors.nsBorder, "rail should use border color: \(text)")
+        // Rails may share a run with body after insert coalesce — check per-character colors.
+        var index = styled.startIndex
+        while index < styled.endIndex {
+            let next = styled.characters.index(after: index)
+            let ch = styled.characters[index]
+            let color = styled[index..<next].appKit.foregroundColor
+            if ch == "│" {
+                XCTAssertEqual(color, colors.nsBorder, "rail glyph should use border color")
                 sawRailBorder = true
+            } else if ch != " " && ch != "\n" {
+                // First body character should be primary (not muted-only quote styling).
+                if !sawBodyPrimary {
+                    XCTAssertEqual(color, colors.nsPrimaryText, "quote body should stay readable")
+                    sawBodyPrimary = true
+                }
             }
-            if text.contains("Quoted body") {
-                XCTAssertEqual(color, colors.nsPrimaryText, "quote body should stay readable: \(text)")
-                sawBodyPrimary = true
-            }
+            index = next
         }
         XCTAssertTrue(sawRailBorder, String(styled.characters))
         XCTAssertTrue(sawBodyPrimary, String(styled.characters))

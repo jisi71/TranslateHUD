@@ -52,6 +52,7 @@ enum MarkdownDisplay {
         decorateListMarkers(&attributed)
         decorateBlockQuotes(&attributed)
         applyTypography(&attributed, role: role, colors: colors)
+        recolorQuoteRails(&attributed, colors: colors)
         return attributed
     }
 
@@ -377,6 +378,31 @@ enum MarkdownDisplay {
     private static func isQuoteBarPrefix(_ text: String) -> Bool {
         guard text.contains("│") else { return false }
         return text.allSatisfy { $0 == "│" || $0 == " " || $0 == "\n" }
+    }
+
+    /// `AttributedString.insert` often coalesces the rail with the quote body into one run
+    /// (same presentationIntent). Walk characters and paint only `│` / following space as border.
+    private static func recolorQuoteRails(_ attributed: inout AttributedString, colors: PanelColors) {
+        guard !attributed.characters.isEmpty else { return }
+        var index = attributed.startIndex
+        while index < attributed.endIndex {
+            let next = attributed.characters.index(after: index)
+            let intent = attributed[index..<next].presentationIntent
+            let inQuote = hasKind(in: intent) { if case .blockQuote = $0 { return true }; return false }
+            let ch = attributed.characters[index]
+            if inQuote, ch == "│" {
+                var end = next
+                if end < attributed.endIndex, attributed.characters[end] == " " {
+                    end = attributed.characters.index(after: end)
+                }
+                var container = AttributeContainer()
+                container.appKit.foregroundColor = colors.nsBorder
+                attributed[index..<end].mergeAttributes(container, mergePolicy: .keepNew)
+                index = end
+                continue
+            }
+            index = next
+        }
     }
 
     // MARK: - Typography

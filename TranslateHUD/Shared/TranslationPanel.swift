@@ -454,7 +454,8 @@ struct TranslationPanel: View {
             balanceFen: trial.balanceFen,
             balanceMicroYuan: trial.balanceMicroYuan,
             sourceText: nil,
-            inviteRedeemed: trial.inviteRedeemed
+            inviteRedeemed: trial.inviteRedeemed,
+            dailyQuota: trial.dailyQuota
         )
     }
 

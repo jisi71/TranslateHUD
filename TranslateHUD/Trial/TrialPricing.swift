@@ -38,6 +38,20 @@ enum TrialPricing {
     }
 }
 
+struct DailyTranslationQuota: Equatable, Sendable {
+    var used: Int
+    var limit: Int
+    var resetsAt: Date
+
+    static func parse(_ fields: [String: Any]) -> DailyTranslationQuota? {
+        guard let used = (fields["dailyTokens"] as? Int) ?? (fields["dailyCharacters"] as? Int),
+              let limit = fields["dailyLimit"] as? Int,
+              let reset = fields["dailyResetsAt"] as? NSNumber,
+              used >= 0, limit > 0, reset.doubleValue > 0 else { return nil }
+        return DailyTranslationQuota(used: used, limit: limit, resetsAt: Date(timeIntervalSince1970: reset.doubleValue / 1000))
+    }
+}
+
 /// What the trial proxy charged for one successful model call.
 /// Fen values are display-only and are derived from the micro-yuan ledger.
 struct TrialSettlement: Equatable, Sendable {
@@ -46,6 +60,7 @@ struct TrialSettlement: Equatable, Sendable {
     var balanceMicroYuan: Int
     var promptTokens: Int
     var completionTokens: Int
+    var dailyQuota: DailyTranslationQuota? = nil
 
     var costFen: Int { TrialPricing.displayFen(microYuan: costMicroYuan) }
     var chargedFen: Int { TrialPricing.displayFen(microYuan: chargedMicroYuan) }
@@ -67,7 +82,13 @@ struct TrialSettlement: Equatable, Sendable {
                 chargedMicroYuan: charged,
                 balanceMicroYuan: balance,
                 promptTokens: prompt,
-                completionTokens: completion
+                completionTokens: completion,
+                dailyQuota: DailyTranslationQuota.parse([
+                    "dailyTokens": response.value(forHTTPHeaderField: "X-Trial-Daily-Tokens").flatMap(Int.init) as Any,
+                    "dailyCharacters": response.value(forHTTPHeaderField: "X-Trial-Daily-Characters").flatMap(Int.init) as Any,
+                    "dailyLimit": response.value(forHTTPHeaderField: "X-Trial-Daily-Limit").flatMap(Int.init) as Any,
+                    "dailyResetsAt": response.value(forHTTPHeaderField: "X-Trial-Daily-Resets-At").flatMap(Double.init).map(NSNumber.init(value:)) as Any
+                ])
             )
         }
         guard let cost = response.value(forHTTPHeaderField: "X-Trial-Cost-Fen").flatMap(Int.init),
@@ -89,7 +110,8 @@ struct TrialSettlement: Equatable, Sendable {
                 chargedMicroYuan: charged,
                 balanceMicroYuan: balance,
                 promptTokens: prompt,
-                completionTokens: completion
+                completionTokens: completion,
+                dailyQuota: DailyTranslationQuota.parse(fields)
             )
         }
         guard let cost = intValue(fields["costFen"]),

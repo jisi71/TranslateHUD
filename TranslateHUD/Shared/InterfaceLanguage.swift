@@ -57,6 +57,9 @@ extension InterfaceLanguageStore {
         if key.hasPrefix("体验余额 ") {
             return "Trial balance " + key.dropFirst("体验余额 ".count)
         }
+        if key.hasPrefix("每日免费额度：") {
+            return "Daily free allowance: " + key.dropFirst("每日免费额度：".count)
+        }
         return key
     }
 }

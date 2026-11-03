@@ -12,6 +12,7 @@ struct TranslationRouteInput: Equatable {
     var sourceText: String?
     /// False until this account has received the ¥2 invite gift or an older automatic gift.
     var inviteRedeemed: Bool = true
+    var dailyQuota: DailyTranslationQuota? = nil
 }
 
 enum TranslationEndpoint: Equatable {
@@ -87,6 +88,7 @@ enum TranslationRoute {
 
     private static func blockedForEmptyTrial(_ input: TranslationRouteInput) -> TranslationGate? {
         guard trialBalanceIsEmpty(input) else { return nil }
+        if input.dailyQuota != nil { return nil }
         if input.inviteRedeemed {
             return .block(title: "体验额度已用完", message: TrialCopy.balanceExhausted)
         }

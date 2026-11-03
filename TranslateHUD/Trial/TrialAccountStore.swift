@@ -17,6 +17,8 @@ final class TrialAccountStore: ObservableObject {
     /// 设置里给用户看的短号，例如 00001。登录和扣费仍用 userId。
     @Published private(set) var displayId = ""
     @Published private(set) var balanceMicroYuan: Int?
+    @Published private(set) var dailyQuota: DailyTranslationQuota?
+    private(set) var sessionGeneration = UUID()
     /// Fen shown in the UI. Half-up from the micro-yuan ledger, display only.
     var balanceFen: Int? {
         balanceMicroYuan.map { TrialPricing.displayFen(microYuan: $0) }
@@ -43,6 +45,9 @@ final class TrialAccountStore: ObservableObject {
 
     /// Menu bar and panel footer. The per-request cost is not shown.
     var balanceTitle: String {
+        if balanceMicroYuan == 0, let dailyQuota {
+            return "每日免费额度：\(dailyQuota.used)/\(dailyQuota.limit)"
+        }
         if let balanceFen {
             return "体验余额 \(TrialPricing.yuanString(fen: balanceFen))"
         }
@@ -54,7 +59,7 @@ final class TrialAccountStore: ObservableObject {
     }
 
     var effectiveProxyBaseURL: String {
-        TrialConfig.plistProxy
+        proxyBaseURL
     }
 
     private var verificationId: String?
@@ -64,22 +69,54 @@ final class TrialAccountStore: ObservableObject {
     private var refreshToken = ""
     private var expiresAt = Date.distantPast
     private var cooldownTask: Task<Void, Never>?
+    private let networkSession: URLSession
+    private let defaults: UserDefaults
+    private let defaultsDomain: String
+    private let keychain: KeychainStoring
+    private let gatewayURL: URL
+    private let proxyBaseURL: String
+    private let deviceID: String
 
     private var auth: CloudBaseAuthAPI {
         CloudBaseAuthAPI(
-            gateway: TrialConfig.gatewayURL,
-            session: .shared,
-            deviceId: TrialConfig.deviceId
+            gateway: gatewayURL,
+            session: networkSession,
+            deviceId: deviceID
         )
     }
 
-    private init() {}
+    init(networkSession: URLSession = .shared, defaults: UserDefaults = .standard,
+         defaultsDomain: String = KeychainGate.appDefaultsDomain, keychain: KeychainStoring = SystemKeychain(),
+         gatewayURL: URL = TrialConfig.gatewayURL, proxyBaseURL: String = TrialConfig.plistProxy,
+         deviceID: String = TrialConfig.deviceId, startsQuotaRefresh: Bool = true) {
+        self.networkSession = networkSession
+        self.defaults = defaults
+        self.defaultsDomain = defaultsDomain
+        self.keychain = keychain
+        self.gatewayURL = gatewayURL
+        self.proxyBaseURL = proxyBaseURL
+        self.deviceID = deviceID
+        if startsQuotaRefresh {
+            quotaRefreshTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(30))
+                    guard let self else { return }
+                    if self.isLoggedIn, let quota = self.dailyQuota, Date() >= quota.resetsAt {
+                        await self.refreshFromServer()
+                    }
+                }
+            }
+        }
+    }
 
-    func restore() {
+    private var quotaRefreshTask: Task<Void, Never>?
+
+    func restore(refreshAccount: Bool = true) {
+        sessionGeneration = UUID()
         let session = TrialKeychain.restore(
-            defaults: .standard,
-            domain: KeychainGate.appDefaultsDomain,
-            keychain: SystemKeychain()
+            defaults: defaults,
+            domain: defaultsDomain,
+            keychain: keychain
         )
         accessToken = session.accessToken
         refreshToken = session.refreshToken
@@ -89,7 +126,7 @@ final class TrialAccountStore: ObservableObject {
         isLoggedIn = session.isLoggedIn
         guard isLoggedIn else { return }
         balanceState = .loading
-        Task { await refreshFromServer() }
+        if refreshAccount { Task { await refreshFromServer() } }
     }
 
     func sendCode() async {
@@ -127,6 +164,8 @@ final class TrialAccountStore: ObservableObject {
             return
         }
         isBusy = true
+        sessionGeneration = UUID()
+        let generation = sessionGeneration
         defer { isBusy = false }
         do {
             let session = try await auth.completeLogin(
@@ -135,6 +174,7 @@ final class TrialAccountStore: ObservableObject {
                 verificationId: verificationId,
                 isExistingUser: isExistingUser
             )
+            guard sessionGeneration == generation else { return }
             let masked = PhoneNumberCN.mask(pendingPhone)
             try persist(session, maskedPhone: masked)
             maskedPhone = masked
@@ -146,6 +186,7 @@ final class TrialAccountStore: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            guard sessionGeneration == generation else { return }
             statusMessage = (error as? LocalizedError)?.errorDescription ?? "登录没有成功，请稍后再试。"
             FailureReporter.report(error, surface: .login, path: .trial)
         }
@@ -168,14 +209,19 @@ final class TrialAccountStore: ObservableObject {
             return
         }
         isBusy = true
+        let generation = sessionGeneration
         defer { isBusy = false }
         do {
             let token = try await validAccessToken()
+            guard sessionGeneration == generation else { return }
             let snapshot = try await TrialProxyClient.redeem(
                 proxyBase: proxy,
                 accessToken: token,
-                code: entered
+                code: entered,
+                session: networkSession
             )
+            guard sessionGeneration == generation else { return }
+            dailyQuota = snapshot.dailyQuota
             balanceMicroYuan = snapshot.balanceMicroYuan
             balanceState = .loaded
             inviteRedeemed = snapshot.inviteRedeemed
@@ -189,6 +235,7 @@ final class TrialAccountStore: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            guard sessionGeneration == generation else { return }
             let text = (error as? LocalizedError)?.errorDescription ?? "邀请码没有兑换成功，请稍后再试。"
             if text == TrialCopy.authExpired || text == TrialCopy.envMismatch {
                 logout(message: text)
@@ -214,6 +261,7 @@ final class TrialAccountStore: ObservableObject {
     }
 
     func validAccessToken() async throws -> String {
+        let generation = sessionGeneration
         if TrialToken.disagrees(accessToken: accessToken, refreshToken: refreshToken, envId: TrialConfig.envId) {
             logout(message: TrialCopy.envMismatch)
             throw CloudBaseAuthError.message(TrialCopy.envMismatch)
@@ -227,9 +275,11 @@ final class TrialAccountStore: ObservableObject {
         }
         do {
             let session = try await auth.refresh(refreshToken: refreshToken, userId: userId)
+            guard sessionGeneration == generation, isLoggedIn else { throw CancellationError() }
             try persist(session)
             return session.accessToken
         } catch let error as CloudBaseAuthError {
+            guard sessionGeneration == generation else { throw CancellationError() }
             if case .message(let text) = error, text == "网络不通，请检查网络后再试。" {
                 throw error
             }
@@ -238,13 +288,16 @@ final class TrialAccountStore: ObservableObject {
         }
     }
 
-    func applySettlement(_ settlement: TrialSettlement) {
+    func applySettlement(_ settlement: TrialSettlement, generation: UUID) {
+        guard isLoggedIn, sessionGeneration == generation else { return }
+        dailyQuota = settlement.dailyQuota ?? dailyQuota
         balanceMicroYuan = settlement.balanceMicroYuan
         balanceState = .loaded
     }
 
     func refreshFromServer(announceGift: Bool = false) async {
         guard isLoggedIn else { return }
+        let generation = sessionGeneration
         if TrialToken.disagrees(accessToken: accessToken, refreshToken: refreshToken, envId: TrialConfig.envId) {
             logout(message: TrialCopy.envMismatch)
             return
@@ -258,7 +311,10 @@ final class TrialAccountStore: ObservableObject {
         balanceState = .loading
         do {
             let token = try await validAccessToken()
-            let snapshot = try await TrialProxyClient.syncAccount(proxyBase: proxy, accessToken: token)
+            guard sessionGeneration == generation else { return }
+            let snapshot = try await TrialProxyClient.syncAccount(proxyBase: proxy, accessToken: token, session: networkSession)
+            guard sessionGeneration == generation else { return }
+            dailyQuota = snapshot.dailyQuota
             balanceMicroYuan = snapshot.balanceMicroYuan
             balanceState = .loaded
             if !snapshot.userId.isEmpty { userId = snapshot.userId }
@@ -274,9 +330,11 @@ final class TrialAccountStore: ObservableObject {
                 statusMessage = ""
             }
         } catch is CancellationError {
+            guard sessionGeneration == generation else { return }
             if balanceFen == nil { balanceState = .failed }
             return
         } catch {
+            guard sessionGeneration == generation else { return }
             let text = (error as? LocalizedError)?.errorDescription ?? TrialCopy.store
             if text == TrialCopy.authExpired || text == TrialCopy.envMismatch {
                 logout(message: text)
@@ -297,8 +355,8 @@ final class TrialAccountStore: ObservableObject {
             userId: session.userId,
             maskedPhone: phone,
             expiresAt: session.expiresAt,
-            defaults: .standard,
-            keychain: SystemKeychain()
+            defaults: defaults,
+            keychain: keychain
         )
         accessToken = session.accessToken
         refreshToken = session.refreshToken
@@ -308,13 +366,15 @@ final class TrialAccountStore: ObservableObject {
     }
 
     private func logout(message: String) {
-        TrialKeychain.clear(defaults: .standard, keychain: SystemKeychain())
+        sessionGeneration = UUID()
+        TrialKeychain.clear(defaults: defaults, keychain: keychain)
         accessToken = ""
         refreshToken = ""
         userId = ""
         displayId = ""
         maskedPhone = ""
         expiresAt = .distantPast
+        dailyQuota = nil
         balanceMicroYuan = nil
         balanceState = .idle
         inviteRedeemed = false

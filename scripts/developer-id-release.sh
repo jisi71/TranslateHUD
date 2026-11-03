@@ -125,6 +125,10 @@ if [[ "$PUBLIC_KEY" == *'$('* ]]; then
     echo "公钥仍是占位符，不能拿去发版。"
     exit 1
 fi
+if ! sparkle_public_key_is_valid "$PUBLIC_KEY"; then
+    echo "Sparkle 公钥不是有效的 32 字节 EdDSA 公钥，已停止。"
+    exit 1
+fi
 if [[ -z "${DEVELOPER_ID_APP:-}" || -z "${DEVELOPER_ID_TEAM_ID:-}" ]]; then
     echo "请设置 DEVELOPER_ID_APP 和 DEVELOPER_ID_TEAM_ID。"
     echo "例如 DEVELOPER_ID_APP='Developer ID Application: Name (TEAMID)'"
@@ -143,7 +147,7 @@ if [[ -n "${SPARKLE_PRIVATE_KEY_FILE:-}" || -f "$PRIVATE_PATH" ]]; then
     fi
 fi
 
-for command_name in xcodegen xcodebuild codesign ditto hdiutil python3 curl; do
+for command_name in xcodegen xcodebuild codesign ditto hdiutil python3 curl swift; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
         echo "缺少命令: $command_name"
         exit 1
@@ -358,6 +362,11 @@ print(lines[-1] if lines else "")
 if [[ -z "$SIGNATURE_VALUE" ]]; then
     echo "没有得到 EdDSA 签名。原始输出里的长串已隐藏："
     printf '%s\n' "$SIGN_OUTPUT" | sparkle_redact
+    exit 1
+fi
+
+if ! swift "$ROOT/scripts/verify-sparkle-signature.swift" "$PUBLIC_KEY" "$SIGNATURE_VALUE" "$FINAL_ZIP"; then
+    echo "更新包签名与所选公钥不匹配，已停止。"
     exit 1
 fi
 

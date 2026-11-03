@@ -112,7 +112,8 @@ enum UpdatePolicy {
 
     static func sanitizedKey(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty || trimmed.contains("$(") { return nil }
+        guard let decoded = Data(base64Encoded: trimmed), decoded.count == 32,
+              decoded.base64EncodedString() == trimmed else { return nil }
         return trimmed
     }
 

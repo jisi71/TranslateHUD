@@ -48,15 +48,19 @@ ensure_sparkle_tools() {
 
 sparkle_public_key_from_xcconfig() {
     local file
-    file="$(sparkle_repo_root)/Config/Sparkle.xcconfig"
-    awk -F= '
+    file="${1:-$(sparkle_repo_root)/Config/Sparkle.xcconfig}"
+    awk '
         /^[[:space:]]*SPARKLE_PUBLIC_ED_KEY[[:space:]]*=/ {
-            value = $2
+            value = substr($0, index($0, "=") + 1)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
             print value
             exit
         }
     ' "$file"
+}
+
+sparkle_public_key_is_valid() {
+    python3 -c 'import base64, sys; raw = base64.b64decode(sys.argv[1], validate=True); sys.exit(0 if len(raw) == 32 and base64.b64encode(raw).decode() == sys.argv[1] else 1)' "$1" 2>/dev/null
 }
 
 sparkle_key_inside_repo() {

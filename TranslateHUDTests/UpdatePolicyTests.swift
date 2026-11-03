@@ -26,6 +26,9 @@ final class UpdatePolicyTests: XCTestCase {
         XCTAssertEqual(decision(flag: .bool(true), key: "", signed: true).reason, .missingPublicKey)
         XCTAssertEqual(decision(flag: .bool(true), key: "$(SPARKLE_PUBLIC_ED_KEY)", signed: true).reason, .missingPublicKey)
         XCTAssertEqual(decision(flag: .bool(true), key: "  ", signed: true).reason, .missingPublicKey)
+        XCTAssertEqual(decision(flag: .bool(true), key: String(publicKey.dropLast()), signed: true).reason, .missingPublicKey)
+        XCTAssertEqual(decision(flag: .bool(true), key: "aW52YWxpZA==", signed: true).reason, .missingPublicKey)
+        XCTAssertEqual(decision(flag: .bool(true), key: "not-base64!", signed: true).reason, .missingPublicKey)
         XCTAssertEqual(
             decision(flag: .bool(true), feed: "http://github.com/jisi71/TranslateHUD/releases/latest/download/appcast.xml", signed: true).reason,
             .invalidFeedURL

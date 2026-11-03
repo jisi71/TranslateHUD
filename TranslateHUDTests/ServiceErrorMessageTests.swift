@@ -184,7 +184,7 @@ final class ServiceErrorMessageTests: XCTestCase {
             code: 400,
             body: "{\"error\":{\"code\":\"trial_length_limit\",\"message\":\"\(secret)\"}}"
         )
-        XCTAssertEqual(length, "超出单次翻译上限（体验额度单次最多 500 字）")
+        XCTAssertEqual(length, "超出单次翻译上限（体验额度单次最多 1000 字）")
         XCTAssertFalse(length.contains("private-source"))
         XCTAssertFalse(length.contains("secret-key"))
         XCTAssertFalse(length.contains("HTTP"))

@@ -3,7 +3,7 @@ import Foundation
 /// Sentences shown to people using the trial. Keep them identical to
 /// `backend/src/trialPolicy.js` so the HUD and the proxy say the same thing.
 enum TrialCopy {
-    static let lengthLimit = "超出单次翻译上限（体验额度单次最多 500 字）"
+    static let lengthLimit = "超出单次翻译上限（体验额度单次最多 1000 字）"
     static let balanceExhausted = "体验额度已用完。请在设置里填写你自己的 API Key，之后会直接使用你的接口。"
     static let balanceInsufficient = "体验额度不够支付这次翻译。请在设置里填写你自己的 API Key。"
     static let authExpired = "体验登录已失效，请在设置里重新登录。"

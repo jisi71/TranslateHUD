@@ -10,7 +10,7 @@ enum TrialPricing {
     static let giftFen = 200
     /// ¥2.00 in the ledger unit. 1 fen = 10,000 micro-yuan.
     static let giftMicroYuan = 2_000_000
-    static let maximumGraphemes = 500
+    static let maximumGraphemes = 1000
 
     /// Unicode extended grapheme clusters. For Chinese this is the character count.
     /// Swift `String.count` matches `Intl.Segmenter` granularity `grapheme` on the server.

@@ -101,16 +101,16 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(message, "体验额度已用完。请在设置里填写你自己的 API Key，之后会直接使用你的接口。")
     }
 
-    func testFiveHundredOneGraphemesAreBlockedBeforeTheNetwork() {
-        let input = sampleTrial(balanceFen: 200, source: String(repeating: "字", count: 501))
+    func testOneThousandOneGraphemesAreBlockedBeforeTheNetwork() {
+        let input = sampleTrial(balanceFen: 200, source: String(repeating: "字", count: 1001))
         guard case .block(let title, let message) = TranslationRoute.gate(input) else {
             return XCTFail("expected a block")
         }
         XCTAssertEqual(title, "超出单次翻译上限")
-        XCTAssertEqual(message, "超出单次翻译上限（体验额度单次最多 500 字）")
+        XCTAssertEqual(message, "超出单次翻译上限（体验额度单次最多 1000 字）")
 
         var allowed = input
-        allowed.sourceText = String(repeating: "字", count: 500)
+        allowed.sourceText = String(repeating: "字", count: 1000)
         XCTAssertEqual(TranslationRoute.gate(allowed), .allowTrial)
     }
 

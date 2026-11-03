@@ -14,6 +14,8 @@ final class InterfaceLanguageTests: XCTestCase {
         XCTAssertEqual(store.locale.language.languageCode?.identifier, "en")
         XCTAssertEqual(store.text("设置"), "Settings")
         XCTAssertEqual(store.text("翻译完成"), "Translation complete")
+        XCTAssertEqual(store.text(TrialCopy.lengthLimit), "This translation exceeds the trial limit of 1000 characters.")
+        XCTAssertEqual(store.text("超出单次翻译上限（体验额度单次最多 500 字）"), "This translation exceeds the trial limit of 500 characters.")
         XCTAssertTrue(store.error(TranslationTimeoutError(reason: .request, seconds: 45), operation: "翻译").contains("45 seconds"))
         XCTAssertTrue(store.error(NSError(domain: NSURLErrorDomain, code: -777), operation: "翻译").contains("-777"))
         XCTAssertTrue(store.error(TranslationError.qualityFailures([.emptyOutput]), operation: "翻译").contains("empty translation"))

@@ -18,10 +18,10 @@
 const MICRO_YUAN_PER_FEN = 10_000
 const GIFT_FEN = 200
 const GIFT_MICRO_YUAN = GIFT_FEN * MICRO_YUAN_PER_FEN
-const MAX_GRAPHEMES = 500
+const MAX_GRAPHEMES = 1000
 
 const MESSAGES = {
-  length: '超出单次翻译上限（体验额度单次最多 500 字）',
+  length: '超出单次翻译上限（体验额度单次最多 1000 字）',
   exhausted: '体验额度已用完。请在设置里填写你自己的 API Key，之后会直接使用你的接口。',
   insufficient: '体验额度不够支付这次翻译。请在设置里填写你自己的 API Key。',
   auth: '体验登录已失效，请在设置里重新登录。',

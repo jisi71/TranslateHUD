@@ -247,9 +247,47 @@ def sole_heading(children):
         return els[0]
     return None
 
-
 def is_list_line(line: str) -> bool:
-    return line.startswith("- ") or bool(re.match(r"^\d+\.\s", line))
+    rest = line.lstrip(" ")
+    return rest.startswith("- ") or rest == "-" or bool(re.match(r"^\d+\.\s", rest))
+
+
+def is_loose_list(children) -> bool:
+    for c in children:
+        if isinstance(c, Element) and c.name == "li":
+            for x in c.children:
+                if isinstance(x, Element) and x.name == "p":
+                    return True
+    return False
+
+
+def list_item_body_text(nodes) -> str:
+    paragraphs: list[str] = []
+    inline_buf: list = []
+
+    def flush():
+        nonlocal inline_buf
+        text = inline_md(inline_buf).strip()
+        inline_buf = []
+        if text:
+            paragraphs.append(text)
+
+    for n in nodes:
+        if isinstance(n, Element) and n.name == "p":
+            flush()
+            text = inline_md(n.children).strip()
+            if text:
+                paragraphs.append(text)
+        elif isinstance(n, Element) and n.name == "br":
+            flush()
+        elif isinstance(n, str):
+            if not n.strip():
+                continue
+            inline_buf.append(n)
+        else:
+            inline_buf.append(n)
+    flush()
+    return "\n\n".join(paragraphs)
 
 
 def convert(html: str) -> str | None:
@@ -267,6 +305,58 @@ def convert(html: str) -> str | None:
         t = collapse(text).strip()
         if t:
             blocks.append(t)
+
+    def append_list(children, ordered: bool, depth: int = 0):
+        indent = " " * (depth * 2)
+        loose = is_loose_list(children)
+        total_lis = sum(1 for c in children if isinstance(c, Element) and c.name == "li")
+        index = 1
+        seen = 0
+        for c in children:
+            if not (isinstance(c, Element) and c.name == "li"):
+                append_blocks(c)
+                continue
+            seen += 1
+            heading = sole_heading(c.children)
+            if heading is not None:
+                append_blocks(heading)
+                continue
+            if any(isinstance(x, Element) and x.name in HEADINGS for x in c.children):
+                for nested in c.children:
+                    append_blocks(nested)
+                continue
+
+            content = []
+            nested_lists = []
+            for x in c.children:
+                if isinstance(x, Element) and x.name in ("ul", "ol"):
+                    nested_lists.append(x)
+                else:
+                    content.append(x)
+
+            body = list_item_body_text(content)
+            marker = f"{index}. " if ordered else "- "
+            if ordered:
+                index += 1
+
+            if body:
+                paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
+                if paragraphs:
+                    blocks.append(f"{indent}{marker}{paragraphs[0]}")
+                    cont = indent + (" " * len(marker))
+                    for p in paragraphs[1:]:
+                        blocks.append("")
+                        blocks.append(f"{cont}{p}")
+            elif nested_lists:
+                blocks.append(indent + marker.rstrip())
+            else:
+                continue
+
+            for nested in nested_lists:
+                append_list(nested.children, ordered=(nested.name == "ol"), depth=depth + 1)
+
+            if loose and seen < total_lis:
+                blocks.append("")
 
     def append_blocks(node):
         if isinstance(node, str):
@@ -294,28 +384,7 @@ def convert(html: str) -> str | None:
                 if body:
                     append_para(body)
         elif el.name in ("ul", "ol"):
-            ordered = el.name == "ol"
-            idx = 1
-            for c in el.children:
-                if not (isinstance(c, Element) and c.name == "li"):
-                    append_blocks(c)
-                    continue
-                heading = sole_heading(c.children)
-                if heading is not None:
-                    append_blocks(heading)
-                    continue
-                if any(isinstance(x, Element) and x.name in HEADINGS for x in c.children):
-                    for nested in c.children:
-                        append_blocks(nested)
-                    continue
-                body = inline_md(c.children).strip()
-                if not body:
-                    continue
-                if ordered:
-                    blocks.append(f"{idx}. {body}")
-                    idx += 1
-                else:
-                    blocks.append(f"- {body}")
+            append_list(el.children, ordered=(el.name == "ol"), depth=0)
         elif el.name == "li":
             heading = sole_heading(el.children)
             if heading is not None:
@@ -331,7 +400,10 @@ def convert(html: str) -> str | None:
         elif el.name == "pre":
             blocks.append("```\n" + plain_text(el.children) + "\n```")
         else:
-            if any(isinstance(c, Element) and c.name in HEADINGS.union({"p", "div", "ul", "ol", "li", "br", "table"}) for c in el.children):
+            if any(
+                isinstance(c, Element) and c.name in HEADINGS.union({"p", "div", "ul", "ol", "li", "br", "table"})
+                for c in el.children
+            ):
                 for c in el.children:
                     append_blocks(c)
             else:
@@ -344,8 +416,8 @@ def convert(html: str) -> str | None:
 
     lines: list[str] = []
     for block in blocks:
-        t = block.strip() if block is not None else ""
-        if not t:
+        t = block.rstrip(" \t") if block is not None else ""
+        if not t.strip():
             if lines and lines[-1] != "":
                 lines.append("")
             continue
@@ -391,6 +463,19 @@ def main() -> int:
     assert convert("普通段落没有标签") == "普通段落没有标签"
     assert convert("<div></div>") is None
     assert convert('<ol><li data-list="number"><h1 class="heading-1">标题一</h1></li></ol>') == "# 标题一"
+
+    nested = convert("<ul><li>外<ul><li>内</li></ul></li><li>外2</li></ul>")
+    assert nested == "- 外\n  - 内\n- 外2", nested
+
+    nested_ol = convert("<ol><li>一<ol><li>子</li></ol></li><li>二</li></ol>")
+    assert nested_ol == "1. 一\n  1. 子\n2. 二", nested_ol
+
+    text_plus = convert("<ul><li>父项<ul><li>子项</li></ul></li></ul>")
+    assert text_plus == "- 父项\n  - 子项", text_plus
+
+    loose = convert("<ul><li><p>甲</p></li><li><p>乙</p></li></ul>")
+    assert loose == "- 甲\n\n- 乙", loose
+
     print("OK: all html→markdown self-checks passed")
     return 0
 

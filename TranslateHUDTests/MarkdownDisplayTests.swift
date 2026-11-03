@@ -105,4 +105,70 @@ final class MarkdownDisplayTests: XCTestCase {
         XCTAssertTrue(plain.contains("\n"))
         XCTAssertFalse(plain.contains("#"))
     }
+
+    func testStyledUnorderedListShowsBulletsAndBreaks() {
+        let styled = MarkdownDisplay.styled("- one\n- two", role: .translation, colors: .dark)
+        let characters = String(styled.characters)
+        XCTAssertTrue(characters.contains("•"), characters)
+        XCTAssertTrue(characters.contains("one"), characters)
+        XCTAssertTrue(characters.contains("two"), characters)
+        XCTAssertTrue(characters.contains("\n"), "list items must stay on separate lines: \(characters)")
+        XCTAssertTrue(
+            characters.range(of: #"one\s*\n+[\s•]*two"#, options: .regularExpression) != nil,
+            characters
+        )
+    }
+
+    func testStyledOrderedListShowsNumbers() {
+        let styled = MarkdownDisplay.styled("1. alpha\n2. beta", role: .translation, colors: .dark)
+        let characters = String(styled.characters)
+        XCTAssertTrue(characters.contains("1."), characters)
+        XCTAssertTrue(characters.contains("2."), characters)
+        XCTAssertTrue(characters.contains("\n"), characters)
+        XCTAssertTrue(characters.contains("alpha") && characters.contains("beta"), characters)
+    }
+
+    func testStyledNestedListHasDeeperIndentThanParent() {
+        let styled = MarkdownDisplay.styled("- outer\n  - inner", role: .translation, colors: .dark)
+        var indents: [CGFloat] = []
+        for run in styled.runs {
+            if let style = run.appKit.paragraphStyle {
+                indents.append(style.firstLineHeadIndent)
+            }
+        }
+        XCTAssertFalse(indents.isEmpty, "list runs should carry paragraphStyle indent")
+        let minIndent = indents.min() ?? 0
+        let maxIndent = indents.max() ?? 0
+        XCTAssertGreaterThan(maxIndent, minIndent, "nested item must indent deeper than parent: \(indents)")
+        let characters = String(styled.characters)
+        XCTAssertTrue(characters.contains("•"), characters)
+        XCTAssertTrue(characters.contains("\n"), characters)
+        XCTAssertTrue(characters.contains("outer") && characters.contains("inner"), characters)
+    }
+
+    func testPlainTextStillStripsListMarkersForSpeech() {
+        // decorateListMarkers runs only in styled(); speech path must stay marker-free.
+        let plain = MarkdownDisplay.plainText(from: "- one\n- two")
+        XCTAssertFalse(plain.contains("•"), plain)
+        XCTAssertFalse(plain.hasPrefix("-"), plain)
+        XCTAssertTrue(plain.contains("one") && plain.contains("two"), plain)
+    }
+
+    func testLooseListStyledKeepsSeparation() {
+        let styled = MarkdownDisplay.styled("- 甲\n\n- 乙", role: .translation, colors: .dark)
+        let characters = String(styled.characters)
+        XCTAssertTrue(characters.contains("•"), characters)
+        XCTAssertTrue(characters.contains("甲") && characters.contains("乙"), characters)
+        XCTAssertTrue(characters.contains("\n"), characters)
+        // Items must not collapse into one sticky line with no break.
+        XCTAssertNotEqual(
+            characters.replacingOccurrences(of: "\n", with: ""),
+            characters,
+            characters
+        )
+        XCTAssertTrue(
+            characters.range(of: #"甲\s*\n+[\s•]*乙"#, options: .regularExpression) != nil,
+            characters
+        )
+    }
 }

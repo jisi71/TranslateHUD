@@ -67,6 +67,31 @@ final class HTMLToMarkdownConverterTests: XCTestCase {
         XCTAssertEqual(markdown, "# 标题一")
     }
 
+
+    func testNestedUnorderedListIndentsChildItems() {
+        let html = "<ul><li>外<ul><li>内</li></ul></li><li>外2</li></ul>"
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertEqual(markdown, "- 外\n  - 内\n- 外2")
+    }
+
+    func testNestedOrderedListIndentsChildItems() {
+        let html = "<ol><li>一<ol><li>子</li></ol></li><li>二</li></ol>"
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertEqual(markdown, "1. 一\n  1. 子\n2. 二")
+    }
+
+    func testListItemTextPlusNestedList() {
+        let html = "<ul><li>父项<ul><li>子项</li></ul></li></ul>"
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertEqual(markdown, "- 父项\n  - 子项")
+    }
+
+    func testLooseListKeepsBlankLineBetweenItems() {
+        let html = "<ul><li><p>甲</p></li><li><p>乙</p></li></ul>"
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertEqual(markdown, "- 甲\n\n- 乙")
+    }
+
     private static func loadFixture(_ name: String) throws -> String {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

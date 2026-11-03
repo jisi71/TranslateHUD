@@ -45,8 +45,11 @@ enum MarkdownDisplay {
     }
 
     /// Parse + apply panel typography/colors so SwiftUI Text and TextKit height agree.
+    /// List markers are reinjected here (not in `parse`/`plainText`) so speech stays marker-free
+    /// while the popover shows bullets / numbers with nesting indent.
     static func styled(_ markdown: String, role: Role, colors: PanelColors) -> AttributedString {
         var attributed = parse(markdown)
+        decorateListMarkers(&attributed)
         applyTypography(&attributed, role: role, colors: colors)
         return attributed
     }
@@ -138,6 +141,111 @@ enum MarkdownDisplay {
         default:
             return false
         }
+    }
+
+    // MARK: - List markers
+
+    /// Foundation strips `-` / `1.` under `.full` syntax. Reinject visible markers and indent by
+    /// nesting depth so unordered/ordered lists read as lists in the popover.
+    private static func decorateListMarkers(_ attributed: inout AttributedString) {
+        guard !attributed.characters.isEmpty else { return }
+
+        struct ListItemAnchor {
+            let identity: Int
+            let index: AttributedString.Index
+            let depth: Int
+            let ordered: Bool
+            let ordinal: Int
+        }
+
+        var anchors: [ListItemAnchor] = []
+        var seen = Set<Int>()
+        for run in attributed.runs {
+            guard let intent = run.presentationIntent else { continue }
+            guard let identity = listItemIdentity(of: intent) else { continue }
+            if !seen.insert(identity).inserted { continue }
+            let depth = max(listNestingDepth(of: intent), 1)
+            let ordered = hasOrderedList(in: intent)
+            let ordinal = listItemOrdinal(of: intent) ?? 1
+            anchors.append(
+                ListItemAnchor(
+                    identity: identity,
+                    index: run.range.lowerBound,
+                    depth: depth,
+                    ordered: ordered,
+                    ordinal: ordinal
+                )
+            )
+        }
+
+        // Insert from the end so earlier indices stay valid (anchors are document order).
+        for anchor in anchors.reversed() {
+            let marker = anchor.ordered ? "\(anchor.ordinal). " : "• "
+            attributed.characters.insert(contentsOf: marker, at: anchor.index)
+        }
+
+        // Paragraph indent by nesting depth (1 = flush with marker column).
+        let step: CGFloat = 14
+        let hang: CGFloat = 14
+        for run in attributed.runs {
+            guard let intent = run.presentationIntent else { continue }
+            guard listItemIdentity(of: intent) != nil else { continue }
+            let depth = max(listNestingDepth(of: intent), 1)
+            let style = NSMutableParagraphStyle()
+            style.firstLineHeadIndent = CGFloat(depth - 1) * step
+            style.headIndent = CGFloat(depth - 1) * step + hang
+            style.paragraphSpacing = 2
+            var container = AttributeContainer()
+            container.appKit.paragraphStyle = style
+            attributed[run.range].mergeAttributes(container, mergePolicy: .keepNew)
+        }
+    }
+
+    private static func listItemIdentity(of intent: PresentationIntent) -> Int? {
+        for component in intent.components.reversed() {
+            if case .listItem = component.kind {
+                return component.identity
+            }
+        }
+        return nil
+    }
+
+    private static func listItemOrdinal(of intent: PresentationIntent) -> Int? {
+        for component in intent.components.reversed() {
+            if case .listItem(ordinal: let ordinal) = component.kind {
+                return ordinal
+            }
+        }
+        return nil
+    }
+
+    private static func listNestingDepth(of intent: PresentationIntent) -> Int {
+        var depth = 0
+        for component in intent.components {
+            switch component.kind {
+            case .unorderedList, .orderedList:
+                depth += 1
+            default:
+                break
+            }
+        }
+        return depth
+    }
+
+    private static func hasOrderedList(in intent: PresentationIntent) -> Bool {
+        // Prefer the innermost list container around the listItem.
+        var ordered: Bool?
+        for component in intent.components {
+            switch component.kind {
+            case .orderedList:
+                ordered = true
+            case .unorderedList:
+                ordered = false
+            default:
+                break
+            }
+        }
+        return ordered ?? false
     }
 
     // MARK: - Typography

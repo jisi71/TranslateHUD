@@ -143,35 +143,132 @@ enum HTMLToMarkdownConverter {
         }
     }
 
-    private static func appendList(_ children: [Node], ordered: Bool, into blocks: inout [String]) {
+    private static func appendList(
+        _ children: [Node],
+        ordered: Bool,
+        into blocks: inout [String],
+        depth: Int = 0
+    ) {
+        let indent = String(repeating: " ", count: depth * 2)
+        let loose = isLooseList(children)
+        let totalLis = children.reduce(into: 0) { count, node in
+            if case .element(let el) = node, el.name == "li" { count += 1 }
+        }
         var index = 1
+        var seenLis = 0
+
         for child in children {
             guard case .element(let el) = child, el.name == "li" else {
                 // ol/ul 下非 li：继续当块
                 appendBlocks(from: child, into: &blocks)
                 continue
             }
+            seenLis += 1
             // 飞书：<li data-list="number"><h1>…</h1></li> → 输出标题，不当列表项
             if let heading = soleHeadingElement(in: el.children) {
                 appendBlocks(from: .element(heading), into: &blocks)
                 continue
             }
-            // li 内若混有 heading + 其它，优先拆出 heading，其余仍作列表？简化：有 heading 则全部当块
+            // li 内若混有 heading + 其它：有 heading 则全部当块（保持旧行为）
             if el.children.contains(where: { isHeadingNode($0) }) {
                 for nested in el.children {
                     appendBlocks(from: nested, into: &blocks)
                 }
                 continue
             }
-            let body = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
-            if body.isEmpty { continue }
-            if ordered {
-                blocks.append("\(index). \(body)")
-                index += 1
+
+            var contentNodes: [Node] = []
+            var nestedLists: [Element] = []
+            for node in el.children {
+                if case .element(let childEl) = node, childEl.name == "ul" || childEl.name == "ol" {
+                    nestedLists.append(childEl)
+                } else {
+                    contentNodes.append(node)
+                }
+            }
+
+            let body = listItemBodyText(contentNodes)
+            let marker = ordered ? "\(index). " : "- "
+            if ordered { index += 1 }
+
+            if !body.isEmpty {
+                let paragraphs = body
+                    .components(separatedBy: "\n\n")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                if let first = paragraphs.first {
+                    blocks.append("\(indent)\(marker)\(first)")
+                    let continuationIndent = indent + String(repeating: " ", count: marker.count)
+                    for paragraph in paragraphs.dropFirst() {
+                        blocks.append("")
+                        blocks.append("\(continuationIndent)\(paragraph)")
+                    }
+                }
+            } else if !nestedLists.isEmpty {
+                // 仅有子列表的项：保留列表标记，子项再缩进
+                blocks.append("\(indent)" + marker.trimmingCharacters(in: .whitespaces))
             } else {
-                blocks.append("- \(body)")
+                continue
+            }
+
+            for nested in nestedLists {
+                appendList(
+                    nested.children,
+                    ordered: nested.name == "ol",
+                    into: &blocks,
+                    depth: depth + 1
+                )
+            }
+
+            if loose, seenLis < totalLis {
+                blocks.append("")
             }
         }
+    }
+
+    /// CommonMark loose list：任一 li 直接含 <p> 时，项与项之间保留空行。
+    private static func isLooseList(_ children: [Node]) -> Bool {
+        for child in children {
+            guard case .element(let li) = child, li.name == "li" else { continue }
+            for node in li.children {
+                if case .element(let el) = node, el.name == "p" {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    /// li 内正文（已剥离嵌套 ul/ol）：多个 <p> 用空行分隔，便于 loose item。
+    private static func listItemBodyText(_ nodes: [Node]) -> String {
+        var paragraphs: [String] = []
+        var inlineBuffer: [Node] = []
+
+        func flushInline() {
+            let text = inlineMarkdown(inlineBuffer).trimmingCharacters(in: .whitespacesAndNewlines)
+            inlineBuffer.removeAll(keepingCapacity: true)
+            if !text.isEmpty { paragraphs.append(text) }
+        }
+
+        for node in nodes {
+            if case .element(let el) = node, el.name == "p" {
+                flushInline()
+                let text = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty { paragraphs.append(text) }
+            } else if case .element(let el) = node, el.name == "br" {
+                flushInline()
+            } else if case .text(let raw) = node {
+                // 纯空白文本节点忽略，避免把缩进空格打成段落
+                if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    continue
+                }
+                inlineBuffer.append(node)
+            } else {
+                inlineBuffer.append(node)
+            }
+        }
+        flushInline()
+        return paragraphs.joined(separator: "\n\n")
     }
 
     private static func appendParagraph(_ text: String, into blocks: inout [String]) {
@@ -181,20 +278,19 @@ enum HTMLToMarkdownConverter {
     }
 
     private static func finalize(_ blocks: [String]) -> String {
-        // 去掉首尾空块；块之间空一行（列表项之间单换行更自然，但标题/段落实用双换行）
+        // 去掉首尾空块；块之间空一行（连续列表项单换行，保留缩进；标题/段落双换行）
         var lines: [String] = []
         for block in blocks {
-            let t = block.trimmingCharacters(in: .whitespaces)
-            if t.isEmpty {
+            let t = rtrimSpaces(block)
+            if t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 if let last = lines.last, !last.isEmpty {
                     lines.append("")
                 }
                 continue
             }
             if let last = lines.last, !last.isEmpty {
-                // 连续列表项：单换行；其它块：空一行
-                let lastIsList = last.hasPrefix("- ") || listItemNumberPrefix(last) != nil
-                let curIsList = t.hasPrefix("- ") || listItemNumberPrefix(t) != nil
+                let lastIsList = isMarkdownListLine(last)
+                let curIsList = isMarkdownListLine(t)
                 if !(lastIsList && curIsList) {
                     lines.append("")
                 }
@@ -204,6 +300,26 @@ enum HTMLToMarkdownConverter {
         while lines.last?.isEmpty == true { lines.removeLast() }
         while lines.first?.isEmpty == true { lines.removeFirst() }
         return lines.joined(separator: "\n")
+    }
+
+    private static func rtrimSpaces(_ line: String) -> String {
+        var end = line.endIndex
+        while end > line.startIndex {
+            let prev = line.index(before: end)
+            if line[prev] == " " || line[prev] == "\t" {
+                end = prev
+            } else {
+                break
+            }
+        }
+        return String(line[..<end])
+    }
+
+    /// 允许前导缩进的 `- ` / `1. ` 列表行（嵌套用 2 空格一级）。
+    private static func isMarkdownListLine(_ line: String) -> Bool {
+        let rest = String(line.drop(while: { $0 == " " }))
+        if rest.hasPrefix("- ") || rest == "-" { return true }
+        return listItemNumberPrefix(rest) != nil
     }
 
     private static func listItemNumberPrefix(_ line: String) -> Int? {

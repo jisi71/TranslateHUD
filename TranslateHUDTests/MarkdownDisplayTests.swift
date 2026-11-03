@@ -592,4 +592,56 @@ final class MarkdownDisplayTests: XCTestCase {
         XCTAssertTrue(sawBodyPrimary, String(styled.characters))
     }
 
+    func testSingleNewlineBetweenHeadingsDoesNotInventBlank() {
+        let characters = String(
+            MarkdownDisplay.styled("# H1\n## H2\n### H3", role: .translation, colors: .dark).characters
+        )
+        XCTAssertTrue(characters.contains("H1") && characters.contains("H2") && characters.contains("H3"), characters)
+        // Must stay single-spaced — no invented blank between stacked headings.
+        XCTAssertTrue(
+            characters.range(of: #"H1\s*\n\s*\n\s*H2"#, options: .regularExpression) == nil,
+            characters
+        )
+        XCTAssertTrue(
+            characters.range(of: #"H1\s*\n\s*H2"#, options: .regularExpression) != nil,
+            characters
+        )
+    }
+
+    func testProsePiecesDetectsGFMTable() {
+        let md = """
+        前言
+
+        | 功能 | 状态 | 备注 |
+        | --- | --- | --- |
+        | 假换行 | 待测 | PDF |
+        | 空行 | 待测 | 段间 |
+
+        后记
+        """
+        let pieces = MarkdownDisplay.prosePieces(from: md)
+        XCTAssertTrue(pieces.contains(where: {
+            if case .table(let rows) = $0 {
+                return rows.count == 3 && rows[0] == ["功能", "状态", "备注"]
+            }
+            return false
+        }), "\(pieces)")
+        XCTAssertTrue(pieces.contains(where: {
+            if case .markdown(let s) = $0 { return s.contains("前言") }
+            return false
+        }), "\(pieces)")
+        XCTAssertTrue(pieces.contains(where: {
+            if case .markdown(let s) = $0 { return s.contains("后记") }
+            return false
+        }), "\(pieces)")
+    }
+
+    func testProseEdgeBlankCountsCapsAtOne() {
+        let edges = MarkdownDisplay.proseEdgeBlankCounts("\n\n\nlabel\n\n\n")
+        XCTAssertEqual(edges.leading, 1)
+        XCTAssertEqual(edges.trailing, 1)
+        XCTAssertEqual(edges.body.trimmingCharacters(in: .whitespacesAndNewlines), "label")
+    }
+
+
 }

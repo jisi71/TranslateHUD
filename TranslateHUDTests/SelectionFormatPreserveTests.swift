@@ -175,4 +175,31 @@ final class SelectionFormatPreserveTests: XCTestCase {
         let restored = prepared.restore(translatedSegments: ["标题", "第一项", "第二项"])
         XCTAssertEqual(restored, "# 标题\n- 第一项\n- 第二项")
     }
+    /// 九、表格：整表占位，译后管道行列仍在。
+    func testWholeGFMTableProtectedThroughPrepareRestore() {
+        let source = """
+        前说明
+
+        | 功能 | 状态 | 备注 |
+        | --- | --- | --- |
+        | 假换行 | 待测 | PDF |
+        | 空行 | 待测 | 段间 |
+
+        后说明
+        """
+        let prepared = SelectionFormatPipeline.prepare(source)
+        // Table body should not be sent as shatterable plain lines.
+        XCTAssertFalse(
+            prepared.segmentsToTranslate.contains(where: { $0.contains("| 功能 |") }),
+            "\(prepared.segmentsToTranslate)"
+        )
+        let restored = prepared.restore(translatedSegments: prepared.segmentsToTranslate)
+        XCTAssertTrue(restored.contains("| 功能 | 状态 | 备注 |"), restored)
+        XCTAssertTrue(restored.contains("| --- | --- | --- |"), restored)
+        XCTAssertTrue(restored.contains("| 假换行 | 待测 | PDF |"), restored)
+        XCTAssertTrue(restored.contains("前说明"), restored)
+        XCTAssertTrue(restored.contains("后说明"), restored)
+    }
+
+
 }

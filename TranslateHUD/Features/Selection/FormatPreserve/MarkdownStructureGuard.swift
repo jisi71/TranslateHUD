@@ -37,9 +37,11 @@ enum MarkdownStructureGuard {
         work = replaceMatches(in: work, pattern: #"`[^`\n]+`"#, transform: { save("icode", $0) })
         work = replaceMatches(in: work, pattern: #"!\[[^\]]*\]\([^)]+\)"#, transform: { save("link", $0) })
         work = replaceMatches(in: work, pattern: #"\[[^\]]*\]\([^)]+\)"#, transform: { save("link", $0) })
+        // Whole contiguous GFM table (header + separator + body), not only the separator row —
+        // otherwise the model can shatter `|` rows and the popover loses the grid.
         work = replaceMatches(
             in: work,
-            pattern: #"(?m)^[ \t]*\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$"#,
+            pattern: #"(?m)(?:^\|[^\n]*\|[ \t]*\n)(?:^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$\n?)(?:^\|[^\n]*\|[ \t]*\n?)*"#,
             transform: { save("table", $0) }
         )
 
@@ -81,6 +83,11 @@ enum MarkdownStructureGuard {
             of: #"^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$"#,
             options: .regularExpression
         ) != nil { return true }
+        // Pipe table data rows — keep hard breaks so purify does not glue cells.
+        if s.hasPrefix("|") {
+            let pipeCount = s.filter { $0 == "|" }.count
+            if pipeCount >= 2 { return true }
+        }
         return false
     }
 

@@ -129,12 +129,50 @@ final class SelectionFetchCoordinatorTests: XCTestCase {
         XCTAssertEqual(provider.pasteboardProbeCount, 1)
     }
 
-    private func coordinator(_ provider: FakeSelectionProbeProvider) -> SelectionFetchCoordinator {
+    private func coordinator(
+        _ provider: FakeSelectionProbeProvider,
+        pasteboardTimeoutNanoseconds: UInt64 = 0,
+        pasteboardTimeoutWhenAXHitNanoseconds: UInt64 = 0
+    ) -> SelectionFetchCoordinator {
         SelectionFetchCoordinator(
             provider: provider,
             axRetryDelayNanoseconds: 0,
-            pasteboardTimeoutNanoseconds: 0
+            pasteboardTimeoutNanoseconds: pasteboardTimeoutNanoseconds,
+            pasteboardTimeoutWhenAXHitNanoseconds: pasteboardTimeoutWhenAXHitNanoseconds
         )
+    }
+
+    func testAXHitUsesShorterPasteboardTimeoutAndSkipsRetry() async {
+        let selection = SelectionFetcher.Selection(text: "ax", screenRectTopLeft: nil)
+        let provider = FakeSelectionProbeProvider(
+            axResults: [.found(selection)],
+            pasteboardResult: .timedOut
+        )
+        let result = await coordinator(
+            provider,
+            pasteboardTimeoutNanoseconds: 600_000_000,
+            pasteboardTimeoutWhenAXHitNanoseconds: 200_000_000
+        ).fetch(expectedApplicationPID: provider.pid)
+
+        XCTAssertEqual(result, .found(selection))
+        XCTAssertEqual(provider.axProbeCount, 1, "AX hit should skip the 40ms retry probe")
+        XCTAssertEqual(provider.pasteboardProbeCount, 1)
+        XCTAssertEqual(provider.lastPasteboardTimeoutNanoseconds, 200_000_000)
+    }
+
+    func testAXMissKeepsLongPasteboardTimeout() async {
+        let provider = FakeSelectionProbeProvider(
+            axResults: [.unavailable, .unavailable, .unavailable],
+            pasteboardResult: .timedOut
+        )
+        let result = await coordinator(
+            provider,
+            pasteboardTimeoutNanoseconds: 600_000_000,
+            pasteboardTimeoutWhenAXHitNanoseconds: 200_000_000
+        ).fetch(expectedApplicationPID: provider.pid)
+
+        XCTAssertEqual(result, .timedOut)
+        XCTAssertEqual(provider.lastPasteboardTimeoutNanoseconds, 600_000_000)
     }
 }
 
@@ -146,6 +184,7 @@ private final class FakeSelectionProbeProvider: SelectionProbeProviding {
     let pasteboardResult: PasteboardSelectionProbe
     private(set) var axProbeCount = 0
     private(set) var pasteboardProbeCount = 0
+    private(set) var lastPasteboardTimeoutNanoseconds: UInt64?
 
     init(
         pid: pid_t = 42,
@@ -168,6 +207,7 @@ private final class FakeSelectionProbeProvider: SelectionProbeProviding {
         timeoutNanoseconds: UInt64
     ) async -> PasteboardSelectionProbe {
         pasteboardProbeCount += 1
+        lastPasteboardTimeoutNanoseconds = timeoutNanoseconds
         return pasteboardResult
     }
 }

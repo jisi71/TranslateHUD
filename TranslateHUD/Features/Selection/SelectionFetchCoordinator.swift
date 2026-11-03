@@ -69,7 +69,10 @@ protocol SelectionProbeProviding: AnyObject {
 struct SelectionFetchCoordinator {
     let provider: any SelectionProbeProviding
     var axRetryDelayNanoseconds: UInt64 = 40_000_000
+    /// Pasteboard wait when AX did not already find a selection (Electron/Chrome often need this).
     var pasteboardTimeoutNanoseconds: UInt64 = 600_000_000
+    /// Shorter pasteboard wait when AX already hit — still prefer HTML clipboard over AX flat text.
+    var pasteboardTimeoutWhenAXHitNanoseconds: UInt64 = 200_000_000
 
     func fetch(expectedApplicationPID: pid_t?) async -> SelectionFetchResult {
         guard applicationStillMatches(expectedApplicationPID) else { return .applicationChanged }
@@ -94,18 +97,23 @@ struct SelectionFetchCoordinator {
 
         noteAX(provider.probeAX())
 
-        do {
-            try await Task.sleep(nanoseconds: axRetryDelayNanoseconds)
-        } catch {
-            return .cancelled
+        // AX already hit: skip the 40ms retry and use the short pasteboard timeout.
+        if axSelection == nil {
+            do {
+                try await Task.sleep(nanoseconds: axRetryDelayNanoseconds)
+            } catch {
+                return .cancelled
+            }
+            guard applicationStillMatches(expectedApplicationPID) else { return .applicationChanged }
+            noteAX(provider.probeAX())
         }
-        guard applicationStillMatches(expectedApplicationPID) else { return .applicationChanged }
 
-        noteAX(provider.probeAX())
-
+        let pasteboardTimeout = axSelection != nil
+            ? pasteboardTimeoutWhenAXHitNanoseconds
+            : pasteboardTimeoutNanoseconds
         let pasteboardResult = await provider.probePasteboard(
             expectedApplicationPID: expectedApplicationPID,
-            timeoutNanoseconds: pasteboardTimeoutNanoseconds
+            timeoutNanoseconds: pasteboardTimeout
         )
         // 剪贴板命中（含 HTML→Markdown）优先于 AX 扁文。
         if case .found(let selection) = pasteboardResult {

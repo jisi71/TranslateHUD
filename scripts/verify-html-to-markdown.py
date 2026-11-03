@@ -308,6 +308,25 @@ def list_item_body_text(nodes) -> str:
 
 
 
+
+def contains_br(nodes) -> bool:
+    for n in nodes:
+        if isinstance(n, Element):
+            if n.name == "br":
+                return True
+            if contains_br(n.children):
+                return True
+    return False
+
+
+def is_blank_spacer_element(el: Element) -> bool:
+    if el.name == "br":
+        return True
+    if plain_text(el.children).strip():
+        return False
+    return contains_br(el.children)
+
+
 def has_direct_block_child(nodes) -> bool:
     block = {
         "h1", "h2", "h3", "h4", "h5", "h6",
@@ -341,9 +360,7 @@ def convert(html: str) -> str | None:
                 if lines_l and lines_l[-1] != "":
                     lines_l.append("")
                 continue
-            if lines_l and lines_l[-1] != "":
-                if not (is_list_line(lines_l[-1]) and is_list_line(tt)):
-                    lines_l.append("")
+            # No auto-blank between adjacent content; empty spacers only.
             lines_l.append(tt)
         while lines_l and lines_l[0] == "":
             lines_l.pop(0)
@@ -376,6 +393,9 @@ def convert(html: str) -> str | None:
         blocks.append("\n".join(out_lines))
 
     def append_blockquote_leaf(el):
+        if is_blank_spacer_element(el):
+            blocks.append("")
+            return
         raw = plain_text(el.children)
         indent = 0
         for ch in raw.lstrip("\r\n"):
@@ -527,7 +547,10 @@ def convert(html: str) -> str | None:
             for nested in nested_lists:
                 append_list(nested.children, ordered=(nested.name == "ol"), depth=depth + 1)
 
-            if (loose or trailing_spacer) and seen < total_lis:
+            # Feishu trailing spacer on last item must still emit a blank.
+            if trailing_spacer:
+                blocks.append("")
+            elif loose and seen < total_lis:
                 blocks.append("")
 
 
@@ -545,14 +568,19 @@ def convert(html: str) -> str | None:
             if title:
                 blocks.append("#" * level + " " + title)
         elif el.name == "p":
-            body = inline_md(el.children).strip()
-            if body:
-                append_para(body)
+            if is_blank_spacer_element(el):
+                blocks.append("")
+            else:
+                body = inline_md(el.children).strip()
+                if body:
+                    append_para(body)
         elif el.name in ("div", "section", "article", "main", "header", "footer", "aside", "figure"):
             # Only descend when a direct child is a real block; inline strong/em stay in one paragraph.
             if has_direct_block_child(el.children):
                 for c in el.children:
                     append_blocks(c)
+            elif is_blank_spacer_element(el):
+                blocks.append("")
             else:
                 body = inline_md(el.children).strip()
                 if body:
@@ -600,9 +628,7 @@ def convert(html: str) -> str | None:
             if lines and lines[-1] != "":
                 lines.append("")
             continue
-        if lines and lines[-1] != "":
-            if not (is_list_line(lines[-1]) and is_list_line(t)):
-                lines.append("")
+        # No auto-blank between adjacent content; only empty <br> spacers create blanks.
         lines.append(t)
     while lines and lines[0] == "":
         lines.pop(0)

@@ -215,6 +215,44 @@ final class HTMLToMarkdownConverterTests: XCTestCase {
         XCTAssertTrue(markdown.contains("> > 内层"), "nested blockquote must emit stacked >: \(markdown)")
     }
 
+    func testAdjacentAceLinesDoNotInventBlankLine() {
+        let html = #"<div class="ace-line">第一行</div><div class="ace-line">第二行</div>"#
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertEqual(markdown, "第一行\n第二行")
+    }
+
+    func testAceLineBrKeepsSingleBlank() {
+        let html = #"<div class="ace-line">A</div><div class="ace-line"><br></div><div class="ace-line">B</div>"#
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertEqual(markdown, "A\n\nB")
+    }
+
+    func testStackedHeadingsStaySingleSpaced() {
+        let html = "<h1>H1</h1><h2>H2</h2><h3>H3</h3>"
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertEqual(markdown, "# H1\n## H2\n### H3")
+    }
+
+    func testWikiShapedThreeColumnTable() {
+        let html = """
+        <table class="ace-table">
+        <tr><td><div>功能</div></td><td><div>状态</div></td><td><div>备注</div></td></tr>
+        <tr><td><div>假换行</div></td><td><div>待测</div></td><td><div>PDF 软换行</div></td></tr>
+        <tr><td><div>空行</div></td><td><div>待测</div></td><td><div>段间空行</div></td></tr>
+        <tr><td><div>列表</div></td><td><div>待测</div></td><td><div>`-` / `1.`</div></td></tr>
+        </table>
+        """
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertTrue(markdown.contains("| 功能 | 状态 | 备注 |"), markdown)
+        XCTAssertTrue(markdown.contains("| --- | --- | --- |"), markdown)
+        XCTAssertTrue(markdown.contains("| 假换行 | 待测 | PDF 软换行 |"), markdown)
+        XCTAssertTrue(markdown.contains("| 空行 | 待测 | 段间空行 |"), markdown)
+        XCTAssertTrue(markdown.contains("| 列表 | 待测 |"), markdown)
+        // Table is one contiguous GFM block (single-spaced rows, not blank-padded).
+        XCTAssertTrue(markdown.contains("| 功能 | 状态 | 备注 |\n| --- | --- | --- |\n| 假换行"), markdown)
+    }
+
+
     private static func loadFixture(_ name: String) throws -> String {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

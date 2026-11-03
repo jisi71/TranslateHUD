@@ -111,13 +111,20 @@ enum MarkdownDisplay {
             } else {
                 let edges = proseEdgeBlankCounts(seg.markdown)
                 total += blankLineSpacerHeight(count: edges.leading, role: role)
-                if !edges.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    total += TextBlockMetrics.height(
-                        attributed: styled(edges.body, role: role, colors: colors),
-                        lineSpacing: role.lineSpacing,
-                        width: bodyWidth,
-                        maxLines: nil
-                    )
+                for piece in prosePieces(from: edges.body) {
+                    switch piece {
+                    case .markdown(let md):
+                        if !md.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            total += TextBlockMetrics.height(
+                                attributed: styled(md, role: role, colors: colors),
+                                lineSpacing: role.lineSpacing,
+                                width: bodyWidth,
+                                maxLines: nil
+                            )
+                        }
+                    case .table(let rows):
+                        total += tableHeight(rows: rows, role: role, colors: colors, width: bodyWidth) + 8
+                    }
                 }
                 total += blankLineSpacerHeight(count: edges.trailing, role: role)
             }
@@ -172,7 +179,9 @@ enum MarkdownDisplay {
             end -= 1
         }
         let body = lines[start..<end].joined(separator: "\n")
-        return (start, lines.count - end, body)
+        // Cap at one blank-line spacer per edge — Feishu `<br>` spacers should read as a
+        // single empty line, not stacked gaps if trailing `\n\n` accumulates in the segment.
+        return (min(start, 1), min(lines.count - end, 1), body)
     }
 
     /// Spacer height for N blank lines at the given role's blank-line metrics.
@@ -218,9 +227,8 @@ enum MarkdownDisplay {
 
     /// Foundation's `.full` Markdown parse keeps presentationIntent on runs but strips
     /// newlines between blocks from characters (e.g. heading A then heading B become AB).
-    /// Reinject breaks when adjacent runs have different block identities. Paragraph /
-    /// heading gaps use a blank line (`\n\n`); tight list items stay single `\n`; loose
-    /// list gaps are restored from the source markdown (Foundation intents look identical).
+    /// Reinject breaks when adjacent runs have different block identities. Gap size follows
+    /// the source markdown (blank → `\n\n`, else `\n`) for prose, headings, code, and lists.
     private static func reinjectBlockBreaks(_ attributed: inout AttributedString, source: String) {
         let runs = Array(attributed.runs)
         guard runs.count >= 2 else { return }
@@ -258,8 +266,9 @@ enum MarkdownDisplay {
         }
     }
 
-    /// Blank line between prose blocks; single newline between tight list items; loose list
-    /// items get a blank line when the source markdown had one between those item texts.
+    /// Follow the source markdown: blank line in source → `\n\n`, else single `\n`.
+    /// Applies to prose/heading/code as well as list items so we do not invent double spacing
+    /// when neighbors were only single-spaced in the markdown.
     private static func blockBreakString(
         previousIntent: PresentationIntent?,
         currentIntent: PresentationIntent?,
@@ -267,15 +276,10 @@ enum MarkdownDisplay {
         currentText: String,
         source: String
     ) -> String {
-        let previousInList = isListItemContext(previousIntent)
-        let currentInList = isListItemContext(currentIntent)
-        if previousInList && currentInList {
-            if sourceHasBlankLine(between: previousText, and: currentText, in: source) {
-                return "\n\n"
-            }
-            return "\n"
+        if sourceHasBlankLine(between: previousText, and: currentText, in: source) {
+            return "\n\n"
         }
-        return "\n\n"
+        return "\n"
     }
 
     private static func isListItemContext(_ intent: PresentationIntent?) -> Bool {
@@ -598,6 +602,122 @@ enum MarkdownDisplay {
         return bars * barWidth + max(bars - 1, 0) * barGap + textGap + quoteBodyLeadingInset(depth: Int(bars))
     }
 
+    // MARK: - GFM tables (Foundation does not lay these out as a grid)
+
+    /// One visual chunk inside a prose cluster: ordinary markdown or a pipe table.
+    enum ProsePiece: Equatable {
+        case markdown(String)
+        case table(rows: [[String]])
+    }
+
+    /// Split prose markdown into ordinary runs and contiguous GFM pipe tables.
+    static func prosePieces(from markdown: String) -> [ProsePiece] {
+        let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var pieces: [ProsePiece] = []
+        var buffer: [String] = []
+        var index = 0
+
+        func flushBuffer() {
+            let chunk = buffer.joined(separator: "\n")
+            buffer = []
+            if !chunk.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                pieces.append(.markdown(chunk))
+            } else if !chunk.isEmpty, pieces.isEmpty {
+                // Preserve leading blanks for edge spacers when whole segment is blankish.
+                pieces.append(.markdown(chunk))
+            }
+        }
+
+        while index < lines.count {
+            if let table = matchGFMTable(in: lines, startingAt: index) {
+                flushBuffer()
+                pieces.append(.table(rows: table.rows))
+                index = table.endIndex
+            } else {
+                buffer.append(lines[index])
+                index += 1
+            }
+        }
+        flushBuffer()
+        if pieces.isEmpty {
+            pieces.append(.markdown(markdown))
+        }
+        return pieces
+    }
+
+    /// Header + separator (+ optional body) starting at `start`. `endIndex` is past the last table line.
+    private static func matchGFMTable(
+        in lines: [String],
+        startingAt start: Int
+    ) -> (rows: [[String]], endIndex: Int)? {
+        guard start < lines.count, isGFMTableRow(lines[start]) else { return nil }
+        guard start + 1 < lines.count, isGFMTableSeparator(lines[start + 1]) else { return nil }
+
+        var rows: [[String]] = [parseGFMTableCells(lines[start])]
+        var end = start + 2
+        while end < lines.count, isGFMTableRow(lines[end]), !isGFMTableSeparator(lines[end]) {
+            rows.append(parseGFMTableCells(lines[end]))
+            end += 1
+        }
+        // Normalize column count to header width.
+        let width = max(rows[0].count, 1)
+        rows = rows.map { row in
+            var padded = row
+            while padded.count < width { padded.append("") }
+            if padded.count > width { padded = Array(padded.prefix(width)) }
+            return padded
+        }
+        return (rows, end)
+    }
+
+    static func isGFMTableRow(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("|"), trimmed.contains("|") else { return false }
+        // Separator rows are also "pipe rows" but matchGFMTable treats them separately.
+        return true
+    }
+
+    static func isGFMTableSeparator(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed.range(
+            of: #"^\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    static func parseGFMTableCells(_ line: String) -> [String] {
+        var trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("|") { trimmed.removeFirst() }
+        if trimmed.hasSuffix("|") { trimmed.removeLast() }
+        return trimmed
+            .split(separator: "|", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// Estimated height for a rendered pipe table (row count × line box + padding).
+    static func tableHeight(rows: [[String]], role: Role, colors: PanelColors, width: CGFloat) -> CGFloat {
+        guard !rows.isEmpty else { return 0 }
+        let cols = max(rows[0].count, 1)
+        let cellWidth = max((width - CGFloat(cols + 1) * 1) / CGFloat(cols), 40)
+        let pad: CGFloat = 12
+        var total: CGFloat = 1 // top border
+        for row in rows {
+            var rowHeight: CGFloat = role.basePointSize + role.lineSpacing
+            for cell in row {
+                let cellMD = cell.isEmpty ? " " : cell
+                let h = TextBlockMetrics.height(
+                    attributed: styled(cellMD, role: role, colors: colors),
+                    lineSpacing: role.lineSpacing,
+                    width: cellWidth - pad,
+                    maxLines: nil
+                )
+                rowHeight = max(rowHeight, h + pad)
+            }
+            total += rowHeight + 1 // row + bottom border
+        }
+        return total
+    }
+
     /// Contiguous quote segments share one cluster (0 spacing) so outer/inner rails abut.
     private enum SegmentCluster: Equatable {
         case prose(Segment)
@@ -653,22 +773,67 @@ enum MarkdownDisplay {
         }
 
         /// Paint leading/trailing empty lines as blank-line-tall spacers (Text drops edge `\n`).
+        /// GFM pipe tables are pulled out of the Text pass and drawn as a simple grid.
         @ViewBuilder
         private func proseClusterView(_ seg: Segment) -> some View {
             let edges = MarkdownDisplay.proseEdgeBlankCounts(seg.markdown)
             let lineGap = MarkdownDisplay.blankLineSpacing(for: role)
+            let pieces = MarkdownDisplay.prosePieces(from: edges.body)
             VStack(alignment: .leading, spacing: 0) {
                 if edges.leading > 0 {
                     Color.clear.frame(height: CGFloat(edges.leading) * lineGap)
                 }
-                if !edges.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    textBlock(edges.body)
+                ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
+                    switch piece {
+                    case .markdown(let md):
+                        if !md.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            textBlock(md)
+                        }
+                    case .table(let rows):
+                        tableView(rows)
+                    }
                 }
                 if edges.trailing > 0 {
                     Color.clear.frame(height: CGFloat(edges.trailing) * lineGap)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+
+        @ViewBuilder
+        private func tableView(_ rows: [[String]]) -> some View {
+            let cols = max(rows.first?.count ?? 0, 1)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, row in
+                    HStack(alignment: .top, spacing: 0) {
+                        ForEach(0..<cols, id: \.self) { col in
+                            let cell = col < row.count ? row[col] : ""
+                            Text(MarkdownDisplay.styled(cell.isEmpty ? " " : cell, role: role, colors: colors))
+                                .lineSpacing(role.lineSpacing)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 5)
+                                .overlay(alignment: .trailing) {
+                                    if col < cols - 1 {
+                                        Rectangle().fill(colors.border).frame(width: 1)
+                                    }
+                                }
+                        }
+                    }
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(colors.border).frame(height: 1)
+                    }
+                    .background(rowIndex == 0 ? colors.border.opacity(0.12) : Color.clear)
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(colors.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(.vertical, 4)
         }
 
         @ViewBuilder

@@ -84,8 +84,12 @@ enum HTMLToMarkdownConverter {
                 let marks = String(repeating: "#", count: min(max(level, 1), 6))
                 blocks.append("\(marks) \(title)")
             case "p":
-                let body = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !body.isEmpty { appendParagraph(body, into: &blocks) }
+                if isBlankSpacerElement(el) {
+                    blocks.append("")
+                } else {
+                    let body = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !body.isEmpty { appendParagraph(body, into: &blocks) }
+                }
             case "div", "section", "article", "main", "header", "footer", "aside", "figure":
                 // 仅当直接子节点含块级元素时下钻；飞书 ace-line 内 strong/em/code 等行内标签
                 // 必须整段走 inlineMarkdown，否则会把「普通字，**粗体**」拆成多块多行。
@@ -93,6 +97,9 @@ enum HTMLToMarkdownConverter {
                     for child in el.children {
                         appendBlocks(from: child, into: &blocks)
                     }
+                } else if isBlankSpacerElement(el) {
+                    // 飞书 `<div class=ace-line><br></div>`：故意空行，交给 finalize 保留一段空白。
+                    blocks.append("")
                 } else {
                     let body = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
                     if !body.isEmpty { appendParagraph(body, into: &blocks) }
@@ -245,7 +252,10 @@ enum HTMLToMarkdownConverter {
                 )
             }
 
-            if (loose || trailingSpacerBlank), seenLis < totalLis {
+            // 飞书项末 spacer ul 在最后一项也要落下空行，否则列表和下一段会被粘在一起。
+            if trailingSpacerBlank {
+                blocks.append("")
+            } else if loose, seenLis < totalLis {
                 blocks.append("")
             }
         }
@@ -381,6 +391,10 @@ enum HTMLToMarkdownConverter {
     }
 
     private static func appendBlockquoteLeaf(_ el: Element, into blocks: inout [String]) {
+        if isBlankSpacerElement(el) {
+            blocks.append("")
+            return
+        }
         let raw = plainText(el.children)
         let indent = leadingIndentCount(raw)
         let body = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -457,7 +471,8 @@ enum HTMLToMarkdownConverter {
     }
 
     private static func finalize(_ blocks: [String]) -> String {
-        // 去掉首尾空块；块之间空一行（连续列表项单换行，保留缩进；标题/段落双换行）
+        // 去掉首尾空块。故意空行只来自空块（飞书 <br> spacer）；相邻正文/标题不再自动插空行，
+        // 避免把「无空行的连续标题/ace-line」画成假空行。连续列表项仍单换行。
         var lines: [String] = []
         for block in blocks {
             let t = rtrimSpaces(block)
@@ -467,13 +482,7 @@ enum HTMLToMarkdownConverter {
                 }
                 continue
             }
-            if let last = lines.last, !last.isEmpty {
-                let lastIsList = isMarkdownListLine(last)
-                let curIsList = isMarkdownListLine(t)
-                if !(lastIsList && curIsList) {
-                    lines.append("")
-                }
-            }
+            // 列表项之间本来就靠单换行；非列表相邻块也不再强行插空白。
             lines.append(t)
         }
         while lines.last?.isEmpty == true { lines.removeLast() }
@@ -621,6 +630,23 @@ enum HTMLToMarkdownConverter {
 
     private static func isHeadingName(_ name: String) -> Bool {
         ["h1", "h2", "h3", "h4", "h5", "h6"].contains(name)
+    }
+
+    /// 飞书空行占位：元素（含子树）无可见文字，且含 `<br>`（或自身就是 br）。
+    private static func isBlankSpacerElement(_ el: Element) -> Bool {
+        if el.name == "br" { return true }
+        let text = plainText(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.isEmpty else { return false }
+        return containsBr(el.children)
+    }
+
+    private static func containsBr(_ nodes: [Node]) -> Bool {
+        for node in nodes {
+            guard case .element(let child) = node else { continue }
+            if child.name == "br" { return true }
+            if containsBr(child.children) { return true }
+        }
+        return false
     }
 
     /// 直接子节点是否含块级元素。不含 br（软换行留在行内）；不含 strong/em 等行内标签。

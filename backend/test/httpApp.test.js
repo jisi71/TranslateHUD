@@ -166,6 +166,26 @@ test('trial translation bills the source, hides the server key, and lowers the b
   }
 })
 
+test('500, 501 and 1000 graphemes reach the translation service', async () => {
+  const store = new MemoryAccountStore()
+  await grant(store)
+  const { server, base, calls } = await listen(store)
+  try {
+    for (const length of [500, 501, 1000]) {
+      const source = '字'.repeat(length)
+      const result = await request(base, '/v1/chat/completions', {
+        token: 'good-token',
+        source,
+        body: { model: 'client-model', messages: [{ role: 'user', content: source }] }
+      })
+      assert.equal(result.status, 200, `source length ${length}`)
+    }
+    assert.equal(calls.length, 3)
+  } finally {
+    server.close()
+  }
+})
+
 test('over 1000 graphemes is rejected, the upstream is not called, and nothing is gifted or charged', async () => {
   const store = new MemoryAccountStore()
   const { server, base, calls } = await listen(store)

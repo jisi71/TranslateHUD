@@ -4608,6 +4608,23 @@
         }
       }
     },
+    "超出单次翻译上限（体验额度单次最多 1000 字）": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "超出单次翻译上限（体验额度单次最多 1000 字）"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This translation exceeds the trial limit of 1000 characters."
+          }
+        }
+      }
+    },
     "超出单次翻译上限（体验额度单次最多 500 字）": {
       "extractionState": "manual",
       "localizations": {

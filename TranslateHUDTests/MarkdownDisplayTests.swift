@@ -643,5 +643,63 @@ final class MarkdownDisplayTests: XCTestCase {
         XCTAssertEqual(edges.body.trimmingCharacters(in: .whitespacesAndNewlines), "label")
     }
 
+    /// Single-segment GFM tables must use grid intrinsic height, not TextKit on raw pipes.
+    /// Under-counting here is what cropped the translated table in the popover.
+    func testGFMTableHeightUsesGridNotPipeTextLines() {
+        let md = """
+        | PARAM | VALUE |
+        | --- | --- |
+        | base_url (OpenAI) | https://api.deepseek.com |
+        | base_url (Anthropic) | https://api.deepseek.com/ |
+        """
+        let colors = PanelColors.dark
+        let width = PopoverContent.translationTextWidth
+        XCTAssertTrue(MarkdownDisplay.containsGFMTable(md))
+        let grid = MarkdownDisplay.height(md, role: .translation, colors: colors, width: width, maxLines: nil)
+        let asPipeText = TextBlockMetrics.height(
+            attributed: MarkdownDisplay.styled(md, role: .translation, colors: colors),
+            lineSpacing: MarkdownDisplay.Role.translation.lineSpacing,
+            width: width,
+            maxLines: nil
+        )
+        XCTAssertGreaterThan(
+            grid,
+            asPipeText + 24,
+            "grid=\(grid) pipeText=\(asPipeText) — tableHeight must beat raw pipe lines"
+        )
+
+        // Explicit grid estimate for the same rows should match height()'s table path.
+        let pieces = MarkdownDisplay.prosePieces(from: md)
+        guard let tablePiece = pieces.first(where: {
+            if case .table = $0 { return true }
+            return false
+        }), case .table(let rows) = tablePiece else {
+            return XCTFail("expected a table piece in \(pieces)")
+        }
+        let direct = MarkdownDisplay.tableHeight(
+            rows: rows, role: .translation, colors: colors, width: width
+        )
+        XCTAssertEqual(grid, direct, accuracy: 1.0)
+    }
+
+    func testGFMTableHeightGrowsWithExtraRows() {
+        let two = """
+        | A | B |
+        | --- | --- |
+        | 1 | 2 |
+        """
+        let three = """
+        | A | B |
+        | --- | --- |
+        | 1 | 2 |
+        | 3 | 4 |
+        """
+        let colors = PanelColors.dark
+        let width = PopoverContent.translationTextWidth
+        let h2 = MarkdownDisplay.height(two, role: .translation, colors: colors, width: width, maxLines: nil)
+        let h3 = MarkdownDisplay.height(three, role: .translation, colors: colors, width: width, maxLines: nil)
+        XCTAssertGreaterThan(h3, h2 + 16)
+    }
+
 
 }

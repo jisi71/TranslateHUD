@@ -62,8 +62,15 @@ enum MarkdownDisplay {
         width: CGFloat,
         maxLines: Int?
     ) -> CGFloat {
-        // maxLines (collapsed source) stays a single TextKit pass on the full string.
-        if maxLines != nil {
+        let segs = segments(from: markdown)
+        let hasPipeTable = segs.contains { seg in
+            !seg.isQuote && containsGFMTable(seg.markdown)
+        }
+
+        // Collapsed source still uses a TextKit line cap — but only when there is no
+        // pipe table. Grid tables are taller than raw `| … |` lines; capping by
+        // TextKit would under-size the popover the same way the bug did.
+        if let maxLines, !hasPipeTable {
             return TextBlockMetrics.height(
                 attributed: styled(markdown, role: role, colors: colors),
                 lineSpacing: role.lineSpacing,
@@ -71,8 +78,10 @@ enum MarkdownDisplay {
                 maxLines: maxLines
             )
         }
-        let segs = segments(from: markdown)
-        guard segs.count > 1 || segs.first?.isQuote == true else {
+
+        // Fast path for a single plain prose block with no GFM table. Keep TextKit
+        // on the full string so edge newlines stay collapsed the way Text renders them.
+        if !hasPipeTable, segs.count == 1, let only = segs.first, !only.isQuote {
             return TextBlockMetrics.height(
                 attributed: styled(markdown, role: role, colors: colors),
                 lineSpacing: role.lineSpacing,
@@ -80,6 +89,7 @@ enum MarkdownDisplay {
                 maxLines: nil
             )
         }
+
         var total: CGFloat = 0
         let paraGap = quoteParagraphSpacing(for: role)
         for (index, seg) in segs.enumerated() {
@@ -123,13 +133,27 @@ enum MarkdownDisplay {
                             )
                         }
                     case .table(let rows):
-                        total += tableHeight(rows: rows, role: role, colors: colors, width: bodyWidth) + 8
+                        // tableHeight already includes the BlocksView outer vertical pad.
+                        total += tableHeight(rows: rows, role: role, colors: colors, width: bodyWidth)
                     }
                 }
                 total += blankLineSpacerHeight(count: edges.trailing, role: role)
             }
         }
+
+        if let maxLines, hasPipeTable {
+            let lineCap = CGFloat(max(maxLines, 1)) * blankLineSpacing(for: role)
+            return min(total, lineCap)
+        }
         return total
+    }
+
+    /// True when `markdown` contains at least one GFM pipe table (header + separator).
+    static func containsGFMTable(_ markdown: String) -> Bool {
+        prosePieces(from: markdown).contains { piece in
+            if case .table = piece { return true }
+            return false
+        }
     }
 
     /// Legacy small gap (8pt). Not enough to read as a blank line next to quotes —
@@ -694,13 +718,17 @@ enum MarkdownDisplay {
             .map { $0.trimmingCharacters(in: .whitespaces) }
     }
 
-    /// Estimated height for a rendered pipe table (row count × line box + padding).
+    /// Estimated height for a rendered pipe table — must match `BlocksView.tableView`.
+    /// Borders are overlays (no layout height). Cell pad is 6×2 horizontal / 5×2 vertical;
+    /// the grid also has `.padding(.vertical, 4)` outside the stroke.
     static func tableHeight(rows: [[String]], role: Role, colors: PanelColors, width: CGFloat) -> CGFloat {
         guard !rows.isEmpty else { return 0 }
         let cols = max(rows[0].count, 1)
-        let cellWidth = max((width - CGFloat(cols + 1) * 1) / CGFloat(cols), 40)
-        let pad: CGFloat = 12
-        var total: CGFloat = 1 // top border
+        let cellWidth = max(width / CGFloat(cols), 40)
+        let horizontalPad: CGFloat = 12
+        let verticalPad: CGFloat = 10
+        let outerVerticalPad: CGFloat = 8
+        var total: CGFloat = 0
         for row in rows {
             var rowHeight: CGFloat = role.basePointSize + role.lineSpacing
             for cell in row {
@@ -708,14 +736,14 @@ enum MarkdownDisplay {
                 let h = TextBlockMetrics.height(
                     attributed: styled(cellMD, role: role, colors: colors),
                     lineSpacing: role.lineSpacing,
-                    width: cellWidth - pad,
+                    width: max(cellWidth - horizontalPad, 1),
                     maxLines: nil
                 )
-                rowHeight = max(rowHeight, h + pad)
+                rowHeight = max(rowHeight, h + verticalPad)
             }
-            total += rowHeight + 1 // row + bottom border
+            total += rowHeight
         }
-        return total
+        return total + outerVerticalPad
     }
 
     /// Contiguous quote segments share one cluster (0 spacing) so outer/inner rails abut.

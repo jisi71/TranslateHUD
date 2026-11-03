@@ -33,7 +33,7 @@ enum MarkdownDisplay {
         options.interpretedSyntax = .full
         options.failurePolicy = .returnPartiallyParsedIfPossible
         if var parsed = try? AttributedString(markdown: markdown, options: options) {
-            reinjectBlockBreaks(&parsed)
+            reinjectBlockBreaks(&parsed, source: markdown)
             return parsed
         }
         return AttributedString(markdown)
@@ -73,14 +73,14 @@ enum MarkdownDisplay {
 
     /// Foundation's `.full` Markdown parse keeps presentationIntent on runs but strips
     /// newlines between blocks from characters (e.g. heading A then heading B become AB).
-    /// SwiftUI Text and TextKit then render sticky lines. Insert a newline only when both
-    /// adjacent runs have block-level identities that differ; inline splits
-    /// (bold/italic/code) stay unjoined.
-    private static func reinjectBlockBreaks(_ attributed: inout AttributedString) {
+    /// Reinject breaks when adjacent runs have different block identities. Paragraph /
+    /// heading gaps use a blank line (`\n\n`); tight list items stay single `\n`; loose
+    /// list gaps are restored from the source markdown (Foundation intents look identical).
+    private static func reinjectBlockBreaks(_ attributed: inout AttributedString, source: String) {
         let runs = Array(attributed.runs)
         guard runs.count >= 2 else { return }
 
-        var insertionIndices: [AttributedString.Index] = []
+        var insertions: [(AttributedString.Index, String)] = []
 
         for i in 1..<runs.count {
             let previous = runs[i - 1]
@@ -98,13 +98,67 @@ enum MarkdownDisplay {
             let currentChars = attributed[current.range].characters
             if previousChars.last == "\n" || currentChars.first == "\n" { continue }
 
-            insertionIndices.append(current.range.lowerBound)
+            let breakText = blockBreakString(
+                previousIntent: previous.presentationIntent,
+                currentIntent: current.presentationIntent,
+                previousText: String(previousChars),
+                currentText: String(currentChars),
+                source: source
+            )
+            insertions.append((current.range.lowerBound, breakText))
         }
 
-        for index in insertionIndices.reversed() {
-            attributed.characters.insert(contentsOf: "\n", at: index)
+        for (index, breakText) in insertions.reversed() {
+            attributed.characters.insert(contentsOf: breakText, at: index)
         }
     }
+
+    /// Blank line between prose blocks; single newline between tight list items; loose list
+    /// items get a blank line when the source markdown had one between those item texts.
+    private static func blockBreakString(
+        previousIntent: PresentationIntent?,
+        currentIntent: PresentationIntent?,
+        previousText: String,
+        currentText: String,
+        source: String
+    ) -> String {
+        let previousInList = isListItemContext(previousIntent)
+        let currentInList = isListItemContext(currentIntent)
+        if previousInList && currentInList {
+            if sourceHasBlankLine(between: previousText, and: currentText, in: source) {
+                return "\n\n"
+            }
+            return "\n"
+        }
+        return "\n\n"
+    }
+
+    private static func isListItemContext(_ intent: PresentationIntent?) -> Bool {
+        guard let intent else { return false }
+        for component in intent.components {
+            if case .listItem = component.kind {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// True when `source` has a blank line between the first occurrence of `previous`
+    /// and a later occurrence of `current` (used to restore loose-list gaps).
+    private static func sourceHasBlankLine(between previous: String, and current: String, in source: String) -> Bool {
+        let prev = previous.trimmingCharacters(in: .whitespacesAndNewlines)
+        let curr = current.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prev.isEmpty, !curr.isEmpty else { return false }
+        guard let prevRange = source.range(of: prev) else { return false }
+        let searchStart = prevRange.upperBound
+        guard searchStart < source.endIndex,
+              let currRange = source.range(of: curr, range: searchStart..<source.endIndex) else {
+            return false
+        }
+        let between = source[searchStart..<currRange.lowerBound]
+        return between.range(of: "\n[ \t]*\n", options: .regularExpression) != nil
+    }
+
 
     /// Innermost non-container block identity, if any.
     /// `PresentationIntent.components` is inner→outer. List items share one parent

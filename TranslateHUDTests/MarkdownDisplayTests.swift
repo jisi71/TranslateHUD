@@ -256,8 +256,9 @@ final class MarkdownDisplayTests: XCTestCase {
             characters
         )
         XCTAssertFalse(characters.contains("甲乙"), "loose items must not glue: \(characters)")
+        // Loose list: blank line between items (at least two newlines).
         XCTAssertTrue(
-            characters.range(of: #"甲\s*\n+[\s•]*乙"#, options: .regularExpression) != nil,
+            characters.range(of: #"甲\s*\n\s*\n[\s•]*乙"#, options: .regularExpression) != nil,
             characters
         )
         let nonEmpty = characters.split(separator: "\n", omittingEmptySubsequences: true)
@@ -274,6 +275,50 @@ final class MarkdownDisplayTests: XCTestCase {
         XCTAssertTrue(characters.contains("粗体"), characters)
         XCTAssertTrue(characters.contains("path/to/file.swift"), characters)
         XCTAssertFalse(characters.contains("•"), "plain paragraph must not get list bullets: \(characters)")
+    }
+
+    func testWikiSectionThreeParagraphsKeepBlankLines() {
+        let markdown = """
+        ## 三、空行与段落（重点测空行是否被吞）
+
+        第一段：假换行测试前先确认空行。
+
+        第二段：上面这一行和本段之间应有一个空行；译完后空行应还在。
+
+        第三段：下面列表前也应留空行。
+        """
+        let characters = String(MarkdownDisplay.styled(markdown, role: .translation, colors: .dark).characters)
+        XCTAssertTrue(characters.contains("第一段"), characters)
+        XCTAssertTrue(characters.contains("第二段"), characters)
+        XCTAssertTrue(characters.contains("第三段"), characters)
+        // First→second and second→third must keep a visible blank line (two newlines).
+        XCTAssertTrue(
+            characters.range(of: #"第一段[^\n]*\n\s*\n[^\n]*第二段"#, options: .regularExpression) != nil,
+            characters
+        )
+        XCTAssertTrue(
+            characters.range(of: #"第二段[^\n]*\n\s*\n[^\n]*第三段"#, options: .regularExpression) != nil,
+            characters
+        )
+        // Heading then first paragraph also spaced.
+        XCTAssertTrue(
+            characters.range(of: #"空行与段落[^\n]*\n\s*\n[^\n]*第一段"#, options: .regularExpression) != nil,
+            characters
+        )
+    }
+
+    func testTightListStaysSingleSpaced() {
+        let characters = String(MarkdownDisplay.styled("- 苹果\n- 香蕉\n- 樱桃", role: .translation, colors: .dark).characters)
+        XCTAssertTrue(
+            characters.range(of: #"苹果\s*\n[\s•]*香蕉"#, options: .regularExpression) != nil,
+            characters
+        )
+        // Must NOT insert a blank line between tight items.
+        XCTAssertTrue(
+            characters.range(of: #"苹果\s*\n\s*\n[\s•]*香蕉"#, options: .regularExpression) == nil,
+            characters
+        )
+        XCTAssertFalse(characters.contains("苹果香蕉樱桃"), characters)
     }
 
     func testInlineCodeKeepsBackgroundAttribute() {

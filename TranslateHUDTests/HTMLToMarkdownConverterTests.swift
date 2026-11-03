@@ -186,6 +186,21 @@ final class HTMLToMarkdownConverterTests: XCTestCase {
         XCTAssertEqual(markdown, "- [x] 已完成的任务\n- [ ] 未完成的任务\n- [ ] 再试一次划词")
     }
 
+
+    func testNestedBlockquoteProducesStackedMarkers() {
+        let html = """
+        <blockquote>
+        <div>外层</div>
+        <blockquote>
+        <div>内层</div>
+        </blockquote>
+        </blockquote>
+        """
+        let markdown = try! XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertTrue(markdown.contains("> 外层"), markdown)
+        XCTAssertTrue(markdown.contains("> > 内层"), "nested blockquote must emit stacked >: \(markdown)")
+    }
+
     private static func loadFixture(_ name: String) throws -> String {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

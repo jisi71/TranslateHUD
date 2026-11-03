@@ -395,4 +395,87 @@ final class MarkdownDisplayTests: XCTestCase {
     }
 
 
+    // MARK: - Block quotes (Feishu-like left rails)
+
+    func testStyledSingleQuoteShowsDepthOneRail() {
+        let styled = MarkdownDisplay.styled("> Outer quote", role: .translation, colors: .dark)
+        let characters = String(styled.characters)
+        XCTAssertTrue(characters.contains("│ "), "depth-1 quote needs a left rail: \(characters)")
+        XCTAssertTrue(characters.contains("Outer quote"), characters)
+        XCTAssertTrue(characters.contains("│ Outer quote"), characters)
+        XCTAssertFalse(characters.contains("│ │"), "single quote must not look nested: \(characters)")
+    }
+
+    func testStyledNestedQuoteShowsDeeperRails() {
+        let styled = MarkdownDisplay.styled("> Outer\n> > Nested", role: .translation, colors: .dark)
+        let characters = String(styled.characters)
+        XCTAssertTrue(characters.contains("Outer"), characters)
+        XCTAssertTrue(characters.contains("Nested"), characters)
+        XCTAssertTrue(characters.contains("│ │ "), "nested quote needs two rails: \(characters)")
+        let lines = characters.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        let outer = lines.first(where: { $0.contains("Outer") }) ?? ""
+        let nested = lines.first(where: { $0.contains("Nested") }) ?? ""
+        XCTAssertTrue(outer.hasPrefix("│ "), "outer: \(outer) full=\(characters)")
+        XCTAssertTrue(nested.hasPrefix("│ │ "), "nested: \(nested) full=\(characters)")
+        let outerRails = outer.prefix(while: { $0 == "│" || $0 == " " }).filter { $0 == "│" }.count
+        let nestedRails = nested.prefix(while: { $0 == "│" || $0 == " " }).filter { $0 == "│" }.count
+        XCTAssertEqual(outerRails, 1, characters)
+        XCTAssertEqual(nestedRails, 2, characters)
+        XCTAssertGreaterThan(nestedRails, outerRails, characters)
+    }
+
+    func testStyledQuoteAfterHeadingKeepsRail() {
+        let styled = MarkdownDisplay.styled(
+            "## Quotes\n\n> A quote\n>\n> Still quote",
+            role: .translation,
+            colors: .dark
+        )
+        let characters = String(styled.characters)
+        XCTAssertTrue(characters.contains("Quotes"), characters)
+        let lines = characters.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        let first = lines.first(where: { $0.contains("A quote") }) ?? ""
+        let second = lines.first(where: { $0.contains("Still quote") }) ?? ""
+        XCTAssertTrue(first.contains("│"), "heading-following quote needs rail: \(characters)")
+        XCTAssertTrue(second.contains("│"), "second quote paragraph needs rail: \(characters)")
+        let base = MarkdownDisplay.Role.translation.basePointSize
+        for run in styled.runs {
+            let text = String(styled[run.range].characters)
+            guard text.contains("│"), let size = run.appKit.font?.pointSize else { continue }
+            XCTAssertEqual(size, base, accuracy: 0.1, "rail font: \(text) size=\(size) full=\(characters)")
+            let header = run.presentationIntent?.components.contains {
+                if case .header = $0.kind { return true }
+                return false
+            } ?? false
+            XCTAssertFalse(header, "rail must not stay in heading run: \(text)")
+        }
+    }
+
+    func testPlainTextOmitsQuoteRailsForSpeech() {
+        let plain = MarkdownDisplay.plainText(from: "> Outer\n> > Nested")
+        XCTAssertFalse(plain.contains("│"), "speech must stay rail-free: \(plain)")
+        XCTAssertFalse(plain.contains(">"), plain)
+        XCTAssertTrue(plain.contains("Outer") && plain.contains("Nested"), plain)
+    }
+
+    func testStyledQuoteRailUsesBorderColorNotMutedOnlyBody() {
+        let colors = PanelColors.dark
+        let styled = MarkdownDisplay.styled("> Quoted body", role: .translation, colors: colors)
+        var sawRailBorder = false
+        var sawBodyPrimary = false
+        for run in styled.runs {
+            let text = String(styled[run.range].characters)
+            let color = run.appKit.foregroundColor
+            if text.contains("│"), text.allSatisfy({ $0 == "│" || $0 == " " || $0 == "\n" }) {
+                XCTAssertEqual(color, colors.nsBorder, "rail should use border color: \(text)")
+                sawRailBorder = true
+            }
+            if text.contains("Quoted body") {
+                XCTAssertEqual(color, colors.nsPrimaryText, "quote body should stay readable: \(text)")
+                sawBodyPrimary = true
+            }
+        }
+        XCTAssertTrue(sawRailBorder, String(styled.characters))
+        XCTAssertTrue(sawBodyPrimary, String(styled.characters))
+    }
+
 }

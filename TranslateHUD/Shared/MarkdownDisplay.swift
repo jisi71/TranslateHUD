@@ -45,11 +45,12 @@ enum MarkdownDisplay {
     }
 
     /// Parse + apply panel typography/colors so SwiftUI Text and TextKit height agree.
-    /// List markers are reinjected here (not in `parse`/`plainText`) so speech stays marker-free
-    /// while the popover shows bullets / numbers with nesting indent.
+    /// List markers and quote bars are reinjected here (not in `parse`/`plainText`) so speech
+    /// stays marker-free while the popover shows bullets / numbers / Feishu-like quote rails.
     static func styled(_ markdown: String, role: Role, colors: PanelColors) -> AttributedString {
         var attributed = parse(markdown)
         decorateListMarkers(&attributed)
+        decorateBlockQuotes(&attributed)
         applyTypography(&attributed, role: role, colors: colors)
         return attributed
     }
@@ -319,6 +320,65 @@ enum MarkdownDisplay {
         return false
     }
 
+    // MARK: - Block quotes
+
+    /// Foundation strips leading `>` under `.full` syntax and leaves only presentationIntent.
+    /// Reinject a visible left rail (`│ ` per nesting depth) so the popover reads like Feishu —
+    /// depth 1: `│ `, depth 2: `│ │ ` — without relying on muted body color alone.
+    /// Only `styled()` calls this; `plainText` / speech stay rail-free.
+    private static func decorateBlockQuotes(_ attributed: inout AttributedString) {
+        guard !attributed.characters.isEmpty else { return }
+
+        struct QuoteAnchor {
+            let index: AttributedString.Index
+            let depth: Int
+            let attributes: AttributeContainer
+        }
+
+        var anchors: [QuoteAnchor] = []
+        var seen = Set<Int>()
+        for run in attributed.runs {
+            guard let intent = run.presentationIntent else { continue }
+            let depth = blockQuoteDepth(of: intent)
+            guard depth > 0 else { continue }
+            // Innermost meaningful block (usually `.paragraph`) — one rail per quote paragraph,
+            // not once per inline split inside the same paragraph.
+            guard let identity = blockIdentity(of: intent) else { continue }
+            if !seen.insert(identity).inserted { continue }
+            var attrs = AttributeContainer()
+            attrs.presentationIntent = intent
+            anchors.append(
+                QuoteAnchor(
+                    index: run.range.lowerBound,
+                    depth: depth,
+                    attributes: attrs
+                )
+            )
+        }
+
+        for anchor in anchors.reversed() {
+            let prefix = String(repeating: "│ ", count: anchor.depth)
+            var marker = AttributedString(prefix)
+            marker.setAttributes(anchor.attributes)
+            attributed.insert(marker, at: anchor.index)
+        }
+    }
+
+    private static func blockQuoteDepth(of intent: PresentationIntent) -> Int {
+        var depth = 0
+        for component in intent.components {
+            if case .blockQuote = component.kind {
+                depth += 1
+            }
+        }
+        return depth
+    }
+
+    private static func isQuoteBarPrefix(_ text: String) -> Bool {
+        guard text.contains("│") else { return false }
+        return text.allSatisfy { $0 == "│" || $0 == " " || $0 == "\n" }
+    }
+
     // MARK: - Typography
 
     private static func applyTypography(
@@ -360,14 +420,21 @@ enum MarkdownDisplay {
                 font = italic
             }
 
+            let runText = String(attributed[range].characters)
+            let quoteBar = isBlockQuote && isQuoteBarPrefix(runText)
+
             let color: NSColor
             if isThematicBreak {
                 color = colors.nsBorder
+            } else if quoteBar {
+                // Rails use border/muted so they read as structure; body keeps readable text color.
+                color = colors.nsBorder
             } else if isCodeBlock || inline.contains(.code) {
                 color = colors.nsMuted
-            } else if isBlockQuote || role == .source {
+            } else if role == .source {
                 color = colors.nsMuted
             } else {
+                // Quote body uses primary (not muted-only) — depth is shown by the rail.
                 color = baseColor
             }
 

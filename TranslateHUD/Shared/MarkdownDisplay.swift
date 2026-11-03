@@ -71,13 +71,11 @@ enum MarkdownDisplay {
 
     // MARK: - Block breaks
 
-    /// Foundation's `.full` Markdown parse keeps `presentationIntent` on runs but strips
-    /// newlines between blocks from `characters` (e.g. `# A
-
-## B` → `AB`). SwiftUI `Text`
-    /// and TextKit then render sticky lines. Insert `
-` only when both adjacent runs have
-    /// block-level identities that differ; inline splits (bold/italic/code) stay unjoined.
+    /// Foundation's `.full` Markdown parse keeps presentationIntent on runs but strips
+    /// newlines between blocks from characters (e.g. heading A then heading B become AB).
+    /// SwiftUI Text and TextKit then render sticky lines. Insert a newline only when both
+    /// adjacent runs have block-level identities that differ; inline splits
+    /// (bold/italic/code) stay unjoined.
     private static func reinjectBlockBreaks(_ attributed: inout AttributedString) {
         let runs = Array(attributed.runs)
         guard runs.count >= 2 else { return }

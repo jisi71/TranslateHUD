@@ -76,6 +76,25 @@ final class TermExplanationTests: XCTestCase {
         XCTAssertTrue(OpenAICompatibleTermExplainer.systemPrompt(language: .english, strict: true).contains("MUST be in English"))
     }
 
+    func testEnglishExplanationRetriesWhenFirstResultIsGerman() async throws {
+        TermExplanationURLProtocolStub.reset(contents: [
+            "{\"terms\":[{\"term\":\"API\",\"explanation\":\"API ist eine Schnittstelle zur Kommunikation zwischen Programmen.\"}]}",
+            "{\"terms\":[{\"term\":\"API\",\"explanation\":\"Application programming interface\"}]}"
+        ])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TermExplanationURLProtocolStub.self]
+        let explainer = OpenAICompatibleTermExplainer(
+            config: ProviderConfig(baseURL: "https://example.com/v1", model: "test", apiKey: ""),
+            session: URLSession(configuration: configuration)
+        )
+        let terms = try await explainer.explain(texts: ["API"], in: .english)
+        XCTAssertEqual(terms.first?.explanation, "Application programming interface")
+        XCTAssertEqual(TermExplanationURLProtocolStub.currentRequestCount(), 2)
+        XCTAssertFalse(OpenAICompatibleTermExplainer.explanationsMatch([
+            TermExplanation(term: "API", explanation: "Une interface permet aux applications de communiquer entre elles.")
+        ], language: .english))
+    }
+
     func testTargetLanguageChangeCancelsAndClearsWithoutSendingAnotherRequest() async throws {
         let explainer = ScriptedTermExplainer(outcomes: [.success([])], delayNanoseconds: 1_000_000_000)
         let progress = TermExplanationProgress(texts: ["API"], outputLanguage: { .english }, explainer: { explainer })

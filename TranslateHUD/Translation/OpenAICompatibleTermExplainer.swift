@@ -141,16 +141,8 @@ struct OpenAICompatibleTermExplainer: TermExplainer {
 
     static func explanationsMatch(_ terms: [TermExplanation], language: TargetLanguage) -> Bool {
         if language == .chinese { return explanationsAreChinese(terms) }
-        if language != .english {
-            return terms.allSatisfy { item in
-                NLLanguageRecognizer.dominantLanguage(for: item.explanation)?.rawValue == language.rawValue
-            }
-        }
         return terms.allSatisfy { item in
-            let scalars = item.explanation.unicodeScalars
-            let latin = scalars.filter { $0.isASCII && CharacterSet.letters.contains($0) }.count
-            let han = scalars.filter { (0x3400...0x9FFF).contains($0.value) }.count
-            return latin > 0 && latin > han * 2
+            NLLanguageRecognizer.dominantLanguage(for: item.explanation)?.rawValue == language.rawValue
         }
     }
 

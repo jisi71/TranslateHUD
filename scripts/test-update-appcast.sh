@@ -34,6 +34,28 @@ test ! -e "$ROOT/sparkle_eddsa_private_key"
 # shellcheck disable=SC1091
 source "$ROOT/scripts/sparkle-tools.sh"
 test "$(sparkle_bundle_identifier)" = "com.qi.TranslateHUD"
+printf '%s\n' 'SPARKLE_PUBLIC_ED_KEY = QUJDRA==' > "$TMP/sparkle-key"
+test "$(sparkle_public_key_from_xcconfig "$TMP/sparkle-key")" = "QUJDRA=="
+printf '  SPARKLE_PUBLIC_ED_KEY =  QUJDRA==  \r\n' > "$TMP/sparkle-key"
+test "$(sparkle_public_key_from_xcconfig "$TMP/sparkle-key")" = "QUJDRA=="
+sparkle_public_key_is_valid "$(sparkle_public_key_from_xcconfig)"
+if sparkle_public_key_is_valid 'not-base64!' || sparkle_public_key_is_valid 'QUJDRA==' || sparkle_public_key_is_valid "$(sparkle_public_key_from_xcconfig | tr -d '=')"; then
+    echo '无效 Sparkle 公钥不应通过'
+    exit 1
+fi
+python3 - "$TMP" <<'PY'
+import base64, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+root.joinpath('verify-key').write_text(base64.b64encode(bytes.fromhex('d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a')).decode())
+root.joinpath('verify-signature').write_text(base64.b64encode(bytes.fromhex('e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b')).decode())
+root.joinpath('verify-archive').write_bytes(b'')
+PY
+swift "$ROOT/scripts/verify-sparkle-signature.swift" "$(cat "$TMP/verify-key")" "$(cat "$TMP/verify-signature")" "$TMP/verify-archive" >/dev/null
+printf x > "$TMP/verify-archive"
+if swift "$ROOT/scripts/verify-sparkle-signature.swift" "$(cat "$TMP/verify-key")" "$(cat "$TMP/verify-signature")" "$TMP/verify-archive" >/dev/null 2>&1; then
+    echo '篡改后的更新包不应通过签名验证'
+    exit 1
+fi
 sparkle_team_id_is_valid "$(sparkle_pinned_team_id "$ROOT/Config/DeveloperTeamID")"
 printf '%s\n' '# comment' '' 'AB12CD34EF' > "$TMP/team"
 test "$(sparkle_pinned_team_id "$TMP/team")" = "AB12CD34EF"

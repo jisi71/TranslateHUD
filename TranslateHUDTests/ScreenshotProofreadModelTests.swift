@@ -170,6 +170,13 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         XCTAssertFalse(state.readyForAction())
         XCTAssertEqual(try state.model.plan().sourceForQuota, "old")
         XCTAssertNotNil(state.errorMessage)
+        var cancelled: NSApplication.ModalResponse?
+        let alert = NSAlert()
+        let actions = ScreenshotConfirmAction(state: state, alert: alert, stop: { cancelled = $0 })
+        actions.confirm()
+        XCTAssertNil(cancelled)
+        actions.cancel()
+        XCTAssertEqual(cancelled, .alertSecondButtonReturn)
         editor.insertText("new", replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
         XCTAssertFalse(coordinator.hasUnsavedInput)
         XCTAssertTrue(state.readyForAction())
@@ -177,7 +184,7 @@ final class ScreenshotProofreadModelTests: XCTestCase {
     }
 
     @MainActor
-    func testMarkedCellCannotSwitchConfirmOrCancelUntilCommitted() throws {
+    func testMarkedCellCannotSwitchOrConfirmButCanCancel() throws {
         let state = try ScreenshotProofreadState(plan: ScreenshotTranslationPlan(blocks: [
             .text(runs: [.init(text: "Title", isStrong: false)], heading: 1),
             .table(rows: [["New", "Place"], ["Old", "Value"]])
@@ -195,12 +202,17 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         editor.setSelectedRange(NSRange(location: 3, length: 0))
         editor.setMarkedText("ni", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: 3, length: 0))
         XCTAssertTrue(editor.hasMarkedText())
-        let actions = ScreenshotConfirmAction(state: state, alert: NSAlert())
-        actions.confirm(); actions.cancel()
+        var modalResult: NSApplication.ModalResponse?
+        let alert = NSAlert()
+        let actions = ScreenshotConfirmAction(state: state, alert: alert, stop: { modalResult = $0 })
+        actions.confirm()
+        XCTAssertNil(modalResult)
         state.select(first)
         XCTAssertEqual(state.selectedID, table)
         XCTAssertFalse(state.editTable { try $0.insertRow(at: 0) })
         XCTAssertEqual(try state.model.plan().sourceTexts, ["Title", "New", "Place", "Old", "Value"])
+        actions.cancel()
+        XCTAssertEqual(modalResult, .alertSecondButtonReturn)
         editor.insertText("你", replacementRange: editor.markedRange())
         XCTAssertEqual(state.runs.map(\.text).joined(), "Old你")
         state.select(first)
@@ -208,5 +220,43 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         XCTAssertEqual(try state.model.plan().sourceTexts, ["Title", "New", "Place", "Old你", "Value"])
         XCTAssertFalse(state.setText("stale", item: table, cell: cell))
         XCTAssertEqual(try state.model.plan().sourceTexts.first, "Title")
+    }
+
+    @MainActor
+    func testProgrammaticSplitAndMergeNeverRestoreOldEditorText() throws {
+        let initial = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: "Hello world", isStrong: false)], heading: nil)])
+        let state = try ScreenshotProofreadState(plan: initial)
+        let first = try XCTUnwrap(state.selectedID)
+        let oldEditor = NSTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 80))
+        oldEditor.string = "Hello world"
+        state.registerEditor(oldEditor, item: first, cell: nil)
+        state.selection = NSRange(location: 5, length: 0)
+        state.split()
+        XCTAssertNotEqual(state.selectedID, first)
+        XCTAssertTrue(state.readyForAction())
+        XCTAssertEqual(try state.model.plan().sourceTexts, ["Hello", " world"])
+
+        state.select(first)
+        let updatedEditor = NSTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 80))
+        updatedEditor.string = "Hello"
+        state.registerEditor(updatedEditor, item: first, cell: nil)
+        state.merge(separator: "")
+        XCTAssertTrue(state.readyForAction())
+        XCTAssertEqual(try state.model.plan().sourceTexts, ["Hello world"])
+    }
+
+    @MainActor
+    func testTableSwapFollowedByConfirmKeepsSwappedValues() throws {
+        let initial = ScreenshotTranslationPlan(blocks: [.table(rows: [["A", "B"], ["First", "Second"]])])
+        let state = try ScreenshotProofreadState(plan: initial)
+        let id = try XCTUnwrap(state.selectedID)
+        let first = ScreenshotTableEditModel.Position(row: 1, column: 0)
+        state.select(id, cell: first)
+        let oldEditor = NSTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 80))
+        oldEditor.string = "First"
+        state.registerEditor(oldEditor, item: id, cell: first)
+        XCTAssertTrue(state.editTable { try $0.swap(first, .init(row: 1, column: 1)) })
+        XCTAssertTrue(state.readyForAction())
+        XCTAssertEqual(try state.model.plan().sourceTexts, ["A", "B", "Second", "First"])
     }
 }

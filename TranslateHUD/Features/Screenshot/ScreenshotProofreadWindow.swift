@@ -17,6 +17,7 @@ enum ScreenshotProofreadWindow {
         alert.buttons[0].action = #selector(ScreenshotConfirmAction.confirm)
         alert.buttons[1].target = confirm
         alert.buttons[1].action = #selector(ScreenshotConfirmAction.cancel)
+        alert.buttons[1].keyEquivalent = ""
         alert.window.styleMask.remove(.closable)
         alert.window.defaultButtonCell = nil
         let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 850)
@@ -48,15 +49,18 @@ enum ScreenshotProofreadWindow {
 final class ScreenshotConfirmAction: NSObject {
     let state: ScreenshotProofreadState
     weak var alert: NSAlert?
-    init(state: ScreenshotProofreadState, alert: NSAlert) { self.state = state; self.alert = alert }
+    private let stop: (NSApplication.ModalResponse) -> Void
+    init(state: ScreenshotProofreadState, alert: NSAlert,
+         stop: @escaping (NSApplication.ModalResponse) -> Void = { NSApp.stopModal(withCode: $0) }) {
+        self.state = state; self.alert = alert; self.stop = stop
+    }
     @objc func confirm() {
         guard state.readyForAction() else { return }
-        NSApp.stopModal(withCode: .alertFirstButtonReturn)
+        stop(.alertFirstButtonReturn)
         alert?.window.orderOut(nil)
     }
     @objc func cancel() {
-        guard state.readyForAction() else { return }
-        NSApp.stopModal(withCode: .alertSecondButtonReturn)
+        stop(.alertSecondButtonReturn)
         alert?.window.orderOut(nil)
     }
 }
@@ -70,6 +74,7 @@ final class ScreenshotProofreadState: ObservableObject {
     @Published var errorMessage: String?
     weak var activeEditor: NSTextView?
     private var editorOwner: EditorOwner?
+    private var pendingDraft: (owner: EditorOwner, text: String)?
 
     private struct EditorOwner: Equatable {
         let item: UUID
@@ -103,13 +108,23 @@ final class ScreenshotProofreadState: ObservableObject {
     @discardableResult
     func setText(_ value: String) -> Bool {
         guard let id = selectedID else { return false }
-        guard !value.utf8.elementsEqual(runs.map(\.text).joined().utf8) else { return true }
+        let owner = EditorOwner(item: id, cell: cell)
+        guard !value.utf8.elementsEqual(runs.map(\.text).joined().utf8) else {
+            pendingDraft = nil
+            return true
+        }
         do {
             if let cell { try model.editTable(id) { try $0.setText(value, at: cell) } }
             else { try model.setText(value, item: id) }
             errorMessage = nil
-            return value.utf8.elementsEqual(runs.map(\.text).joined().utf8)
-        } catch { errorMessage = "无法修改这段文字，请检查后重试。"; return false }
+            let saved = value.utf8.elementsEqual(runs.map(\.text).joined().utf8)
+            pendingDraft = saved ? nil : (owner, value)
+            return saved
+        } catch {
+            pendingDraft = (owner, value)
+            errorMessage = "无法修改这段文字，请检查后重试。"
+            return false
+        }
     }
 
     func registerEditor(_ editor: NSTextView, item: UUID, cell: ScreenshotTableEditModel.Position?) {
@@ -163,14 +178,13 @@ final class ScreenshotProofreadState: ObservableObject {
     }
 
     func readyForAction() -> Bool {
-        guard let id = selectedID, editorOwner == EditorOwner(item: id, cell: cell) else { return true }
-        if activeEditor?.hasMarkedText() == true {
+        guard let id = selectedID else { return true }
+        let current = EditorOwner(item: id, cell: cell)
+        if editorOwner == current, activeEditor?.hasMarkedText() == true {
             errorMessage = "请先完成输入法选词，再继续操作。"
             return false
         }
-        if let editor = activeEditor, !editor.string.utf8.elementsEqual(runs.map(\.text).joined().utf8) {
-            return setText(editor.string)
-        }
+        if let draft = pendingDraft, draft.owner == current { return setText(draft.text) }
         return true
     }
 

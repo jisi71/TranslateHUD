@@ -949,7 +949,8 @@ enum MarkdownDisplay {
 
             var font: NSFont
             if let level = headerLevel {
-                font = .systemFont(ofSize: headerPointSize(level: level, base: baseSize), weight: .semibold)
+                font = .systemFont(ofSize: headerPointSize(level: level, base: baseSize),
+                                   weight: inline.contains(.stronglyEmphasized) ? .bold : .semibold)
             } else if isCodeBlock || inline.contains(.code) {
                 font = .monospacedSystemFont(ofSize: max(baseSize * 0.92, 11), weight: .regular)
             } else if inline.contains(.stronglyEmphasized) {

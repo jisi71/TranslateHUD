@@ -3,6 +3,32 @@ import XCTest
 @testable import TranslateHUD
 
 final class MarkdownDisplayTests: XCTestCase {
+    func testBoldInsideHeadingsHasVisibleWeightInChineseAndEnglish() throws {
+        func font(_ markdown: String, containing word: String) throws -> NSFont {
+            let attributed = NSAttributedString(MarkdownDisplay.styled(markdown, role: .translation, colors: .dark))
+            let range = (attributed.string as NSString).range(of: word)
+            let index = try XCTUnwrap(range.location == NSNotFound ? nil : range.location)
+            return try XCTUnwrap(attributed.attribute(.font, at: index, effectiveRange: nil) as? NSFont)
+        }
+        for (markdown, plain, bold) in [
+            ("# 普通**强调**标题", "普通", "强调"),
+            ("# Normal **bold** title", "Normal", "bold")
+        ] {
+            let ordinary = try font(markdown, containing: plain)
+            let emphasized = try font(markdown, containing: bold)
+            let manager = NSFontManager.shared
+            XCTAssertEqual(ordinary.pointSize, emphasized.pointSize)
+            XCTAssertEqual(manager.weight(of: ordinary), manager.weight(of: .systemFont(ofSize: ordinary.pointSize, weight: .semibold)))
+            XCTAssertEqual(manager.weight(of: emphasized), manager.weight(of: .systemFont(ofSize: emphasized.pointSize, weight: .bold)))
+            XCTAssertGreaterThan(manager.weight(of: emphasized), manager.weight(of: ordinary))
+        }
+        let plainTitle = try font("# Normal title", containing: "Normal")
+        XCTAssertEqual(NSFontManager.shared.weight(of: plainTitle), NSFontManager.shared.weight(of: .systemFont(ofSize: plainTitle.pointSize, weight: .semibold)))
+        let body = try font("Normal **bold** text", containing: "Normal")
+        let bodyBold = try font("Normal **bold** text", containing: "bold")
+        XCTAssertGreaterThan(NSFontManager.shared.weight(of: bodyBold), NSFontManager.shared.weight(of: body))
+    }
+
     func testPlainTextStripsHeadingMarkers() {
         let plain = MarkdownDisplay.plainText(from: "# Hello\n\nWorld")
         XCTAssertFalse(plain.contains("#"))

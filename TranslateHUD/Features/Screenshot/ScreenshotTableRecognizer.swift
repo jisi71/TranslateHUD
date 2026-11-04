@@ -72,6 +72,14 @@ enum ScreenshotTableRecognizer {
     struct Assessment: Sendable {
         let tables: [ScreenshotTable]
         let rejected: [RejectionReason]
+        /// Borderless layouts may be aligned prose. A user must confirm each candidate.
+        let reviewRequired: [ScreenshotTable]
+
+        init(tables: [ScreenshotTable], rejected: [RejectionReason], reviewRequired: [ScreenshotTable] = []) {
+            self.tables = tables
+            self.rejected = rejected
+            self.reviewRequired = reviewRequired
+        }
     }
 
     /// A geometry-only inference. A user must inspect and approve it before use.
@@ -89,6 +97,7 @@ enum ScreenshotTableRecognizer {
         let ruled = fallback.tables
         let raster = Raster(image: image)
         var accepted: [ScreenshotTable] = []
+        var review: [ScreenshotTable] = []
         var rejected: [RejectionReason] = document.tables.isEmpty ? fallback.rejected : []
         for table in document.tables {
             let height = table.rows.count
@@ -117,13 +126,14 @@ enum ScreenshotTableRecognizer {
             if let issue { rejected.append(issue); continue }
             let box = table.boundingRegion.boundingBox.cgRect
             let hasRuleEvidence = raster?.hasRuleEvidence(in: box) ?? true
-            let match = ruled.first(where: { candidate in
+            let ruledMatch = ruled.first(where: { candidate in
                 guard candidate.rows.count == height, candidate.rows.first?.count == width else { return false }
                 let intersection = candidate.normalizedBox.intersection(box)
                 guard !intersection.isNull else { return false }
                 let area = candidate.normalizedBox.width * candidate.normalizedBox.height
                 return area > 0 && intersection.width * intersection.height / area > 0.75
-            }) ?? (hasRuleEvidence ? nil : borderlessMatch(rows: grid, box: box, image: image, lines: lines))
+            })
+            let match = ruledMatch ?? (hasRuleEvidence ? nil : borderlessMatch(rows: grid, box: box, image: image, lines: lines))
             guard let match else { rejected.append(.ambiguousGrid); continue }
             func normalized(_ value: String) -> String {
                 value.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
@@ -131,9 +141,10 @@ enum ScreenshotTableRecognizer {
             guard zip(grid.flatMap({ $0 }), match.rows.flatMap({ $0 })).allSatisfy({ normalized($0.0) == normalized($0.1) }) else {
                 rejected.append(.textMismatch); continue
             }
-            accepted.append(ScreenshotTable(rows: grid, normalizedBox: match.normalizedBox, hasMergedCells: false, cellRects: match.cellRects))
+            let result = ScreenshotTable(rows: grid, normalizedBox: match.normalizedBox, hasMergedCells: false, cellRects: match.cellRects)
+            if ruledMatch == nil { review.append(result) } else { accepted.append(result) }
         }
-        return Assessment(tables: accepted, rejected: rejected)
+        return Assessment(tables: accepted, rejected: rejected, reviewRequired: review)
     }
 
     /// Borderless tables are inherently ambiguous. Only accept a dense, regular

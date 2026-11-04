@@ -29,7 +29,7 @@ enum OCRService { struct Line { let text: String; let normalizedBox: CGRect; let
        guard let candidate=ScreenshotTableRecognizer.borderlessCandidate(from:image,lines:lines) else { fatalError("Expected a candidate for manual review") }
        precondition(candidate.rows == expected && candidate.table.cellRects[0][0] != nil && candidate.table.cellRects[2][1] == nil)
        print("CANDIDATE",name,"requires user confirmation")
-       if name == "aligned-prose" { precondition(fallback.isEmpty);return }
+       if name == "aligned-prose" { precondition(fallback.isEmpty) }
    }
    if ["ruled", "unruled", "merged", "merged-fullwidth", "merged-fullwidth-framed"].contains(name) {
        precondition(ScreenshotTableRecognizer.borderlessCandidate(from:image,lines:lines) == nil)
@@ -69,11 +69,12 @@ enum OCRService { struct Line { let text: String; let normalizedBox: CGRect; let
        precondition(!docs.isEmpty)
        for doc in docs {
          let a=ScreenshotTableRecognizer.assess(from:doc.document,image:image,lines:lines)
-         if name == "ruled" || name == "borderless" || name == "mixed-zh" || name == "multiline" { precondition(a.tables.count == 1 && a.tables[0].rows == expected && a.rejected.isEmpty) }
-         else if name == "ruled-and-borderless" { precondition(a.tables.count == 2 && a.tables.allSatisfy { $0.rows == expected } && a.rejected.isEmpty) }
+         if name == "ruled" || name == "mixed-zh" || name == "multiline" { precondition(a.tables.count == 1 && a.tables[0].rows == expected && a.reviewRequired.isEmpty && a.rejected.isEmpty) }
+         else if name == "borderless" || name == "aligned-prose" { precondition(a.tables.isEmpty && a.reviewRequired.count == 1 && a.reviewRequired[0].rows == expected && a.reviewRequired[0].cellRects[0][0] != nil && a.rejected.isEmpty) }
+         else if name == "ruled-and-borderless" { precondition(a.tables.count == 1 && a.reviewRequired.count == 1 && a.tables[0].rows == expected && a.reviewRequired[0].rows == expected && a.rejected.isEmpty) }
          else if name == "two-tables" || name == "merged-fullwidth" { precondition(a.tables.isEmpty && !a.rejected.isEmpty) }
          else { precondition(a.tables.isEmpty && !a.rejected.isEmpty) }
-         print("VISION",name,"accepted",a.tables.count,"rejected",a.rejected)
+         print("VISION",name,"accepted",a.tables.count,"review",a.reviewRequired.count,"rejected",a.rejected)
        }
    }
  }

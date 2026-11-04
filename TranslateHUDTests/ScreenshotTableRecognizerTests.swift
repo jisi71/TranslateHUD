@@ -148,19 +148,25 @@ final class ScreenshotTableRecognizerTests: XCTestCase {
         let lines = try recognizeLines(image)
         let documents = try await RecognizeDocumentsRequest().perform(on: image)
         let assessment = try XCTUnwrap(documents.map { ScreenshotTableRecognizer.assess(from: $0.document, image: image, lines: lines) }.first)
-        XCTAssertEqual(assessment.tables.count, 2)
+        XCTAssertEqual(assessment.tables.count, 1)
+        XCTAssertEqual(assessment.reviewRequired.count, 1)
         XCTAssertTrue(assessment.tables.allSatisfy { $0.rows == expected })
+        XCTAssertTrue(assessment.reviewRequired.allSatisfy { $0.rows == expected })
         XCTAssertTrue(assessment.rejected.isEmpty)
     }
 
-    func testMacOS26AcceptsConfirmedBorderlessGrid() async throws {
+    func testMacOS26RequiresConfirmationForBorderlessGridAndIdenticalProse() async throws {
         guard #available(macOS 26, *) else { throw XCTSkip("RecognizeDocumentsRequest requires macOS 26") }
-        let image = try fixture("borderless")
+        for name in ["borderless", "aligned-prose"] {
+        let image = try fixture(name)
         let lines = try recognizeLines(image)
         let documents = try await RecognizeDocumentsRequest().perform(on: image)
         let assessment = try XCTUnwrap(documents.map { ScreenshotTableRecognizer.assess(from: $0.document, image: image, lines: lines) }.first)
-        XCTAssertEqual(assessment.tables.first?.rows, expected)
+        XCTAssertTrue(assessment.tables.isEmpty)
+        XCTAssertEqual(assessment.reviewRequired.first?.rows, expected)
+        XCTAssertNotNil(assessment.reviewRequired.first?.cellRects[0][0])
         XCTAssertTrue(assessment.rejected.isEmpty)
+        }
     }
 
     func testMacOS26DocumentVisionReadsRealGrid() async throws {

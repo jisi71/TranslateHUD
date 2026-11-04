@@ -4,8 +4,8 @@ The synthetic four-row, three-column English table has an empty cell in row thre
 
 - `ruled.png`: complete dark grid; both recognizers should recover all four rows and three columns.
 - `unruled.png`: the grid was removed. On the macOS 26.6.2 test host Vision wrongly includes the page title as a merged table cell. The checker must reject this candidate.
-- `borderless.png`: the unruled table without the separate page title. Vision and independent OCR both identify the same dense, regularly aligned cells; macOS 26 may accept it.
-- `aligned-prose.png`: intentionally byte-identical to `borderless.png`. Without document semantics, the same aligned text can be interpreted as a table or a multicolumn passage. On macOS 14–25 either can only become a candidate requiring user confirmation.
+- `borderless.png`: the unruled table without the separate page title. Vision and independent OCR identify the same regular cells, but it still requires user confirmation.
+- `aligned-prose.png`: intentionally byte-identical to `borderless.png`. The same aligned text can be interpreted as a table or a multicolumn passage. On every supported macOS version, both are only candidates requiring user confirmation.
 - `merged.png`: the first row has a missing vertical border, representing a merged cell. On macOS 26.6.2 Vision misses the merge; the independent grid check rejects it.
 - `36rows.png` and `36rows-merged.png`: the same long ruled grid with one internal line segment intact or absent. Even one missing segment must be rejected.
 - `mixed-zh.png`: Chinese and English text with gray borders; expected positions match the original 4×3 grid.
@@ -21,4 +21,4 @@ swiftc -parse-as-library scripts/probes/screenshot-table.swift TranslateHUD/Feat
 for name in ruled unruled merged borderless aligned-prose 36rows 36rows-merged mixed-zh multiline two-tables merged-fullwidth merged-fullwidth-framed ruled-and-borderless; do /tmp/translatehud-table-probe "TranslateHUDTests/Fixtures/ScreenshotTables/$name.png"; done
 ```
 
-The Vision assertions require macOS 26; the grid fallback runs on supported older macOS versions. Borderless candidate detection requires at least three regular rows, two occupied cells per row, and repeated column anchors. The legacy candidate is not trusted until the user confirms it; an empty unruled cell has no observed bounding rectangle. Multiple ambiguous grids, merged cells, faint lines, multi-line cells in borderless tables and sparse layouts may still fall back to ordinary OCR. Results can differ with the operating system's OCR model. These samples do not establish accuracy for all real-world tables.
+The Vision assertions require macOS 26; the grid fallback runs on supported older macOS versions. Borderless candidate detection requires at least three regular rows, two occupied cells per row, and repeated column anchors. Borderless candidates on all systems require user confirmation; an empty unruled cell has no observed bounding rectangle. Multiple ambiguous grids, merged cells, faint lines, multi-line cells in borderless tables and sparse layouts may still fall back to ordinary OCR. Results can differ with the operating system's OCR model. These samples do not establish accuracy for all real-world tables.

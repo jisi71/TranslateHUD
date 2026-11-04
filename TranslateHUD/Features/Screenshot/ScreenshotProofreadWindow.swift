@@ -68,13 +68,57 @@ final class ScreenshotConfirmAction: NSObject {
 @MainActor
 final class ScreenshotProofreadState: ObservableObject {
     @Published var model: ScreenshotProofreadModel
-    @Published var selectedID: UUID?
-    @Published var cell: ScreenshotTableEditModel.Position?
+    @Published var selectedID: UUID? {
+        didSet { if selectedID != oldValue { ownerDidChange() } }
+    }
+    @Published var cell: ScreenshotTableEditModel.Position? {
+        didSet { if cell != oldValue { ownerDidChange() } }
+    }
     @Published var selection = NSRange(location: 0, length: 0)
     @Published var errorMessage: String?
     weak var activeEditor: NSTextView?
     private var editorOwner: EditorOwner?
     private var pendingDraft: (owner: EditorOwner, text: String)?
+    private(set) var ownerGeneration: UInt64 = 0
+    private(set) var editorRevision: UInt64 = 0
+
+    // The window owns undo, so clear old actions before they can affect a new target or revision.
+    private func clearEditorUndo() { activeEditor?.undoManager?.removeAllActions() }
+
+    private func ownerDidChange() {
+        clearEditorUndo()
+        ownerGeneration &+= 1
+        editorRevision &+= 1
+        selection = NSRange(location: 0, length: 0)
+    }
+
+    private func editorContentDidChange() {
+        clearEditorUndo()
+        editorRevision &+= 1
+    }
+
+    var editorBinding: ScreenshotTextEditor.Binding? {
+        guard let item else { return nil }
+        switch item.content {
+        case .text:
+            guard cell == nil else { return nil }
+        case .table(let table):
+            guard let cell, table.cells.indices.contains(cell.row), table.cells[cell.row].indices.contains(cell.column) else { return nil }
+        }
+        return .init(item: item.id, cell: cell, ownerGeneration: ownerGeneration, revision: editorRevision)
+    }
+
+    func canRebindEditor() -> Bool {
+        pendingDraft == nil && activeEditor?.hasMarkedText() != true
+    }
+
+    func canAcceptEditorInput(_ binding: ScreenshotTextEditor.Binding?) -> Bool {
+        guard let binding, binding == editorBinding else {
+            errorMessage = "内容正在更新，请再次输入。"
+            return false
+        }
+        return true
+    }
 
     private struct EditorOwner: Equatable {
         let item: UUID
@@ -97,12 +141,15 @@ final class ScreenshotProofreadState: ObservableObject {
         }
     }
 
-    func select(_ id: UUID, cell: ScreenshotTableEditModel.Position? = nil) {
-        guard readyForAction() else { return }
+    @discardableResult
+    func select(_ id: UUID, cell: ScreenshotTableEditModel.Position? = nil) -> Bool {
+        guard readyForAction() else { return false }
+        if selectedID == id && self.cell == cell { return true }
         selectedID = id
         self.cell = cell
         selection = NSRange(location: 0, length: 0)
         errorMessage = nil
+        return true
     }
 
     @discardableResult
@@ -127,20 +174,20 @@ final class ScreenshotProofreadState: ObservableObject {
         }
     }
 
-    func registerEditor(_ editor: NSTextView, item: UUID, cell: ScreenshotTableEditModel.Position?) {
-        guard selectedID == item, self.cell == cell else { return }
+    func registerEditor(_ editor: NSTextView, item: UUID, cell: ScreenshotTableEditModel.Position?, revision: UInt64) {
+        guard selectedID == item, self.cell == cell, revision == editorRevision else { return }
         activeEditor = editor
         editorOwner = EditorOwner(item: item, cell: cell)
     }
 
     @discardableResult
-    func setText(_ value: String, item: UUID, cell: ScreenshotTableEditModel.Position?) -> Bool {
-        guard selectedID == item, self.cell == cell else { return false }
+    func setText(_ value: String, item: UUID, cell: ScreenshotTableEditModel.Position?, revision: UInt64) -> Bool {
+        guard selectedID == item, self.cell == cell, revision == editorRevision else { return false }
         return setText(value)
     }
 
-    func setSelection(_ value: NSRange, item: UUID, cell: ScreenshotTableEditModel.Position?) {
-        guard selectedID == item, self.cell == cell else { return }
+    func setSelection(_ value: NSRange, item: UUID, cell: ScreenshotTableEditModel.Position?, revision: UInt64) {
+        guard selectedID == item, self.cell == cell, revision == editorRevision else { return }
         selection = value
     }
 
@@ -150,6 +197,7 @@ final class ScreenshotProofreadState: ObservableObject {
         do {
             if let cell { try model.editTable(id) { try $0.setStrong(strong, in: selection, at: cell) } }
             else { try model.setStrong(strong, selection: selection, item: id) }
+            editorContentDidChange()
             errorMessage = nil
         } catch { errorMessage = "请选择完整文字，不能只选择空格或跨越换行。" }
     }
@@ -166,6 +214,7 @@ final class ScreenshotProofreadState: ObservableObject {
         guard readyForAction(), let id = selectedID else { return false }
         do {
             try model.editTable(id, change)
+            editorContentDidChange()
             if let cell, let item, case .table(let table) = item.content,
                (!table.cells.indices.contains(cell.row) || !table.cells[cell.row].indices.contains(cell.column)) {
                 self.cell = nil
@@ -201,7 +250,7 @@ final class ScreenshotProofreadState: ObservableObject {
     func merge(separator: String) {
         guard readyForAction() else { return }
         guard let id = selectedID else { return }
-        do { try model.mergeWithNext(id, separator: separator); errorMessage = nil }
+        do { try model.mergeWithNext(id, separator: separator); editorContentDidChange(); errorMessage = nil }
         catch { errorMessage = "只能与下一段文字合并。" }
     }
     func addTable() {
@@ -221,7 +270,7 @@ final class ScreenshotProofreadState: ObservableObject {
 }
 
 @MainActor
-private struct ScreenshotProofreadView: View {
+struct ScreenshotProofreadView: View {
     let image: NSImage
     @ObservedObject var state: ScreenshotProofreadState
     let tableWasRejected: Bool
@@ -303,8 +352,9 @@ private struct ScreenshotProofreadView: View {
                                 ForEach(0..<table.columnCount, id: \.self) { column in
                                     let position = ScreenshotTableEditModel.Position(row: row, column: column)
                                     Button {
-                                        state.select(item.id, cell: position)
-                                        targetRow = row + 1; targetColumn = column + 1
+                                        if state.select(item.id, cell: position) {
+                                            targetRow = row + 1; targetColumn = column + 1
+                                        }
                                     } label: {
                                         Text(table.cells[row][column].text.isEmpty ? " " : table.cells[row][column].text)
                                             .lineLimit(2).frame(minWidth: 80, minHeight: 26, alignment: .leading).padding(3)
@@ -323,6 +373,7 @@ private struct ScreenshotProofreadView: View {
 
     @ViewBuilder
     private var editor: some View {
+        let binding = state.editorBinding
         if let item = state.item {
             if case .text(_, let heading) = item.content {
                 HStack {
@@ -341,25 +392,42 @@ private struct ScreenshotProofreadView: View {
             if case .table(let table) = item.content, let cell = state.cell {
                 tableControls(table: table, cell: cell)
             }
-            if state.cell != nil || { if case .text = item.content { return true }; return false }() {
-                let activeCell = state.cell
-                HStack {
-                    Text(text("编辑所选文字")).font(.subheadline)
-                    Spacer()
-                    Button(text("加粗选中文字")) { state.setStrong(true) }
-                    Button(text("取消加粗")) { state.setStrong(false) }
-                }
-                ScreenshotTextEditor(runs: state.runs,
-                                     onText: { state.setText($0, item: item.id, cell: activeCell) },
-                                     onSelection: { state.setSelection($0, item: item.id, cell: activeCell) },
-                                     register: { state.registerEditor($0, item: item.id, cell: activeCell) })
-                    .id("\(item.id)-\(state.cell?.row ?? -1)-\(state.cell?.column ?? -1)")
-                    .frame(height: 95).border(Color.secondary.opacity(0.3))
-                Text(text("修改文字会清除该段或单元格已有的粗体，请重新选择文字标注。"))
-                    .font(.caption).foregroundColor(.secondary)
+        } else {
+            Text(text("添加段落或表格以开始核对。"))
+        }
+        if binding != nil {
+            HStack {
+                Text(text("编辑所选文字")).font(.subheadline)
+                Spacer()
+                Button(text("加粗选中文字")) { state.setStrong(true) }
+                Button(text("取消加粗")) { state.setStrong(false) }
             }
-            if let error = state.errorMessage { Text(text(error)).font(.caption).foregroundColor(.red) }
-        } else { Text(text("添加段落或表格以开始核对。")) }
+        }
+        ScreenshotTextEditor(binding: binding, runs: state.runs,
+                             canRebind: { state.canRebindEditor() },
+                             canEdit: { state.canAcceptEditorInput(binding) },
+                             onText: { value in
+                                 guard let binding else { return false }
+                                 return state.setText(value, item: binding.item, cell: binding.cell, revision: binding.revision)
+                             },
+                             onSelection: { selection in
+                                 guard let binding else { return }
+                                 state.setSelection(selection, item: binding.item, cell: binding.cell, revision: binding.revision)
+                             },
+                             register: { editor in
+                                 guard let binding else { return }
+                                 state.registerEditor(editor, item: binding.item, cell: binding.cell, revision: binding.revision)
+                             })
+            .frame(height: binding == nil ? 0 : 95)
+            .opacity(binding == nil ? 0 : 1)
+            .disabled(binding == nil)
+            .accessibilityHidden(binding == nil)
+            .border(Color.secondary.opacity(binding == nil ? 0 : 0.3))
+        if binding != nil {
+            Text(text("修改文字会清除该段或单元格已有的粗体，请重新选择文字标注。"))
+                .font(.caption).foregroundColor(.secondary)
+        }
+        if let error = state.errorMessage { Text(text(error)).font(.caption).foregroundColor(.red) }
     }
 
     @ViewBuilder
@@ -415,6 +483,29 @@ private struct ScreenshotProofreadView: View {
 final class ScreenshotInputTextView: NSTextView {
     var didCommitText: (() -> Void)?
     private(set) var isUpdatingInput = false
+    private weak var observedUndoManager: UndoManager?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observeUndoManager()
+    }
+
+    func observeUndoManager() {
+        let manager = undoManager
+        guard observedUndoManager !== manager else { return }
+        NotificationCenter.default.removeObserver(self, name: .NSUndoManagerDidUndoChange, object: observedUndoManager)
+        NotificationCenter.default.removeObserver(self, name: .NSUndoManagerDidRedoChange, object: observedUndoManager)
+        observedUndoManager = manager
+        guard let manager else { return }
+        NotificationCenter.default.addObserver(self, selector: #selector(undoOrRedoCompleted),
+                                               name: .NSUndoManagerDidUndoChange, object: manager)
+        NotificationCenter.default.addObserver(self, selector: #selector(undoOrRedoCompleted),
+                                               name: .NSUndoManagerDidRedoChange, object: manager)
+    }
+
+    @objc private func undoOrRedoCompleted() { didCommitText?() }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
 
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         isUpdatingInput = true
@@ -440,7 +531,16 @@ final class ScreenshotInputTextView: NSTextView {
 }
 
 struct ScreenshotTextEditor: NSViewRepresentable {
+    struct Binding: Equatable {
+        let item: UUID
+        let cell: ScreenshotTableEditModel.Position?
+        let ownerGeneration: UInt64
+        let revision: UInt64
+    }
+    let binding: Binding?
     let runs: [ScreenshotTextRun]
+    let canRebind: () -> Bool
+    let canEdit: () -> Bool
     let onText: (String) -> Bool
     let onSelection: (NSRange) -> Void
     let register: (NSTextView) -> Void
@@ -469,7 +569,9 @@ struct ScreenshotTextEditor: NSViewRepresentable {
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let view = scroll.documentView as? NSTextView else { return }
-        context.coordinator.onText = onText; context.coordinator.onSelection = onSelection
+        (view as? ScreenshotInputTextView)?.observeUndoManager()
+        guard context.coordinator.bind(binding, to: view, canRebind: canRebind,
+                                       canEdit: canEdit, onText: onText, onSelection: onSelection) else { return }
         register(view)
         Self.apply(runs: runs, to: view, coordinator: context.coordinator)
     }
@@ -488,22 +590,55 @@ struct ScreenshotTextEditor: NSViewRepresentable {
         coordinator.updating = true
         view.textStorage?.setAttributedString(value)
         let location = min(old.location, value.length)
-        view.setSelectedRange(NSRange(location: location, length: min(old.length, value.length - location)))
+        let selected = NSRange(location: location, length: min(old.length, value.length - location))
+        view.setSelectedRange(selected)
         coordinator.updating = false
+        if selected != old { coordinator.onSelection(selected) }
     }
     final class Coordinator: NSObject, NSTextViewDelegate {
         var onText: (String) -> Bool
         var onSelection: (NSRange) -> Void
         var updating = false
         private(set) var hasUnsavedInput = false
+        private var canEdit: () -> Bool = { true }
+        private(set) var binding: Binding?
+        private var hasBinding = false
         init(onText: @escaping (String) -> Bool, onSelection: @escaping (NSRange) -> Void) { self.onText = onText; self.onSelection = onSelection }
+        func bind(_ newBinding: Binding?, to view: NSTextView, canRebind: () -> Bool,
+                  canEdit: @escaping () -> Bool, onText: @escaping (String) -> Bool,
+                  onSelection: @escaping (NSRange) -> Void) -> Bool {
+            if hasBinding && binding != newBinding {
+                guard !view.hasMarkedText(), (view as? ScreenshotInputTextView)?.isUpdatingInput != true,
+                      canRebind() else { return false }
+                updating = true
+                view.undoManager?.removeAllActions()
+                if binding?.ownerGeneration != newBinding?.ownerGeneration {
+                    view.setSelectedRange(NSRange(location: 0, length: 0))
+                }
+                updating = false
+                hasUnsavedInput = false
+            }
+            binding = newBinding
+            hasBinding = true
+            self.canEdit = canEdit
+            self.onText = onText
+            self.onSelection = onSelection
+            return true
+        }
+        func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
+                      replacementString: String?) -> Bool {
+            canEdit()
+        }
         func textDidChange(_ notification: Notification) {
             guard !updating, let view = notification.object as? NSTextView else { return }
             publish(view)
         }
         func publish(_ view: NSTextView) {
             guard !updating, !view.hasMarkedText(), (view as? ScreenshotInputTextView)?.isUpdatingInput != true else { return }
-            hasUnsavedInput = !onText(view.string)
+            let previousBinding = binding
+            let saved = onText(view.string)
+            guard previousBinding == binding else { return }
+            hasUnsavedInput = !saved
         }
         func textViewDidChangeSelection(_ notification: Notification) {
             guard !updating, let view = notification.object as? NSTextView else { return }

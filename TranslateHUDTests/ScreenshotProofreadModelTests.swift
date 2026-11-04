@@ -132,7 +132,7 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         view.delegate = coordinator
         view.didCommitText = { [weak view] in if let view { coordinator.publish(view) } }
         ScreenshotTextEditor.apply(runs: state.runs, to: view, coordinator: coordinator)
-        state.registerEditor(view, item: first, cell: nil)
+        state.registerEditor(view, item: first, cell: nil, revision: state.editorRevision)
         view.setSelectedRange(NSRange(location: 2, length: 0))
         view.setMarkedText("ni", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: 2, length: 0))
         XCTAssertTrue(view.hasMarkedText())
@@ -162,7 +162,7 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         editor.delegate = coordinator
         editor.didCommitText = { [weak editor] in if let editor { coordinator.publish(editor) } }
         ScreenshotTextEditor.apply(runs: state.runs, to: editor, coordinator: coordinator)
-        state.registerEditor(editor, item: id, cell: nil)
+        state.registerEditor(editor, item: id, cell: nil, revision: state.editorRevision)
         editor.insertText(String(repeating: "x", count: 65_537), replacementRange: NSRange(location: 0, length: 3))
         XCTAssertTrue(coordinator.hasUnsavedInput)
         ScreenshotTextEditor.apply(runs: state.runs, to: editor, coordinator: coordinator)
@@ -194,11 +194,12 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         let cell = ScreenshotTableEditModel.Position(row: 1, column: 0)
         state.select(table, cell: cell)
         let editor = ScreenshotInputTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
-        let coordinator = ScreenshotTextEditor.Coordinator(onText: { state.setText($0, item: table, cell: cell) }, onSelection: { _ in })
+        let revision = state.editorRevision
+        let coordinator = ScreenshotTextEditor.Coordinator(onText: { state.setText($0, item: table, cell: cell, revision: revision) }, onSelection: { _ in })
         editor.delegate = coordinator
         editor.didCommitText = { [weak editor] in if let editor { coordinator.publish(editor) } }
         ScreenshotTextEditor.apply(runs: state.runs, to: editor, coordinator: coordinator)
-        state.registerEditor(editor, item: table, cell: cell)
+        state.registerEditor(editor, item: table, cell: cell, revision: state.editorRevision)
         editor.setSelectedRange(NSRange(location: 3, length: 0))
         editor.setMarkedText("ni", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: 3, length: 0))
         XCTAssertTrue(editor.hasMarkedText())
@@ -218,7 +219,7 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         state.select(first)
         XCTAssertTrue(state.readyForAction())
         XCTAssertEqual(try state.model.plan().sourceTexts, ["Title", "New", "Place", "Old你", "Value"])
-        XCTAssertFalse(state.setText("stale", item: table, cell: cell))
+        XCTAssertFalse(state.setText("stale", item: table, cell: cell, revision: revision))
         XCTAssertEqual(try state.model.plan().sourceTexts.first, "Title")
     }
 
@@ -229,7 +230,7 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         let first = try XCTUnwrap(state.selectedID)
         let oldEditor = NSTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 80))
         oldEditor.string = "Hello world"
-        state.registerEditor(oldEditor, item: first, cell: nil)
+        state.registerEditor(oldEditor, item: first, cell: nil, revision: state.editorRevision)
         state.selection = NSRange(location: 5, length: 0)
         state.split()
         XCTAssertNotEqual(state.selectedID, first)
@@ -239,7 +240,7 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         state.select(first)
         let updatedEditor = NSTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 80))
         updatedEditor.string = "Hello"
-        state.registerEditor(updatedEditor, item: first, cell: nil)
+        state.registerEditor(updatedEditor, item: first, cell: nil, revision: state.editorRevision)
         state.merge(separator: "")
         XCTAssertTrue(state.readyForAction())
         XCTAssertEqual(try state.model.plan().sourceTexts, ["Hello world"])
@@ -254,7 +255,7 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         state.select(id, cell: first)
         let oldEditor = NSTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 80))
         oldEditor.string = "First"
-        state.registerEditor(oldEditor, item: id, cell: first)
+        state.registerEditor(oldEditor, item: id, cell: first, revision: state.editorRevision)
         XCTAssertTrue(state.editTable { try $0.swap(first, .init(row: 1, column: 1)) })
         XCTAssertTrue(state.readyForAction())
         XCTAssertEqual(try state.model.plan().sourceTexts, ["A", "B", "Second", "First"])

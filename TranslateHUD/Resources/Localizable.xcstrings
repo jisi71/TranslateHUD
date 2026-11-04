@@ -1,6 +1,13 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "内容正在更新，请再次输入。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "内容正在更新，请再次输入。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "The content is updating. Please enter your text again." } }
+      }
+    },
     "请先完成输入法选词，再继续操作。": {
       "extractionState": "manual",
       "localizations": {

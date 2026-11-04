@@ -196,7 +196,7 @@ struct CloudBaseAuthAPI: Sendable {
         let rawCode = ((json["error"] as? String) ?? (json["code"] as? String) ?? "").lowercased()
         let description = ((json["error_description"] as? String) ?? (json["message"] as? String) ?? "").lowercased()
         let code = rawCode.isEmpty ? description : rawCode
-        AppLog.info("CloudBase 登录失败 HTTP \(status) code=\(rawCode.isEmpty ? "unknown" : rawCode)")
+        AppLog.info("CloudBase 登录失败 HTTP \(status)")
         switch code {
         case "user_not_found", "user_not_exists":
             throw CloudBaseAuthError.userMissing

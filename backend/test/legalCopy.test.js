@@ -31,7 +31,8 @@ test('help pages do not link to a website or an email address', () => {
     assert.equal(text.includes('http://'), false, relative)
     assert.equal(text.includes('https://'), false, relative)
   }
-  for (const relative of screens) {
+  // Login settings now accept an email address; the feedback form must not.
+  for (const relative of screens.filter((file) => !file.endsWith('SettingsView.swift'))) {
     assert.equal(read(relative).includes('邮箱'), false, relative)
   }
   const agreement = read(pages[0])

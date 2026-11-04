@@ -61,7 +61,11 @@ async function defaultVerifyUser({ gateway, token, fetchImpl }) {
     error.code = 'trial_auth'
     throw error
   }
-  return { uid }
+  // Do not accept a client-supplied phone or persist profile contact data.
+  // Whether CloudBase verifies this profile field must be checked before deployment.
+  const phone = typeof body.phone_number === 'string' ? body.phone_number.replace(/[\s()-]/g, '') : ''
+  const hasEligiblePhone = /^(?:\+?86)?1[3-9][0-9]{9}$/.test(phone)
+  return { uid, hasEligiblePhone }
 }
 
 async function identify(ctx) {
@@ -70,7 +74,7 @@ async function identify(ctx) {
   try {
     const user = await ctx.verifyUser({ gateway: ctx.env.gateway, token })
     if (!user || !user.uid) return errorResult(401, 'trial_auth', MESSAGES.auth)
-    return { uid: String(user.uid) }
+    return { uid: String(user.uid), hasEligiblePhone: user.hasEligiblePhone === true }
   } catch {
     return errorResult(401, 'trial_auth', MESSAGES.auth)
   }
@@ -207,6 +211,9 @@ async function handleInviteStatus(ctx) {
 async function handleRedeem(ctx) {
   const identified = await identify(ctx)
   if (identified.status) return identified
+  if (!identified.hasEligiblePhone) {
+    return errorResult(403, 'trial_invite_phone_required', '邮箱账号可使用每日免费额度，兑换体验余额需要手机号账号。')
+  }
   let body = {}
   if (ctx.rawBody && String(ctx.rawBody).trim()) {
     try {

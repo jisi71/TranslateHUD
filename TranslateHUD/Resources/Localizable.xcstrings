@@ -1,6 +1,76 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "手机号或邮箱登录后可试用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Sign in with a phone number or email to try" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "手机号或邮箱登录后可试用" } }
+      }
+    },
+    "手机号或邮箱": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Phone number or email" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "手机号或邮箱" } }
+      }
+    },
+    "用手机号或邮箱登录后同步体验额度": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Sign in with a phone number or email to sync your allowance" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "用手机号或邮箱登录后同步体验额度" } }
+      }
+    },
+    "请输入有效的手机号或邮箱。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Enter a valid phone number or email address." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请输入有效的手机号或邮箱。" } }
+      }
+    },
+    "验证码已发送，请查看邮箱。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Verification code sent. Check your email." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "验证码已发送，请查看邮箱。" } }
+      }
+    },
+    "邮箱账号可使用每日免费额度，兑换体验余额需要手机号账号。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Email accounts can use the daily free allowance. A phone account is required to redeem trial credit." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "邮箱账号可使用每日免费额度，兑换体验余额需要手机号账号。" } }
+      }
+    },
+    "已登录。邮箱账号可使用每日免费额度。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Signed in. Your email account can use the daily free allowance." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已登录。邮箱账号可使用每日免费额度。" } }
+      }
+    },
+    "请先用手机号或邮箱登录，或在设置里填写你自己的 API Key。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Sign in with a phone number or email, or enter your own API key in Settings." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请先用手机号或邮箱登录，或在设置里填写你自己的 API Key。" } }
+      }
+    },
+    "这个账号还没注册。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This account has not been registered." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "这个账号还没注册。" } }
+      }
+    },
+    "这个账号已经注册。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This account is already registered." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "这个账号已经注册。" } }
+      }
+    },
     "每日免费额度：%ld/%ld": {
       "extractionState": "manual",
       "localizations": {

@@ -8,10 +8,36 @@ const { MemoryAccountStore } = require('../src/accountStore')
 const { createRequestListener } = require('../src/httpApp')
 const { GIFT_MICRO_YUAN, MESSAGES } = require('../src/trialPolicy')
 const { DEFAULT_INVITE_CODE } = require('../src/invite')
+const { defaultVerifyUser } = require('../src/trialService')
 
 function sourceHeader(text) {
   return Buffer.from(text, 'utf8').toString('base64')
 }
+
+test('invite eligibility derives only from the authenticated CloudBase profile', async () => {
+  async function profile(body) {
+    return defaultVerifyUser({ gateway: 'https://test.invalid', token: 'private', fetchImpl: async () => ({ ok: true, json: async () => body }) })
+  }
+  assert.deepEqual(await profile({ sub: 'phone-user', phone_number: '+86 13800138000' }), { uid: 'phone-user', hasEligiblePhone: true })
+  assert.deepEqual(await profile({ sub: 'email-user', email: 'a@example.com' }), { uid: 'email-user', hasEligiblePhone: false })
+  assert.deepEqual(await profile({ sub: 'unknown', phone_number: 'not-a-phone' }), { uid: 'unknown', hasEligiblePhone: false })
+})
+
+test('email and unknown identity cannot redeem an invite, even with a supplied phone number', async () => {
+  const store = new MemoryAccountStore()
+  const { server, base } = await listen(store, { verifyUser: async () => ({ uid: 'email-user' }) })
+  try {
+    const response = await request(base, '/v1/trial/redeem', {
+      token: 'email-token', body: { code: 'translatehud-200', phone_number: '+86 13800138000' }
+    })
+    assert.equal(response.status, 403)
+    assert.equal(response.json.error.code, 'trial_invite_phone_required')
+    assert.equal(store.invite.redeemedCount, 0)
+    assert.equal(store.users.has('email-user'), false)
+  } finally {
+    server.close()
+  }
+})
 
 function modelJSON(content) {
   return JSON.stringify({
@@ -32,8 +58,8 @@ function listen(store, options = {}) {
     ...options.env
   }
   const verifyUser = options.verifyUser || (async ({ token }) => {
-    if (token === 'good-token') return { uid: 'uid-1' }
-    if (token === 'other-token') return { uid: 'uid-2' }
+    if (token === 'good-token') return { uid: 'uid-1', hasEligiblePhone: true }
+    if (token === 'other-token') return { uid: 'uid-2', hasEligiblePhone: true }
     throw new Error('nope')
   })
   const inner = options.forward || (async () => ({ status: 200, text: modelJSON('你好') }))

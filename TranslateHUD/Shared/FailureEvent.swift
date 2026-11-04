@@ -192,7 +192,7 @@ private enum FailureClassification {
         }
         if let auth = error as? CloudBaseAuthError {
             switch auth {
-            case .invalidPhone, .userMissing, .userExists:
+            case .invalidPhone, .invalidIdentifier, .userMissing, .userExists:
                 return .business("auth")
             case .message(let text):
                 return classifyService(text)

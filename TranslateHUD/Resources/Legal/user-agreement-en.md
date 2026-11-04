@@ -9,14 +9,14 @@ Welcome to TranslateHUD (the “App”), operated by Qi Yahao, an individual (�
 
 ## 1. Services
 
-TranslateHUD is a macOS menu-bar translation tool. It provides translation of selected text; screenshot OCR and translation; optional phone/SMS sign-in and invitation-code trial credit; usage-based (token) deductions when using the official trial service; and the option to enter your own API key and use your own third-party translation or language-model service.
+TranslateHUD is a macOS menu-bar translation tool. It provides translation of selected text; screenshot OCR and translation; optional phone or email verification sign-in and invitation-code trial credit for eligible accounts; usage-based (token) deductions when using the official trial service; and the option to enter your own API key and use your own third-party translation or language-model service.
 
 We may upgrade, change or discontinue features and will provide notice, such as in the App.
 
 ## 2. Accounts and sign-in
 
 1. Some features can be used without signing in. Account features, including trial credit and invitation codes, require sign-in.
-2. To sign in, provide a phone number that can receive SMS and complete verification. You must be legally entitled to use that number.
+2. To sign in, provide a phone number or email address that can receive a verification code and complete verification. You must be legally entitled to use it. Email accounts can use the daily free allowance; redeeming invitation trial credit requires a phone account.
 3. Keep your account and verification information secure. You are responsible for consequences of theft or disclosure caused by you, except as otherwise provided by law.
 4. In principle, each person should use only one account. Do not resell or rent accounts, cheat or inflate usage through invitation codes or trial credit, or harm others' rights.
 

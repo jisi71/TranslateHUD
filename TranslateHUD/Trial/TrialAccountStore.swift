@@ -5,7 +5,7 @@ import Foundation
 final class TrialAccountStore: ObservableObject {
     static let shared = TrialAccountStore()
 
-    @Published var phone = ""
+    @Published var loginIdentifier = ""
     @Published var code = ""
     @Published var inviteCode = ""
     @Published var statusMessage = ""
@@ -25,6 +25,8 @@ final class TrialAccountStore: ObservableObject {
     }
     @Published private(set) var balanceState: BalanceState = .idle
     @Published private(set) var inviteRedeemed = false
+
+    var isEmailAccount: Bool { isLoggedIn && maskedPhone.contains("@") }
 
     enum BalanceState: Equatable {
         case idle
@@ -64,7 +66,7 @@ final class TrialAccountStore: ObservableObject {
 
     private var verificationId: String?
     private var isExistingUser = false
-    private var pendingPhone = ""
+    private var pendingIdentifier: TrialLoginIdentifier?
     private var accessToken = ""
     private var refreshToken = ""
     private var expiresAt = Date.distantPast
@@ -131,18 +133,18 @@ final class TrialAccountStore: ObservableObject {
 
     func sendCode() async {
         guard !isBusy, codeCooldown == 0 else { return }
-        guard let phoneE164 = PhoneNumberCN.normalize(phone) else {
-            statusMessage = CloudBaseAuthError.invalidPhone.userMessage
+        guard let identifier = TrialLoginIdentifier.parse(loginIdentifier) else {
+            statusMessage = CloudBaseAuthError.invalidIdentifier.userMessage
             return
         }
         isBusy = true
         defer { isBusy = false }
         do {
-            let ticket = try await auth.sendCode(phoneE164: phoneE164)
+            let ticket = try await auth.sendCode(identifier: identifier)
             verificationId = ticket.verificationId
             isExistingUser = ticket.isExistingUser
-            pendingPhone = phoneE164
-            statusMessage = "验证码已发送，请查看短信。"
+            pendingIdentifier = identifier
+            statusMessage = identifier.codeSentMessage
             startCooldown()
         } catch is CancellationError {
             return
@@ -154,7 +156,8 @@ final class TrialAccountStore: ObservableObject {
 
     func login() async {
         guard !isBusy else { return }
-        guard let verificationId, !pendingPhone.isEmpty else {
+        guard let verificationId, let identifier = pendingIdentifier,
+              TrialLoginIdentifier.parse(loginIdentifier) == identifier else {
             statusMessage = "请先获取验证码。"
             return
         }
@@ -169,17 +172,18 @@ final class TrialAccountStore: ObservableObject {
         defer { isBusy = false }
         do {
             let session = try await auth.completeLogin(
-                phoneE164: pendingPhone,
+                identifier: identifier,
                 code: digits,
                 verificationId: verificationId,
                 isExistingUser: isExistingUser
             )
             guard sessionGeneration == generation else { return }
-            let masked = PhoneNumberCN.mask(pendingPhone)
+            let masked = identifier.masked
             try persist(session, maskedPhone: masked)
             maskedPhone = masked
             code = ""
             self.verificationId = nil
+            pendingIdentifier = nil
             AppLog.info("体验账号登录成功")
             balanceState = .loading
             await refreshFromServer(announceGift: true)
@@ -198,6 +202,10 @@ final class TrialAccountStore: ObservableObject {
 
     func redeemInvite() async {
         guard isLoggedIn, !isBusy else { return }
+        guard !isEmailAccount else {
+            statusMessage = "邮箱账号可使用每日免费额度，兑换体验余额需要手机号账号。"
+            return
+        }
         let entered = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !entered.isEmpty else {
             statusMessage = "请输入邀请码。"
@@ -320,7 +328,9 @@ final class TrialAccountStore: ObservableObject {
             if !snapshot.userId.isEmpty { userId = snapshot.userId }
             if !snapshot.displayId.isEmpty { displayId = snapshot.displayId }
             inviteRedeemed = snapshot.inviteRedeemed
-            if announceGift {
+            if announceGift && isEmailAccount {
+                statusMessage = "已登录。邮箱账号可使用每日免费额度。"
+            } else if announceGift {
                 statusMessage = snapshot.inviteRedeemed
                     ? "已登录。"
                     : "已登录。在下面输入邀请码，可兑换体验额度。"
@@ -381,7 +391,7 @@ final class TrialAccountStore: ObservableObject {
         inviteCode = ""
         isLoggedIn = false
         verificationId = nil
-        pendingPhone = ""
+        pendingIdentifier = nil
         statusMessage = message
     }
 

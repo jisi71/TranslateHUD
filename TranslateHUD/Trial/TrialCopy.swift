@@ -32,7 +32,7 @@ enum TrialCopy {
     static let inviteExhausted = "邀请码次数用尽"
     static let inviteUnconfigured = "邀请码还没配置好。请稍后再试。"
     static let envMismatch = "当前 App 的云开发环境和登录时不一致。请重新登录。"
-    static let needLogin = "请先用手机号登录，或在设置里填写你自己的 API Key。"
+    static let needLogin = "请先用手机号或邮箱登录，或在设置里填写你自己的 API Key。"
     static let needProxy = "体验服务地址还没有。请向我们索取地址，或改用你自己的 API Key。"
     static let badProxy = "体验服务地址需要以 http:// 或 https:// 开头，例如 https://example.com/v1。"
 }

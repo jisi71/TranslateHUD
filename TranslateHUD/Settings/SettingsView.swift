@@ -444,16 +444,16 @@ struct SettingsView: View {
                 }
             } else {
                 accountIdentity
-                LabeledContent("手机号") {
-                    TextField("", text: $trial.phone, prompt: Text("手机号"))
-                    .accessibilityLabel(interfaceLanguage.text("手机号"))
+                LabeledContent("手机号或邮箱") {
+                    TextField("", text: $trial.loginIdentifier, prompt: Text("手机号或邮箱"))
+                    .accessibilityLabel(interfaceLanguage.text("手机号或邮箱"))
                     .panelTextInput()
                     .frame(width: 200)
                 }
                 LabeledContent("验证码") {
                     HStack(spacing: 8) {
-                        TextField("", text: $trial.code, prompt: Text("短信验证码"))
-                        .accessibilityLabel(interfaceLanguage.text("短信验证码"))
+                        TextField("", text: $trial.code, prompt: Text("验证码"))
+                        .accessibilityLabel(interfaceLanguage.text("验证码"))
                         .panelTextInput()
                         .frame(width: 100)
                     Button(trial.codeCooldown > 0 ? String(format: interfaceLanguage.text("%d 秒后可重发"), trial.codeCooldown) : interfaceLanguage.text("获取验证码")) {
@@ -490,7 +490,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(interfaceLanguage.text(trial.isLoggedIn ? (trial.maskedPhone.isEmpty ? "已登录" : trial.maskedPhone) : "未登录"))
                 if !trial.isLoggedIn || trial.balanceMicroYuan != 0 || trial.dailyQuota == nil {
-                    Text(trial.isLoggedIn ? "\(interfaceLanguage.text("体验余额")) \(interfaceLanguage.text(trial.balanceValueText))" : interfaceLanguage.text("用手机号登录后同步体验额度"))
+                    Text(trial.isLoggedIn ? "\(interfaceLanguage.text("体验余额")) \(interfaceLanguage.text(trial.balanceValueText))" : interfaceLanguage.text("用手机号或邮箱登录后同步体验额度"))
                         .font(.caption)
                         .foregroundStyle(colors.muted)
                 }
@@ -506,11 +506,16 @@ struct SettingsView: View {
 
     private var trialAllowanceSection: some View {
         SettingsCard("体验额度") {
+            if trial.isEmailAccount {
+                Text("邮箱账号可使用每日免费额度，兑换体验余额需要手机号账号。")
+                    .font(.caption)
+                    .foregroundStyle(colors.muted)
+            }
             LabeledContent("邀请码") {
                 TextField("", text: $trial.inviteCode, prompt: Text("邀请码"))
                     .accessibilityLabel(interfaceLanguage.text("邀请码"))
                     .panelTextInput()
-                    .disabled(!trial.isLoggedIn || trial.inviteRedeemed || trial.isBusy)
+                    .disabled(!trial.isLoggedIn || trial.isEmailAccount || trial.inviteRedeemed || trial.isBusy)
                     .frame(width: 200)
             }
             // Permanent “once / sign-in to redeem” captions removed: already-redeemed
@@ -520,7 +525,7 @@ struct SettingsView: View {
                 Button(interfaceLanguage.text(trial.isBusy ? "正在兑换…" : "兑换体验额度")) {
                     Task { await trial.redeemInvite() }
                 }
-                .disabled(!trial.isLoggedIn || trial.inviteRedeemed || trial.isBusy || trial.balanceState == .loading || trial.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!trial.isLoggedIn || trial.isEmailAccount || trial.inviteRedeemed || trial.isBusy || trial.balanceState == .loading || trial.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }

@@ -4,6 +4,28 @@ import XCTest
 
 @MainActor
 final class TrialSessionRaceTests: XCTestCase {
+    func testChangingIdentifierAfterSendingCodeRequiresNewCode() async throws {
+        let name = "TrialCodeChange.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RaceURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let server = RaceServer()
+        RaceURLProtocol.handler = { server.handle($0) }
+        defer { RaceURLProtocol.handler = nil; session.invalidateAndCancel() }
+        let store = TrialAccountStore(networkSession: session, defaults: defaults, defaultsDomain: name,
+                                      keychain: RaceKeychain(), gatewayURL: URL(string: "https://auth.example")!,
+                                      proxyBaseURL: "https://proxy.example/v1", deviceID: "test", startsQuotaRefresh: false)
+        store.loginIdentifier = "a@example.com"
+        await store.sendCode()
+        store.loginIdentifier = "b@example.com"
+        store.code = "123456"
+        await store.login()
+        XCTAssertFalse(store.isLoggedIn)
+        XCTAssertEqual(store.statusMessage, "请先获取验证码。")
+    }
+
     func testLateSnapshotAndSettlementDoNotReplaceNewAccount() async throws {
         let name = "TrialSessionRaceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
@@ -92,7 +114,7 @@ final class TrialSessionRaceTests: XCTestCase {
         let store = TrialAccountStore(networkSession: session, defaults: defaults, defaultsDomain: name,
                                       keychain: keychain, gatewayURL: URL(string: "https://auth.example")!,
                                       proxyBaseURL: "https://proxy.example/v1", deviceID: "test", startsQuotaRefresh: false)
-        store.phone = "13800138000"
+        store.loginIdentifier = "13800138000"
         await store.sendCode()
         store.code = "123456"
         let seen = expectation(description: "login pending")

@@ -1,0 +1,16 @@
+--- a/src/trialService.js
++++ b/src/trialService.js
+@@ -67 +67,5 @@
+-  return { uid }
++  // Do not accept a client-supplied phone or persist profile contact data.
++  // Whether CloudBase verifies this profile field must be checked before deployment.
++  const phone = typeof body.phone_number === 'string' ? body.phone_number.replace(/[\s()-]/g, '') : ''
++  const hasEligiblePhone = /^(?:\+?86)?1[3-9][0-9]{9}$/.test(phone)
++  return { uid, hasEligiblePhone }
+@@ -76 +80 @@
+-    return { uid: String(user.uid) }
++    return { uid: String(user.uid), hasEligiblePhone: user.hasEligiblePhone === true }
+@@ -218,0 +223,3 @@
++  if (!identified.hasEligiblePhone) {
++    return errorResult(403, 'trial_invite_phone_required', '邮箱账号可使用每日免费额度，兑换体验余额需要手机号账号。')
++  }

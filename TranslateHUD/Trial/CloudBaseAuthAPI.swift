@@ -14,6 +14,7 @@ struct CloudBaseSession: Equatable, Sendable {
 
 enum CloudBaseAuthError: Error, LocalizedError, Equatable {
     case invalidPhone
+    case invalidIdentifier
     case userMissing
     case userExists
     case message(String)
@@ -24,10 +25,12 @@ enum CloudBaseAuthError: Error, LocalizedError, Equatable {
         switch self {
         case .invalidPhone:
             return "请输入 11 位中国大陆手机号。"
+        case .invalidIdentifier:
+            return "请输入有效的手机号或邮箱。"
         case .userMissing:
-            return "这个手机号还没注册。"
+            return "这个账号还没注册。"
         case .userExists:
-            return "这个手机号已经注册。"
+            return "这个账号已经注册。"
         case .message(let text):
             return text
         }
@@ -39,11 +42,9 @@ struct CloudBaseAuthAPI: Sendable {
     var session: URLSession
     var deviceId: String
 
-    func sendCode(phoneE164: String) async throws -> VerificationTicket {
-        let data = try await post("/auth/v1/verification", body: [
-            "phone_number": phoneE164,
-            "target": "ANY"
-        ])
+    func sendCode(identifier: TrialLoginIdentifier) async throws -> VerificationTicket {
+        let field = identifier.requestField
+        let data = try await post("/auth/v1/verification", body: [field.key: field.value, "target": "ANY"])
         let json = try jsonObject(data)
         guard let verificationId = json["verification_id"] as? String, !verificationId.isEmpty else {
             throw CloudBaseAuthError.message("验证码没有发出，请稍后再试。")
@@ -52,7 +53,7 @@ struct CloudBaseAuthAPI: Sendable {
     }
 
     func completeLogin(
-        phoneE164: String,
+        identifier: TrialLoginIdentifier,
         code: String,
         verificationId: String,
         isExistingUser: Bool
@@ -62,11 +63,11 @@ struct CloudBaseAuthAPI: Sendable {
             do {
                 return try await signIn(verificationToken: verificationToken)
             } catch CloudBaseAuthError.userMissing {
-                return try await signUp(phoneE164: phoneE164, verificationToken: verificationToken)
+                return try await signUp(identifier: identifier, verificationToken: verificationToken)
             }
         }
         do {
-            return try await signUp(phoneE164: phoneE164, verificationToken: verificationToken)
+            return try await signUp(identifier: identifier, verificationToken: verificationToken)
         } catch CloudBaseAuthError.userExists {
             return try await signIn(verificationToken: verificationToken)
         }
@@ -97,11 +98,9 @@ struct CloudBaseAuthAPI: Sendable {
         return try await sessionRequiringUser(from: data)
     }
 
-    private func signUp(phoneE164: String, verificationToken: String) async throws -> CloudBaseSession {
-        let data = try await post("/auth/v1/signup", body: [
-            "phone_number": phoneE164,
-            "verification_token": verificationToken
-        ])
+    private func signUp(identifier: TrialLoginIdentifier, verificationToken: String) async throws -> CloudBaseSession {
+        let field = identifier.requestField
+        let data = try await post("/auth/v1/signup", body: [field.key: field.value, "verification_token": verificationToken])
         return try await sessionRequiringUser(from: data)
     }
 
@@ -201,7 +200,7 @@ struct CloudBaseAuthAPI: Sendable {
         switch code {
         case "user_not_found", "user_not_exists":
             throw CloudBaseAuthError.userMissing
-        case "user_already_exists", "already_exists", "phone_number_already_in_use":
+        case "user_already_exists", "already_exists", "phone_number_already_in_use", "email_already_in_use":
             throw CloudBaseAuthError.userExists
         case "invalid_verification_code":
             throw CloudBaseAuthError.message("验证码不对，请重新输入。")
@@ -211,6 +210,8 @@ struct CloudBaseAuthAPI: Sendable {
             throw CloudBaseAuthError.message("发送太频繁，请 60 秒后再试。")
         case "invalid_phone_number":
             throw CloudBaseAuthError.invalidPhone
+        case "invalid_email":
+            throw CloudBaseAuthError.invalidIdentifier
         case "captcha_required":
             throw CloudBaseAuthError.message("云端要求图片验证。当前版本还过不了这一步，请稍后再试，或先填写你自己的 API Key。")
         default:

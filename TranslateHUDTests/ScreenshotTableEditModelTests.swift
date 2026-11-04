@@ -115,6 +115,26 @@ final class ScreenshotTableEditModelTests: XCTestCase {
         XCTAssertEqual(model.cells[0][0].text, "one \n二")
     }
 
+    func testUnboldingBothWordsNormalizesIsolatedBoldWhitespace() throws {
+        let input = ScreenshotTable(rows: [["a b", ""]], normalizedBox: .zero, hasMergedCells: false)
+        let runs = [[[ScreenshotTextRun(text: "a b", isStrong: true)], []]]
+        var model = try Model(table: input, cellRuns: runs)
+        try model.setStrong(false, in: NSRange(location: 0, length: 1), at: p(0, 0))
+        try model.setStrong(false, in: NSRange(location: 2, length: 1), at: p(0, 0))
+        let final = model.snapshot().cellRuns[0][0]
+        XCTAssertEqual(final, [.init(text: "a b", isStrong: false)])
+        XCTAssertTrue(ScreenshotRunEditing.validRuns(final, text: "a b"))
+    }
+
+    func testInitialBoldWhitespaceIsNormalizedWithoutChangingVisibleText() throws {
+        let input = ScreenshotTable(rows: [["a b", ""]], normalizedBox: .zero, hasMergedCells: false)
+        let runs = [[[ScreenshotTextRun(text: "a", isStrong: false), .init(text: " ", isStrong: true), .init(text: "b", isStrong: false)], []]]
+        XCTAssertFalse(ScreenshotRunEditing.validRuns(runs[0][0], text: "a b"))
+        let model = try Model(table: input, cellRuns: runs)
+        XCTAssertEqual(model.snapshot().cellRuns[0][0], [.init(text: "a b", isStrong: false)])
+        XCTAssertEqual(model.snapshot().table.rows[0][0], "a b")
+    }
+
     func testLargePasteAndUndoHistoryAreBounded() throws {
         var model = try Model(rows: 1, columns: 2, normalizedBox: .zero)
         XCTAssertThrowsError(try model.setText(String(repeating: "x", count: 64 * 1024 + 1), at: p(0, 0))) {

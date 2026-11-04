@@ -64,9 +64,10 @@ struct ScreenshotTableEditModel: Sendable {
             var row: [Cell] = []
             for c in table.rows[r].indices {
                 let text = table.rows[r][c]
-                let runs = cellRuns.isEmpty ? Self.plain(text) : cellRuns[r][c]
+                let rawRuns = cellRuns.isEmpty ? Self.plain(text) : cellRuns[r][c]
                 guard text.utf8.count <= Self.maxCellBytes else { throw EditError.sizeLimit }
-                guard ScreenshotRunEditing.validRuns(runs, text: text) else { throw EditError.invalidRuns }
+                guard rawRuns.count <= Self.maxRuns else { throw EditError.sizeLimit }
+                guard let runs = ScreenshotRunEditing.normalizedRuns(rawRuns, text: text) else { throw EditError.invalidRuns }
                 row.append(Cell(text: text, runs: runs, sourceRect: table.cellRects[r][c]))
             }
             result.append(row)

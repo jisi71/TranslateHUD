@@ -32,6 +32,7 @@ enum MarkdownDisplay {
         var options = AttributedString.MarkdownParsingOptions()
         options.interpretedSyntax = .full
         options.failurePolicy = .returnPartiallyParsedIfPossible
+        options.appliesSourcePositionAttributes = true
         if var parsed = try? AttributedString(markdown: markdown, options: options) {
             let onlyProse = parsed.runs.allSatisfy { run in
                 guard let intent = run.presentationIntent else { return true }
@@ -42,6 +43,7 @@ enum MarkdownDisplay {
             }
             if markdown.contains("\n"), onlyProse, !containsGFMTable(markdown) {
                 options.interpretedSyntax = .inlineOnlyPreservingWhitespace
+                options.appliesSourcePositionAttributes = false
                 if let plain = try? AttributedString(markdown: markdown, options: options) { return plain }
             }
             reinjectBlockBreaks(&parsed, source: markdown)
@@ -287,8 +289,8 @@ enum MarkdownDisplay {
             if previousChars.last == "\n" || currentChars.first == "\n" { continue }
 
             let breakText = blockBreakString(
-                previousIntent: previous.presentationIntent,
-                currentIntent: current.presentationIntent,
+                previousSource: previous.markdownSourcePosition,
+                currentSource: current.markdownSourcePosition,
                 previousText: String(previousChars),
                 currentText: String(currentChars),
                 source: source
@@ -305,16 +307,20 @@ enum MarkdownDisplay {
     /// Applies to prose/heading/code as well as list items so we do not invent double spacing
     /// when neighbors were only single-spaced in the markdown.
     private static func blockBreakString(
-        previousIntent: PresentationIntent?,
-        currentIntent: PresentationIntent?,
+        previousSource: AttributedString.MarkdownSourcePosition?,
+        currentSource: AttributedString.MarkdownSourcePosition?,
         previousText: String,
         currentText: String,
         source: String
     ) -> String {
-        if sourceHasBlankLine(between: previousText, and: currentText, in: source) {
-            return "\n\n"
+        if let previousSource, let currentSource,
+           let previousRange = Range(previousSource, in: source),
+           let currentRange = Range(currentSource, in: source),
+           previousRange.upperBound <= currentRange.lowerBound {
+            let gap = source[previousRange.upperBound..<currentRange.lowerBound]
+            return hasBlankLine(in: gap) ? "\n\n" : "\n"
         }
-        return "\n"
+        return sourceHasBlankLine(between: previousText, and: currentText, in: source) ? "\n\n" : "\n"
     }
 
     private static func isListItemContext(_ intent: PresentationIntent?) -> Bool {
@@ -339,10 +345,21 @@ enum MarkdownDisplay {
               let currRange = source.range(of: curr, range: searchStart..<source.endIndex) else {
             return false
         }
-        let between = source[searchStart..<currRange.lowerBound]
-        return between.range(of: "\n[ \t]*\n", options: .regularExpression) != nil
+        return hasBlankLine(in: source[searchStart..<currRange.lowerBound])
     }
 
+    private static func hasBlankLine(in source: Substring) -> Bool {
+        var sawLineBreak = false
+        for character in source {
+            if character.isNewline {
+                if sawLineBreak { return true }
+                sawLineBreak = true
+            } else if character != " " && character != "\t" {
+                sawLineBreak = false
+            }
+        }
+        return false
+    }
 
     /// Innermost non-container block identity, if any.
     /// `PresentationIntent.components` is inner→outer. List items share one parent

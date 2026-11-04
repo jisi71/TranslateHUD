@@ -260,4 +260,63 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         XCTAssertTrue(state.readyForAction())
         XCTAssertEqual(try state.model.plan().sourceTexts, ["A", "B", "Second", "First"])
     }
+
+    func testReviewedScreenshotWithTwoParagraphsAndStyledTableRenders() throws {
+        func plain(_ value: String) -> ScreenshotTextRun { .init(text: value, isStrong: false) }
+        func bold(_ value: String) -> ScreenshotTextRun { .init(text: value, isStrong: true) }
+        let rows = [["Name", "Region", "Notes"], ["A B", "New York", "slow response"],
+                    ["Beta", "Los Angeles", ""], ["人工智能系统", "大模型", "处理中"]]
+        let styles: [[[ScreenshotTextRun]]] = [
+            [[plain("Name")], [plain("Region")], [bold("Notes")]],
+            [[plain("A "), bold("B")], [plain("New "), bold("York")], [bold("slow"), plain(" response")]],
+            [[plain("Beta")], [plain("Los Angeles")], []],
+            [[plain("人工"), bold("智能"), plain("系统")], [plain("大模型")], [plain("处理中")]]
+        ]
+        let input = ScreenshotTranslationPlan(blocks: [
+            .text(runs: [bold("Product"), plain(" "), bold("Status"), plain(" "), bold("Report")], heading: 1),
+            .text(runs: [bold("Quarterly"), plain(" "), bold("Overview")], heading: 2),
+            .text(runs: [plain("Please check the "), bold("highlighted"), plain(" "), bold("details"), plain(" before review.")], heading: nil),
+            .text(runs: [plain("Empty cells must remain empty.")], heading: nil),
+            .table(rows: rows, cellRuns: styles)
+        ])
+        let result = try ScreenshotProofreadModel(plan: input).plan()
+        XCTAssertEqual(result.sourceTexts, ["Product Status Report", "Quarterly Overview",
+            "Please check the highlighted details before review.", "Empty cells must remain empty.",
+            "Name", "Region", "Notes", "A B", "New York", "slow response", "Beta", "Los Angeles", "人工智能系统", "大模型", "处理中"])
+        let markdown = try result.render(result.sourceItems)
+        let pieces = MarkdownDisplay.prosePieces(from: markdown)
+        XCTAssertEqual(pieces.count, 2)
+        guard case .markdown(let prose) = pieces[0], case .table(let cells) = pieces[1] else {
+            return XCTFail("Expected prose and table")
+        }
+        let expectedProse = "Product Status Report\n\nQuarterly Overview\n\nPlease check the highlighted details before review.\n\nEmpty cells must remain empty."
+        let rendered = NSAttributedString(MarkdownDisplay.styled(prose.trimmingCharacters(in: .newlines), role: .translation, colors: .dark))
+        XCTAssertEqual(rendered.string, expectedProse)
+        let parsed = MarkdownDisplay.parse(prose.trimmingCharacters(in: .newlines))
+        let boldRuns = parsed.runs.filter { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true }
+            .map { String(parsed[$0.range].characters).trimmingCharacters(in: .newlines) }
+        XCTAssertEqual(boldRuns, ["Product", "Status", "Report", "Quarterly", "Overview", "highlighted", "details"])
+        XCTAssertEqual(cells.count, 4)
+        XCTAssertTrue(cells.allSatisfy { $0.count == 3 })
+        XCTAssertEqual(cells[0][2], "**Notes**")
+        XCTAssertEqual(cells[1], ["A **B**", "New **York**", "**slow** response"])
+        XCTAssertEqual(cells[2], ["Beta", "Los Angeles", ""])
+        XCTAssertEqual(cells[3], ["人工**智能**系统", "大模型", "处理中"])
+
+        var translated = result.sourceItems
+        let translatedParagraph = ScreenshotTranslationPlan(blocks: [.text(runs: [
+            plain("请检查"), bold("重点"), plain(" "), bold("细节"), plain("。")
+        ], heading: nil)])
+        translated[2] = try XCTUnwrap(translatedParagraph.sourceItems.first)
+        translated[3] = .init(text: "保留空白单元格。", boldRanges: [])
+        let translatedMarkdown = try result.render(translated)
+        let translatedPieces = MarkdownDisplay.prosePieces(from: translatedMarkdown)
+        guard case .markdown(let translatedProse) = translatedPieces.first else {
+            return XCTFail("Expected translated prose")
+        }
+        let displayedTranslation = NSAttributedString(MarkdownDisplay.styled(
+            translatedProse.trimmingCharacters(in: .newlines), role: .translation, colors: .dark))
+        XCTAssertTrue(displayedTranslation.string.contains("请检查重点 细节。\n\n保留空白单元格。"))
+    }
+
 }

@@ -29,6 +29,22 @@ final class MarkdownDisplayTests: XCTestCase {
         XCTAssertGreaterThan(NSFontManager.shared.weight(of: bodyBold), NSFontManager.shared.weight(of: body))
     }
 
+    func testBlockBreaksFollowSourcePositionsForEscapesAndRepeatedText() {
+        let examples = [
+            ("# Heading\n\nA first line\\.\n\nAnother line\\.", "Heading\n\nA first line.\n\nAnother line."),
+            ("# Same\nSame\n\n# Same\nSame", "Same\nSame\n\nSame\nSame"),
+            ("# A\\#B\n\nA \\*literal\\* and &#124; &amp; end\\.\n## **Bold**", "A#B\n\nA *literal* and | & end.\nBold"),
+            ("# 标题👨‍👩‍👧‍👦\r\n\r\n组合 e\u{301}\\.\r\n\r\n下一段\\!", "标题👨‍👩‍👧‍👦\n\n组合 e\u{301}.\n\n下一段!"),
+            ("# 标题👨‍👩‍👧‍👦\r\n组合 e\u{301}\\.\r\n# 下一段", "标题👨‍👩‍👧‍👦\n组合 e\u{301}.\n下一段")
+        ]
+        for (markdown, expected) in examples {
+            let parsed = MarkdownDisplay.parse(markdown)
+            XCTAssertEqual(String(parsed.characters), expected, markdown)
+            let displayed = NSAttributedString(MarkdownDisplay.styled(markdown, role: .translation, colors: .dark))
+            XCTAssertEqual(displayed.string, expected, markdown)
+        }
+    }
+
     func testPlainTextStripsHeadingMarkers() {
         let plain = MarkdownDisplay.plainText(from: "# Hello\n\nWorld")
         XCTAssertFalse(plain.contains("#"))

@@ -3,6 +3,37 @@ import XCTest
 
 @MainActor
 final class TranslationReliabilityTests: XCTestCase {
+    func testSettledTrialHTTPResponseThatCannotRenderWarnsWithoutRetry() async throws {
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [
+            .init(text: "A ", isStrong: false), .init(text: "warning", isStrong: true)
+        ], heading: nil)])
+        let result = "{\"results\":[{\"i\":0,\"t\":\"这是危险!信息\",\"boldRanges\":[[12,13]]}]}"
+        let json: [String: Any] = [
+            "choices": [["message": ["content": result]]],
+            "translatehud_trial": ["costMicroYuan": 10, "chargedMicroYuan": 10,
+                                   "balanceMicroYuan": 100, "promptTokens": 20, "completionTokens": 10]
+        ]
+        let body = String(decoding: try JSONSerialization.data(withJSONObject: json), as: UTF8.self)
+        TranslationURLProtocol.reset([.init(status: 200, body: body)])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let received = SettlementCollector()
+        let client = OpenAICompatibleTranslator(
+            config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+            session: URLSession(configuration: configuration), extraHTTPHeaders: TrialHeaders.source(plan.sourceForQuota),
+            onTrialSettlement: { value in await received.add(value) })
+        let translator = ScreenshotPlanTranslator(base: ScreenshotTrialHTTPClient(client: client), plan: plan)
+        do {
+            _ = try await translator.translate([plan.originalMarkdown], to: .chinese, context: nil)
+            XCTFail("An unrenderable result must fail")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("可能已结算"), error.localizedDescription)
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+        let settlements = await received.values
+        XCTAssertEqual(settlements.first?.chargedMicroYuan, 10)
+    }
+
     func testStyledTrialSendsPlainSourceAndReturnsReorderedUTF8Range() async throws {
         let item = ScreenshotStyledText(text: "I don't recommend this.", boldRanges: [.init(start: 2, end: 7)])
         let response = "{\"results\":[{\"i\":0,\"t\":\"我不建议这样做。\",\"boldRanges\":[[3,6]]}]}"
@@ -578,6 +609,18 @@ final class TranslationReliabilityTests: XCTestCase {
             config: ProviderConfig(baseURL: "https://example.com/v1", model: "test", apiKey: ""),
             session: URLSession(configuration: configuration)
         )
+    }
+}
+
+private struct ScreenshotTrialHTTPClient: ScreenshotStyledTranslator, ScreenshotTrialBillingRoute {
+    let client: OpenAICompatibleTranslator
+
+    func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] {
+        try await client.translate(texts, to: target, context: context)
+    }
+
+    func translateStyled(_ items: [ScreenshotStyledText], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [ScreenshotStyledText] {
+        try await client.translateStyledTrial(items, to: target, context: context)
     }
 }
 

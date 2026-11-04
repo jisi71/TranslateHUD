@@ -38,6 +38,9 @@ protocol ScreenshotStyledTranslator: Translator {
                          context: SelectionFetcher.TextContext?) async throws -> [ScreenshotStyledText]
 }
 
+/// Successful calls on this route can consume the user's trial balance or quota.
+protocol ScreenshotTrialBillingRoute: Sendable {}
+
 struct ScreenshotTranslationPlan: Sendable {
     enum Block: Sendable {
         case text(runs: [ScreenshotTextRun], heading: Int?)
@@ -103,6 +106,7 @@ struct ScreenshotTranslationPlan: Sendable {
             return translated
         }
         var rendered: [String] = []
+        var expected: [DisplayPiece] = []
         for block in blocks {
             switch block {
             case .text(let runs, let heading):
@@ -110,15 +114,104 @@ struct ScreenshotTranslationPlan: Sendable {
                 let body = try Self.markdown(for: result)
                 if let heading { rendered.append(String(repeating: "#", count: max(1, min(6, heading))) + " " + body) }
                 else { rendered.append(body) }
+                let text = DisplayText(value: result, heading: heading.map { max(1, min(6, $0)) })
+                if case .text(let previous)? = expected.last {
+                    expected[expected.count - 1] = .text(previous + [text])
+                } else { expected.append(.text([text])) }
             case .table(let rows):
-                guard let width = rows.map(\.count).max(), width > 0 else { continue }
+                guard let width = rows.map(\.count).max(), width >= 2 else {
+                    throw TranslationError.parse("截图表格结构不完整，请重试。")
+                }
                 let translatedRows = try rows.map { row in
                     try (0..<width).map { column in try value(for: column < row.count ? row[column] : "").text }
                 }
                 rendered.append(ScreenshotTable(rows: translatedRows, normalizedBox: .zero, hasMergedCells: false).markdown)
+                expected.append(.table(translatedRows.map { row in row.map {
+                    $0.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+                } }))
             }
         }
-        return rendered.joined(separator: "\n\n")
+        let markdown = rendered.joined(separator: "\n\n")
+        try Self.verifyDisplay(markdown, expected: expected)
+        return markdown
+    }
+
+    private struct DisplayText {
+        let value: ScreenshotStyledText
+        let heading: Int?
+    }
+
+    private enum DisplayPiece {
+        case text([DisplayText])
+        case table([[String]])
+    }
+
+    /// Follow BlocksView's segmentation and its actual Markdown parser. The inline
+    /// parser alone accepts text that the full parser later changes into a code block.
+    private static func verifyDisplay(_ markdown: String, expected: [DisplayPiece]) throws {
+        if expected.isEmpty && markdown.isEmpty { return }
+        var actual: [MarkdownDisplay.ProsePiece] = []
+        for segment in MarkdownDisplay.segments(from: markdown) {
+            guard !segment.isQuote else { throw displayError() }
+            let body = MarkdownDisplay.proseEdgeBlankCounts(segment.markdown).body
+            actual.append(contentsOf: MarkdownDisplay.prosePieces(from: body))
+        }
+        guard actual.count == expected.count else { throw displayError() }
+        for (piece, reference) in zip(actual, expected) {
+            switch (piece, reference) {
+            case (.markdown(let content), .text(let texts)):
+                try verifyText(MarkdownDisplay.parse(content), expected: texts, trimEdgeNewlines: true)
+            case (.table(let cells), .table(let rows)):
+                guard cells.count == rows.count else { throw displayError() }
+                for (actualRow, expectedRow) in zip(cells, rows) {
+                    guard actualRow.count == expectedRow.count else { throw displayError() }
+                    for (cell, value) in zip(actualRow, expectedRow) where !value.isEmpty || !cell.isEmpty {
+                        try verifyText(MarkdownDisplay.parse(cell), expected: [DisplayText(value: .init(text: value, boldRanges: []), heading: nil)], trimEdgeNewlines: false)
+                    }
+                }
+            default: throw displayError()
+            }
+        }
+    }
+
+    private static func verifyText(_ attributed: AttributedString, expected: [DisplayText], trimEdgeNewlines: Bool) throws {
+        struct Style: Equatable { let bold: Bool; let heading: Int? }
+        var expectedText = "", expectedStyles: [Style?] = []
+        for (index, item) in expected.enumerated() {
+            if index > 0 { expectedText += "\n\n"; expectedStyles += [nil, nil] }
+            guard item.value.text.first?.isNewline != true, item.value.text.last?.isNewline != true else { throw displayError() }
+            let ranges = try item.value.ranges().map { range -> Range<String.Index> in
+                let content = item.value.text[range]
+                let leading = content.prefix(while: \.isWhitespace).count
+                let trailing = content.reversed().prefix(while: \.isWhitespace).count
+                return item.value.text.index(range.lowerBound, offsetBy: leading)..<item.value.text.index(range.upperBound, offsetBy: -trailing)
+            }
+            expectedText += item.value.text
+            expectedStyles += item.value.text.indices.map { position in
+                Style(bold: ranges.contains { $0.contains(position) }, heading: item.heading)
+            }
+        }
+        var actualText = String(attributed.characters), actualStyles: [Style] = []
+        for run in attributed.runs {
+            let bold = run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true
+            var heading: Int?
+            for component in run.presentationIntent?.components ?? [] {
+                if case .header(let level) = component.kind { heading = level }
+            }
+            actualStyles += repeatElement(Style(bold: bold, heading: heading), count: attributed[run.range].characters.count)
+        }
+        if trimEdgeNewlines {
+            while actualText.first == "\n" { actualText.removeFirst(); actualStyles.removeFirst() }
+            while actualText.last == "\n" { actualText.removeLast(); actualStyles.removeLast() }
+        }
+        guard actualText == expectedText, actualStyles.count == expectedStyles.count else { throw displayError() }
+        for (actual, expected) in zip(actualStyles, expectedStyles) {
+            if let expected, actual != expected { throw displayError() }
+        }
+    }
+
+    private static func displayError() -> TranslationError {
+        .parse("截图文字或粗体无法在浮窗中可靠显示，请重新截图后重试。")
     }
 
     private static func markdown(for value: ScreenshotStyledText) throws -> String {
@@ -146,6 +239,7 @@ struct ScreenshotTranslationPlan: Sendable {
             cursor = range.upperBound
         }
         output += escape(String(value.text[cursor...]))
+        output = encodeEdgeSpaces(output)
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         let attributed = try AttributedString(markdown: output, options: options)
         guard String(attributed.characters) == value.text else {
@@ -158,6 +252,24 @@ struct ScreenshotTranslationPlan: Sendable {
         }
         let expected = value.text.indices.map { index in expectedRanges.contains { $0.contains(index) } }
         guard actual == expected else { throw TranslationError.parse("粗体位置无法可靠对应，请重试。") }
+        return output
+    }
+
+    private static func encodeEdgeSpaces(_ markdown: String) -> String {
+        var output = "", pending = "", atLineStart = true
+        func flush(encoded: Bool) {
+            for character in pending {
+                output += encoded ? (character == " " ? "&#32;" : "&#9;") : String(character)
+            }
+            pending = ""
+        }
+        for character in markdown {
+            if character == " " || character == "\t" { pending.append(character); continue }
+            flush(encoded: atLineStart || character.isNewline)
+            output.append(character)
+            atLineStart = character.isNewline
+        }
+        flush(encoded: true)
         return output
     }
 
@@ -198,6 +310,13 @@ struct ScreenshotPlanTranslator: Translator {
             translated = try await base.translate(plan.sourceTexts, to: target, context: context)
                 .map { .init(text: $0, boldRanges: []) }
         }
-        return [try plan.render(translated)]
+        do {
+            return [try plan.render(translated)]
+        } catch {
+            if base is any ScreenshotTrialBillingRoute {
+                throw TranslationError.service("截图译文无法在浮窗中可靠显示；本次翻译的体验额度或余额可能已结算。请核对后再重试。")
+            }
+            throw error
+        }
     }
 }

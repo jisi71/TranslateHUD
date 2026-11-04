@@ -1,6 +1,27 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "截图文字或粗体无法在浮窗中可靠显示，请重新截图后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "截图文字或粗体无法在浮窗中可靠显示，请重新截图后重试。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "The screenshot text or bold formatting cannot be displayed reliably. Please take the screenshot again." } }
+      }
+    },
+    "截图表格结构不完整，请重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "截图表格结构不完整，请重试。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "The screenshot table is incomplete. Please try again." } }
+      }
+    },
+    "截图译文无法在浮窗中可靠显示；本次翻译的体验额度或余额可能已结算。请核对后再重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "截图译文无法在浮窗中可靠显示；本次翻译的体验额度或余额可能已结算。请核对后再重试。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "The screenshot translation cannot be displayed reliably. Trial quota or credit may already have been charged; please check before retrying." } }
+      }
+    },
     "无法自动确认行列。请对照截图逐格核对；本预览不能修改单元格，如有错误请选择按文字翻译或取消。": {
       "extractionState": "manual",
       "localizations": {

@@ -26,7 +26,7 @@ struct FailingTermExplainer: TermExplainer {
     }
 }
 
-struct TrialProxyTranslator: ScreenshotStyledTranslator {
+struct TrialProxyTranslator: ScreenshotStyledTranslator, ScreenshotTrialBillingRoute {
     let proxyBaseURL: String
     let session: URLSession
 

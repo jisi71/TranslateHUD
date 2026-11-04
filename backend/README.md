@@ -1,5 +1,7 @@
 # 体验额度服务
 
+> **部署保护：**本目录历史 `src/` 不是当前线上 `trial` / `trial-stream` 的完整源码，直接部署会丢失每日免费额度。`npm run stage` 已阻止执行。当前两个函数的基线、补丁和验证见 [deployment-tests/README.md](deployment-tests/README.md)；基线或部署方式核对完成前，不要照下文历史部署命令覆盖线上。
+
 TranslateHUD 0.4.0 让没有自己 API Key 的人先用手机号试翻译。这一层服务做三件事：
 
 1. 确认是哪一个云开发账号（每个手机号对应一个用户 ID）。
@@ -123,23 +125,9 @@ bash scripts/install-local.sh
 
 `TranslateHUD.xcodeproj` 不入库。`install-local.sh` 里已经包含 `xcodegen generate`。换了环境之后，请退出登录再登一次。旧环境的登录不能用来读新环境的余额。
 
-## 云函数（备用）
+## 线上云函数
 
-云函数源码在 `functions/trial`。它和上面的 HTTP 服务共用 `src/`。云函数会把整段结果一次性返回，字不会一个个冒出来。要边出字，用上一节的云托管。
-
-部署前把共享代码拷进函数目录：
-
-```bash
-cd backend
-npm run stage
-npm install --prefix functions/trial
-```
-
-然后用云开发 CLI（需要你自己的登录态，这台自动化环境里没有）：
-
-```bash
-npx --yes @cloudbase/cli functions:deploy trial --config cloudbaserc.json
-```
+目前 `trial` 和 `trial-stream` 的线上源码不同，也不同于这里的历史 `src/`。不要用旧的 `npm run stage` 和 `cloudbaserc.json` 直接覆盖线上。修改、验证和后续部署前，请先阅读 [线上基线补丁与验证](deployment-tests/README.md)，分别核验两个函数当前的代码包及目标网关路由。
 
 `cloudbaserc.json` 里的 envId 已经填好。函数超时是 120 秒。HTTP 访问路径要能匹配下面这些地址的结尾：
 
@@ -204,7 +192,7 @@ npx --yes @cloudbase/cli functions:deploy trial --config cloudbaserc.json
 2. `cd backend && npm install`
 3. `.env` 里已经是 `TRIAL_STORE=cloudbase`、`CLOUDBASE_ENV_ID=translatehud-d4gl951eo8bef4702`，并且填了腾讯云密钥时，运行 `npm run ensure-collection`。这会补上 `trial_error_events` 和 `trial_usage_events`。集合已存在会跳过。没跑也行：第一次写入失败记录时服务会自己建。建集合失败只影响失败记录，不影响翻译和扣费。
 4. 用现在的云托管重新部署 `backend/`（镜像是 `Dockerfile`）。App 打到的是 `TRIAL_PROXY_BASE_URL`，新接口是同一个服务上的 `POST /v1/trial/errors`。只部署备用云函数不会接到正式 App 的失败记录。
-5. 如果备用云函数也要带上这个接口：`npm run stage`，然后 `npx --yes @cloudbase/cli functions:deploy trial --config cloudbaserc.json`。HTTP 路径要能匹配 `/v1/trial/errors`。
+5. 如需更新线上云函数，先核对 [线上基线补丁与验证](deployment-tests/README.md)；不要使用历史 `stage` 命令覆盖线上函数。HTTP 路径要能匹配 `/v1/trial/errors`。
 6. 看记录：云开发控制台 → 数据库 → 文档型数据库 → 集合 `trial_error_events`。
 7. 发一版新的 App 之后才会有客户端上报。这一步不在这次改动里做公证或 Release。旧 App 不会打这个接口；新 App 碰上还没升级的服务会得到 404，然后照常显示原来的错误。
 

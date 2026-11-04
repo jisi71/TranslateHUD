@@ -53,6 +53,65 @@ final class ScreenshotStructureTests: XCTestCase {
         XCTAssertThrowsError(try plan.render([.init(text: "too few", boldRanges: [])]))
     }
 
+    func testCorrectedTableKeepsCellPositionsAndBoldRanges() throws {
+        let plan = ScreenshotTranslationPlan(blocks: [.table(rows: [["Product", "Amount"], ["New York", "3"]], cellRuns: [
+            [[.init(text: "Product", isStrong: false)], [.init(text: "Amount", isStrong: false)]],
+            [[.init(text: "New ", isStrong: false), .init(text: "York", isStrong: true)], [.init(text: "3", isStrong: false)]]
+        ])])
+        XCTAssertEqual(plan.sourceForQuota, "Product\nAmount\nNew York\n3")
+        XCTAssertEqual(plan.sourceItems[2].boldRanges, [.init(start: 4, end: 8)])
+        let translated: [ScreenshotStyledText] = [
+            .init(text: "产品", boldRanges: []), .init(text: "数量", boldRanges: []),
+            .init(text: "新的纽约\n城区", boldRanges: [.init(start: 6, end: 12)]),
+            .init(text: "3", boldRanges: [])
+        ]
+        let output = try plan.render(translated)
+        guard case .table(let rows) = try XCTUnwrap(MarkdownDisplay.prosePieces(from: output).first) else {
+            return XCTFail("Expected a table")
+        }
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[1].count, 2)
+        let city = MarkdownDisplay.parse(rows[1][0])
+        XCTAssertEqual(String(city.characters), "新的纽约 城区")
+        XCTAssertEqual(city.runs.filter { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true }
+            .map { String(city[$0.range].characters) }.joined(), "纽约")
+        XCTAssertEqual(String(MarkdownDisplay.parse(rows[1][1]).characters), "3")
+    }
+
+    func testIncorrectCellStyleMappingFailsBeforeTranslation() {
+        let plan = ScreenshotTranslationPlan(blocks: [.table(rows: [["New York", "A"]], cellRuns: [
+            [[.init(text: "New Y0rk", isStrong: true)], [.init(text: "A", isStrong: false)]]
+        ])])
+        XCTAssertFalse(plan.sourceIsRepresentable)
+        XCTAssertTrue(plan.originalMarkdown.contains("New York"))
+        XCTAssertThrowsError(try plan.render(plan.sourceItems))
+    }
+
+    func testAssemblerCarriesReliableCellRunsAndFlagsMismatchForReview() throws {
+        let cellRects: [[CGRect?]] = [[
+            CGRect(x: 0.1, y: 0.6, width: 0.35, height: 0.2),
+            CGRect(x: 0.45, y: 0.6, width: 0.35, height: 0.2)
+        ]]
+        let lines = [
+            OCRService.Line(text: "New York", normalizedBox: CGRect(x: 0.15, y: 0.65, width: 0.2, height: 0.05), confidence: 1,
+                            runs: [.init(text: "New ", isStrong: false), .init(text: "York", isStrong: true)]),
+            OCRService.Line(text: "A B", normalizedBox: CGRect(x: 0.5, y: 0.65, width: 0.2, height: 0.05), confidence: 1,
+                            runs: [.init(text: "A ", isStrong: false), .init(text: "B", isStrong: true)])
+        ]
+        func table(_ name: String) -> ScreenshotTable {
+            ScreenshotTable(rows: [[name, "A B"]], normalizedBox: CGRect(x: 0.05, y: 0.55, width: 0.9, height: 0.3),
+                            hasMergedCells: false, cellRects: cellRects)
+        }
+        let correct = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: lines, tables: [table("New York")])
+        XCTAssertFalse(correct.tableStylesNeedReview)
+        XCTAssertEqual(correct.sourceItems[0].boldRanges, [.init(start: 4, end: 8)])
+        XCTAssertEqual(correct.sourceItems[1].boldRanges, [.init(start: 2, end: 3)])
+        let mismatch = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: lines, tables: [table("New Y0rk")])
+        XCTAssertTrue(mismatch.tableStylesNeedReview)
+        XCTAssertEqual(mismatch.sourceTexts, ["New Y0rk", "A B"])
+        XCTAssertTrue(mismatch.sourceItems.allSatisfy { $0.boldRanges.isEmpty })
+    }
+
     func testMarkedWholeSentenceCanReorderBoldSpanAndRejectsLostMarkers() throws {
         let item = ScreenshotStyledText(text: "I don't recommend this.", boldRanges: [.init(start: 2, end: 7)])
         let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: "I ", isStrong: false), .init(text: "don't", isStrong: true), .init(text: " recommend this.", isStrong: false)], heading: nil)])

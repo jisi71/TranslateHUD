@@ -3,6 +3,47 @@ import XCTest
 
 @MainActor
 final class TranslationReliabilityTests: XCTestCase {
+    func testCorrectedTableBoldFlowsThroughTrialRequestAndPopoverGrid() async throws {
+        let initial = ScreenshotTranslationPlan(blocks: [.table(rows: [["City", "Condition"], ["New York", "A B"]])])
+        var edit = try ScreenshotProofreadModel(plan: initial)
+        let id = try XCTUnwrap(edit.items.first?.id)
+        try edit.editTable(id) { table in
+            try table.setStrong(true, in: NSRange(location: 4, length: 4), at: .init(row: 1, column: 0))
+            try table.setStrong(true, in: NSRange(location: 2, length: 1), at: .init(row: 1, column: 1))
+        }
+        let plan = try edit.plan()
+        let content = "{\"results\":[{\"i\":0,\"t\":\"城市\",\"boldRanges\":[]},{\"i\":1,\"t\":\"状况\",\"boldRanges\":[]},{\"i\":2,\"t\":\"纽约\",\"boldRanges\":[[0,6]]},{\"i\":3,\"t\":\"甲 乙\",\"boldRanges\":[[4,7]]}]}"
+        let json: [String: Any] = ["choices": [["message": ["content": content]]],
+                                   "translatehud_trial": ["costMicroYuan": 1, "chargedMicroYuan": 1, "balanceMicroYuan": 50]]
+        TranslationURLProtocol.reset([.init(status: 200, body: String(decoding: try JSONSerialization.data(withJSONObject: json), as: UTF8.self))])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let client = OpenAICompatibleTranslator(config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+                                                session: URLSession(configuration: configuration))
+        let rendered = try await ScreenshotPlanTranslator(base: ScreenshotTrialHTTPClient(client: client), plan: plan)
+            .translate([plan.originalMarkdown], to: .chinese, context: nil)
+        guard case .table(let rows) = try XCTUnwrap(MarkdownDisplay.prosePieces(from: XCTUnwrap(rendered.first)).first) else {
+            return XCTFail("Expected a table")
+        }
+        XCTAssertEqual(rows.count, 2)
+        for (column, expected) in [(0, "纽约"), (1, "甲 乙")] {
+            let cell = MarkdownDisplay.parse(rows[1][column])
+            XCTAssertEqual(String(cell.characters), expected)
+            XCTAssertTrue(cell.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+        }
+        let request = try XCTUnwrap(TranslationURLProtocol.requests().first)
+        let header = try XCTUnwrap(request.value(forHTTPHeaderField: TrialHeaders.source))
+        XCTAssertEqual(String(data: try XCTUnwrap(Data(base64Encoded: header)), encoding: .utf8), "City\nCondition\nNew York\nA B")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+        let messages = try XCTUnwrap(body["messages"] as? [[String: String]])
+        let input = try XCTUnwrap(messages.first { $0["role"] == "user" }?["content"]?.data(using: .utf8))
+        let items = try XCTUnwrap(JSONSerialization.jsonObject(with: input) as? [[String: Any]])
+        XCTAssertEqual(items.compactMap { $0["text"] as? String }.joined(separator: "\n"), plan.sourceForQuota)
+        XCTAssertEqual(items[2]["boldRanges"] as? [[Int]], [[4, 8]])
+        XCTAssertEqual(items[3]["boldRanges"] as? [[Int]], [[2, 3]])
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+    }
+
     func testTrialHeaderReceiptIsAppliedEvenWhenResponseIsNotJSON() async throws {
         TranslationURLProtocol.reset([.init(status: 200, body: "bad response", headers: [
             "X-Trial-Cost-Micro-Yuan": "10", "X-Trial-Charged-Micro-Yuan": "10",

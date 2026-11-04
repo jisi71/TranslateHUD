@@ -1,6 +1,6 @@
 import AppKit
 
-/// 截图翻译完整流程：截图 → OCR → 立即显示浮窗（loading 状态）→ 异步翻译。
+/// 截图 → 本机 OCR → 用户校对 → 打开浮窗并翻译。
 enum ScreenshotFlow {
     static func start() {
         Task { await run() }
@@ -30,8 +30,11 @@ enum ScreenshotFlow {
 
         // 3. OCR（本地、~500ms）
         let lines: [OCRService.Line]
+        let styleUnavailable: Bool
         do {
-            lines = try await OCRService.recognize(image: image)
+            let result = try await OCRService.recognizeDetailed(image: image)
+            lines = result.lines
+            styleUnavailable = result.styleUnavailable
         } catch {
             ToastCenter.shared.show(title: "文字识别失败", message: ServiceErrorMessage.describe(error))
             FailureReporter.report(error, surface: .screenshotOCRTranslate)
@@ -97,9 +100,11 @@ enum ScreenshotFlow {
         }
 
         tableWasRejected = tableWasRejected || ScreenshotDocumentAssembler.hasCrossingLine(lines, tables: tables)
-        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: textBlocks, lines: lines, tables: tables,
-                                                         hasRejectedTable: tableWasRejected)
-        let originals = plan.sourceTexts.isEmpty ? [] : [plan.originalMarkdown]
+        let initialPlan = ScreenshotDocumentAssembler.makePlan(textBlocks: textBlocks, lines: lines, tables: tables,
+                                                                hasRejectedTable: tableWasRejected)
+        guard let plan = ScreenshotProofreadWindow.ask(image: image, plan: initialPlan, styleUnavailable: styleUnavailable,
+                                                        tableWasRejected: tableWasRejected) else { return }
+        let originals = [plan.originalMarkdown]
         let source = plan.sourceForQuota
         let target = TargetLanguage.resolved(
             for: plan.sourceTexts,
@@ -112,7 +117,7 @@ enum ScreenshotFlow {
             explainer: { TranslationSession.explainer(for: source) }
         )
 
-        // 4. 立刻展示浮窗（loading 状态 + 已识别的原文）
+        // 校对完成后展示浮窗，并使用同一份快照翻译。
         progress.failureSurface = .screenshotOCRTranslate
         progress.mapTranslator = { ScreenshotPlanTranslator(base: $0, plan: plan) }
         progress.retrySourceText = source
@@ -121,22 +126,11 @@ enum ScreenshotFlow {
             originals: originals,
             progress: progress,
             termProgress: termProgress,
-            recognitionNotice: tableWasRejected ? "表格结构未能可靠识别，相关内容已按普通文字显示，请对照截图核对。" : (!plan.sourceIsRepresentable ? "粗体位置无法可靠对应，请重试。" : nil)
+            recognitionNotice: tableWasRejected ? "部分表格需要手动核对，请以截图为准。" : nil
         )
         window.show()
 
-        // 5. 没识别到文字 → 直接收尾为 success(空)
-        if originals.isEmpty {
-            // 用一个空翻译完成 progress 流程
-            progress.start(
-                translator: NoOpTranslator(),
-                originals: [],
-                target: target
-            )
-            return
-        }
-
-        // 6. 异步翻译；progress 状态变化驱动浮窗 UI。超长原文在这里被拦住。
+        // 异步翻译；超长原文在这里被拦住。
         switch TranslationSession.prepare(sourceText: source) {
         case .blocked(_, let message):
             progress.start(translator: FailingTranslator(message: message), originals: originals, target: target)
@@ -144,16 +138,5 @@ enum ScreenshotFlow {
             let translator = progress.mapTranslator?(ready.translator) ?? ready.translator
             progress.start(translator: translator, originals: originals, target: target)
         }
-    }
-}
-
-/// 用于「OCR 没识别出任何文字」时把 progress 推进到 success(空)，避免 UI 卡在 loading。
-private struct NoOpTranslator: Translator {
-    func translate(
-        _ texts: [String],
-        to target: TargetLanguage,
-        context: SelectionFetcher.TextContext?
-    ) async throws -> [String] {
-        return Array(repeating: "", count: texts.count)
     }
 }

@@ -62,11 +62,21 @@ enum ScreenshotDocumentAssembler {
             let runs = block.runs.isEmpty ? [ScreenshotTextRun(text: block.text, isStrong: false)] : block.runs
             return (block.box, .text(runs: runs, heading: heading))
         }
-        positioned.append(contentsOf: tables.map { ($0.normalizedBox, .table(rows: $0.rows)) })
+        var tableStylesNeedReview = false
+        for table in tables {
+            let cellRuns: [[[ScreenshotTextRun]]]
+            switch ScreenshotTableStyleMapper.map(table: table, lines: lines) {
+            case .success(let mapping): cellRuns = mapping.cellRuns
+            case .failure:
+                cellRuns = []
+                tableStylesNeedReview = true
+            }
+            positioned.append((table.normalizedBox, .table(rows: table.rows, cellRuns: cellRuns)))
+        }
         positioned.sort { a, b in
             if abs(a.0.maxY - b.0.maxY) > 0.005 { return a.0.maxY > b.0.maxY }
             return a.0.minX < b.0.minX
         }
-        return ScreenshotTranslationPlan(blocks: positioned.map { $0.1 })
+        return ScreenshotTranslationPlan(blocks: positioned.map { $0.1 }, tableStylesNeedReview: tableStylesNeedReview)
     }
 }

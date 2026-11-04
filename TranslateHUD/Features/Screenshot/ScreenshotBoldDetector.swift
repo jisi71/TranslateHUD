@@ -19,6 +19,15 @@ struct ScreenshotBoldDetector {
         let stroke: Double
         let density: Double
     }
+    struct Analysis {
+        let runs: [[ScreenshotTextRun]]
+        let limited: Bool
+    }
+    private struct Budget {
+        var samples = 0
+        var pixels = 0
+        var exhausted = false
+    }
 
     private let width: Int
     private let height: Int
@@ -44,15 +53,24 @@ struct ScreenshotBoldDetector {
     }
 
     func runs(for candidates: [VNRecognizedText]) -> [[ScreenshotTextRun]] {
+        analyze(candidates).runs
+    }
+
+    func analyze(_ candidates: [VNRecognizedText]) -> Analysis {
+        func plain() -> Analysis {
+            Analysis(runs: candidates.map { [.init(text: $0.string, isStrong: false)] }, limited: true)
+        }
         guard candidates.count <= 600,
               candidates.reduce(0, { $0 + $1.string.count }) <= 20_000 else {
-            return candidates.map { [.init(text: $0.string, isStrong: false)] }
+            return plain()
         }
-        let groups = candidates.map(samples(for:))
+        var budget = Budget()
+        var groups: [[Sample]] = []
+        for candidate in candidates {
+            groups.append(samples(for: candidate, budget: &budget))
+            if budget.exhausted { return plain() }
+        }
         let all = groups.flatMap { $0 }
-        guard all.count <= 3000 else {
-            return candidates.map { [.init(text: $0.string, isStrong: false)] }
-        }
         func key(_ sample: Sample) -> SizeBand {
             SizeBand(script: sample.script, band: Int(log(max(sample.height, 1)) / log(1.06)))
         }
@@ -70,23 +88,32 @@ struct ScreenshotBoldDetector {
             baselines[band] = Baseline(stroke: strokes[(strokes.count - 1) / 4],
                                        density: densities[(densities.count - 1) / 4])
         }
-        return zip(candidates, groups).map { candidate, samples in
+        let result = zip(candidates, groups).map { candidate, samples in
             classify(candidate.string, samples: samples, baselines: baselines, key: key)
         }
+        return Analysis(runs: result, limited: false)
     }
 
-    private func samples(for candidate: VNRecognizedText) -> [Sample] {
+    private func samples(for candidate: VNRecognizedText, budget: inout Budget) -> [Sample] {
         let text = candidate.string
         var samples: [Sample] = []
-        text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: .byWords) { word, range, _, _ in
-            guard let word, word.count >= 2,
+        var remaining = budget
+        text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: .byWords) { word, range, _, stop in
+            guard let word, word.count >= 2 else { return }
+            remaining.samples += 1
+            if remaining.samples > 3000 { remaining.exhausted = true; stop = true; return }
+            guard
                   let observation = try? candidate.boundingBox(for: range),
-                  let measurements = measure(observation.boundingBox) else { return }
+                  let measurements = measure(observation.boundingBox, budget: &remaining) else {
+                if remaining.exhausted { stop = true }
+                return
+            }
             let script = word.unicodeScalars.contains { (0x3400...0x9fff).contains($0.value) } ? 1 : 0
             samples.append(Sample(range: range, stroke: measurements.0,
                                   density: measurements.1, script: script,
                                   height: Double(observation.boundingBox.height) * Double(height)))
         }
+        budget = remaining
         return samples
     }
 
@@ -136,7 +163,7 @@ struct ScreenshotBoldDetector {
         return runs
     }
 
-    private func measure(_ normalized: CGRect) -> (Double, Double)? {
+    private func measure(_ normalized: CGRect, budget: inout Budget) -> (Double, Double)? {
         let rect = CGRect(x: normalized.minX * CGFloat(width),
                           y: (1 - normalized.maxY) * CGFloat(height),
                           width: normalized.width * CGFloat(width),
@@ -144,6 +171,12 @@ struct ScreenshotBoldDetector {
         let left = max(0, Int(rect.minX)), top = max(0, Int(rect.minY))
         let right = min(width, Int(rect.maxX)), bottom = min(height, Int(rect.maxY))
         guard right - left >= 5, bottom - top >= 8 else { return nil }
+        let area = (right - left) * (bottom - top)
+        guard area <= 1_000_000, budget.pixels <= 8_000_000 - area else {
+            budget.exhausted = true
+            return nil
+        }
+        budget.pixels += area
         var values: [UInt8] = []
         for y in top..<bottom { values.append(contentsOf: pixels[(y * width + left)..<(y * width + right)]) }
         let sorted = values.sorted()

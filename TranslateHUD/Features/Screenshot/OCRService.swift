@@ -80,9 +80,18 @@ enum OCRService {
     /// 对图像跑 OCR，返回按 y 轴从上到下排序的文本行。
     /// 默认走 .accurate 模式 + 多语种识别 + 语言纠错。
     static func recognize(image: NSImage) async throws -> [Line] {
+        try await recognizeDetailed(image: image).lines
+    }
+
+    struct Recognition {
+        let lines: [Line]
+        let styleUnavailable: Bool
+    }
+
+    static func recognizeDetailed(image: NSImage) async throws -> Recognition {
         guard let cg = cgImage(from: image) else { throw OCRError.noCGImage }
 
-        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[Line], Error>) in
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Recognition, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 let request = VNRecognizeTextRequest()
                 request.recognitionLevel = .accurate
@@ -107,7 +116,8 @@ enum OCRService {
                 let observations = (request.results ?? [])
                 let bold = ScreenshotBoldDetector(image: cg)
                 let candidates = observations.compactMap { $0.topCandidates(1).first }
-                let detectedRuns = bold?.runs(for: candidates) ?? candidates.map { _ in [] }
+                let analysis = bold?.analyze(candidates)
+                let detectedRuns = analysis?.runs ?? candidates.map { _ in [] }
                 var candidateIndex = 0
                 let lines: [Line] = observations.compactMap { obs in
                     guard let cand = obs.topCandidates(1).first else { return nil }
@@ -124,7 +134,7 @@ enum OCRService {
                     let b = 1 - $1.normalizedBox.midY
                     return a < b
                 }
-                cont.resume(returning: sorted)
+                cont.resume(returning: Recognition(lines: sorted, styleUnavailable: bold == nil || analysis?.limited == true))
             }
         }
     }

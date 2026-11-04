@@ -51,41 +51,67 @@ protocol ScreenshotTrialBillingRoute: Translator {
 struct ScreenshotTranslationPlan: Sendable {
     enum Block: Sendable {
         case text(runs: [ScreenshotTextRun], heading: Int?)
-        case table(rows: [[String]])
+        case table(rows: [[String]], cellRuns: [[[ScreenshotTextRun]]] = [])
     }
 
     let blocks: [Block]
+    var tableStylesNeedReview = false
 
     var sourceItems: [ScreenshotStyledText] {
         blocks.flatMap { block -> [ScreenshotStyledText] in
             switch block {
             case .text(let runs, _):
-                var value = "", ranges: [ScreenshotTextSpan] = []
-                for run in runs {
-                    let start = value.utf8.count
-                    value += run.text
-                    if run.isStrong && !run.text.isEmpty {
-                        ranges.append(.init(start: start, end: value.utf8.count))
+                let value = Self.styled(runs)
+                return value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [value]
+            case .table(let rows, let cellRuns):
+                return rows.enumerated().flatMap { rowIndex, row in
+                    row.enumerated().compactMap { columnIndex, text -> ScreenshotStyledText? in
+                        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                        let runs = cellRuns.indices.contains(rowIndex) && cellRuns[rowIndex].indices.contains(columnIndex)
+                            ? cellRuns[rowIndex][columnIndex] : []
+                        return Self.styled(runs.isEmpty ? [.init(text: text, isStrong: false)] : runs)
                     }
                 }
-                return value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [ScreenshotStyledText(text: value, boldRanges: ranges)]
-            case .table(let rows):
-                return rows.flatMap { $0 }.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                    .map { .init(text: $0, boldRanges: []) }
+            }
+        }
+    }
+
+    private static func styled(_ runs: [ScreenshotTextRun]) -> ScreenshotStyledText {
+        var text = "", ranges: [ScreenshotTextSpan] = []
+        for run in runs {
+            let start = text.utf8.count
+            text += run.text
+            if run.isStrong && !run.text.isEmpty {
+                if let last = ranges.last, last.end == start {
+                    ranges[ranges.count - 1] = .init(start: last.start, end: text.utf8.count)
+                } else { ranges.append(.init(start: start, end: text.utf8.count)) }
+            }
+        }
+        return .init(text: text, boldRanges: ranges)
+    }
+
+    private var structureIsValid: Bool {
+        blocks.allSatisfy { block in
+            guard case .table(let rows, let runs) = block, !runs.isEmpty else { return true }
+            guard runs.count == rows.count else { return false }
+            return rows.indices.allSatisfy { row in
+                runs[row].count == rows[row].count && rows[row].indices.allSatisfy { column in
+                    runs[row][column].map(\.text).joined().utf8.elementsEqual(rows[row][column].utf8)
+                }
             }
         }
     }
 
     var sourceTexts: [String] { sourceItems.map(\.text) }
     var sourceForQuota: String { sourceTexts.joined(separator: "\n") }
-    var sourceIsRepresentable: Bool { (try? render(sourceItems)) != nil }
+    var sourceIsRepresentable: Bool { structureIsValid && (try? render(sourceItems)) != nil }
     var originalMarkdown: String {
         if let result = try? render(sourceItems) { return result }
         let plainBlocks = blocks.map { block -> Block in
             switch block {
             case .text(let runs, let heading):
                 return .text(runs: runs.map { .init(text: $0.text, isStrong: false) }, heading: heading)
-            case .table: return block
+            case .table(let rows, _): return .table(rows: rows)
             }
         }
         let plain = ScreenshotTranslationPlan(blocks: plainBlocks)
@@ -93,6 +119,7 @@ struct ScreenshotTranslationPlan: Sendable {
     }
 
     func render(_ translations: [ScreenshotStyledText]) throws -> String {
+        guard structureIsValid else { throw TranslationError.parse("截图表格内容与粗体位置不一致，请核对。") }
         let sources = sourceItems
         guard translations.count == sources.count else {
             throw TranslationError.parse("译文数量与截图内容不一致，请重试。")
@@ -125,17 +152,20 @@ struct ScreenshotTranslationPlan: Sendable {
                 if case .text(let previous)? = expected.last {
                     expected[expected.count - 1] = .text(previous + [text])
                 } else { expected.append(.text([text])) }
-            case .table(let rows):
+            case .table(let rows, _):
                 guard let width = rows.map(\.count).max(), width >= 2 else {
                     throw TranslationError.parse("截图表格结构不完整，请重试。")
                 }
-                let translatedRows = try rows.map { row in
-                    try (0..<width).map { column in try value(for: column < row.count ? row[column] : "").text }
+                let translatedRows = try rows.map { row -> [ScreenshotStyledText] in
+                    try (0..<width).map { column in
+                        try Self.flattenLines(value(for: column < row.count ? row[column] : ""))
+                    }
                 }
-                rendered.append(ScreenshotTable(rows: translatedRows, normalizedBox: .zero, hasMergedCells: false).markdown)
-                expected.append(.table(translatedRows.map { row in row.map {
-                    $0.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespaces)
-                } }))
+                func row(_ cells: [String]) -> String { "| " + cells.joined(separator: " | ") + " |" }
+                let formatted = try translatedRows.map { try $0.map(Self.markdown) }
+                let separator = "| " + Array(repeating: "---", count: width).joined(separator: " | ") + " |"
+                rendered.append(([row(formatted[0]), separator] + formatted.dropFirst().map(row)).joined(separator: "\n"))
+                expected.append(.table(translatedRows))
             }
         }
         let markdown = rendered.joined(separator: "\n\n")
@@ -150,7 +180,7 @@ struct ScreenshotTranslationPlan: Sendable {
 
     private enum DisplayPiece {
         case text([DisplayText])
-        case table([[String]])
+        case table([[ScreenshotStyledText]])
     }
 
     /// Follow BlocksView's segmentation and its actual Markdown parser. The inline
@@ -172,8 +202,8 @@ struct ScreenshotTranslationPlan: Sendable {
                 guard cells.count == rows.count else { throw displayError() }
                 for (actualRow, expectedRow) in zip(cells, rows) {
                     guard actualRow.count == expectedRow.count else { throw displayError() }
-                    for (cell, value) in zip(actualRow, expectedRow) where !value.isEmpty || !cell.isEmpty {
-                        try verifyText(MarkdownDisplay.parse(cell), expected: [DisplayText(value: .init(text: value, boldRanges: []), heading: nil)], trimEdgeNewlines: false)
+                    for (cell, value) in zip(actualRow, expectedRow) where !value.text.isEmpty || !cell.isEmpty {
+                        try verifyText(MarkdownDisplay.parse(cell), expected: [DisplayText(value: value, heading: nil)], trimEdgeNewlines: false)
                     }
                 }
             default: throw displayError()
@@ -219,6 +249,21 @@ struct ScreenshotTranslationPlan: Sendable {
 
     private static func displayError() -> TranslationError {
         .parse("截图文字或粗体无法在浮窗中可靠显示，请重新截图后重试。")
+    }
+
+    private static func flattenLines(_ value: ScreenshotStyledText) throws -> ScreenshotStyledText {
+        _ = try value.ranges()
+        var text = "", offsets = [0: 0], originalOffset = 0
+        for character in value.text {
+            originalOffset += String(character).utf8.count
+            text += character.isNewline ? " " : String(character)
+            offsets[originalOffset] = text.utf8.count
+        }
+        let ranges = try value.boldRanges.map { span -> ScreenshotTextSpan in
+            guard let start = offsets[span.start], let end = offsets[span.end] else { throw displayError() }
+            return .init(start: start, end: end)
+        }
+        return .init(text: text, boldRanges: ranges)
     }
 
     private static func markdown(for value: ScreenshotStyledText) throws -> String {

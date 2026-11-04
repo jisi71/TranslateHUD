@@ -92,6 +92,25 @@ final class ScreenshotStructureTests: XCTestCase {
         XCTAssertEqual(plan.originalMarkdown, "\\*Required\\* \\[label\\]\\(https://example\\.com\\)")
     }
 
+    func testAdjacentBoldRangesAndSpacesRoundTripInFoundationMarkdown() throws {
+        let plan = ScreenshotTranslationPlan(blocks: [
+            .text(runs: [.init(text: "红", isStrong: true), .init(text: "蓝", isStrong: true)], heading: nil)
+        ])
+        let markdown = plan.originalMarkdown
+        XCTAssertEqual(markdown, "**红蓝**")
+        let attributed = try AttributedString(markdown: markdown)
+        XCTAssertEqual(String(attributed.characters), "红蓝")
+        XCTAssertTrue(attributed.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+
+        let padded = ScreenshotTranslationPlan(blocks: [
+            .text(runs: [.init(text: " red ", isStrong: true)], heading: nil)
+        ])
+        XCTAssertEqual(padded.originalMarkdown, " **red** ")
+        let paddedRich = try AttributedString(markdown: padded.originalMarkdown)
+        XCTAssertEqual(String(paddedRich.characters), "red")
+        XCTAssertTrue(paddedRich.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+    }
+
     func testLegacyOCRGroupsLinesOnlyWhenGeometricallyAdjacent() {
         let lines = [
             OCRService.Line(text: "Second line.", normalizedBox: CGRect(x: 0.1, y: 0.74, width: 0.6, height: 0.04), confidence: 1),

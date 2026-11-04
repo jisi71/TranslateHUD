@@ -110,11 +110,23 @@ struct ScreenshotTranslationPlan: Sendable {
     }
 
     private static func markdown(for value: ScreenshotStyledText) throws -> String {
-        let ranges = try value.ranges()
+        var ranges: [Range<String.Index>] = []
+        for range in try value.ranges() {
+            if let previous = ranges.last, previous.upperBound == range.lowerBound {
+                ranges[ranges.count - 1] = previous.lowerBound..<range.upperBound
+            } else {
+                ranges.append(range)
+            }
+        }
         var output = "", cursor = value.text.startIndex
         for range in ranges {
             output += escape(String(value.text[cursor..<range.lowerBound]))
-            output += "**" + escape(String(value.text[range])) + "**"
+            let content = String(value.text[range])
+            let leading = String(content.prefix(while: \.isWhitespace))
+            let trailing = String(content.reversed().prefix(while: \.isWhitespace).reversed())
+            let inner = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if inner.isEmpty { output += escape(content) }
+            else { output += escape(leading) + "**" + escape(inner) + "**" + escape(trailing) }
             cursor = range.upperBound
         }
         output += escape(String(value.text[cursor...]))
@@ -125,6 +137,7 @@ struct ScreenshotTranslationPlan: Sendable {
         value.reduce(into: "") { result, character in
             switch character {
             case "&": result += "&amp;"
+            case "|": result += "&#124;"
             case "<": result += "&lt;"
             case ">": result += "&gt;"
             case "\\", "`", "*", "_", "{", "}", "[", "]", "(", ")", "#", "+", "-", ".", "!", "~":

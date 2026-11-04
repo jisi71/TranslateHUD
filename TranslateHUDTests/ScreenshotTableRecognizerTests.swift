@@ -27,6 +27,26 @@ final class ScreenshotTableRecognizerTests: XCTestCase {
         XCTAssertEqual(String(rendered.characters), "名称 | 编号")
     }
 
+    func testBorderlessCandidateIsSeparateFromAutomaticFallback() throws {
+        for name in ["borderless", "aligned-prose"] {
+            let image = try fixture(name)
+            let lines = try recognizeLines(image)
+            XCTAssertTrue(ScreenshotTableRecognizer.inferredTables(from: image, lines: lines).isEmpty)
+            let candidate = try XCTUnwrap(ScreenshotTableRecognizer.borderlessCandidate(from: image, lines: lines))
+            XCTAssertEqual(candidate.rows, expected)
+            XCTAssertNotNil(candidate.table.cellRects[0][0])
+            XCTAssertNil(candidate.table.cellRects[2][1], "An empty unruled cell has no observed text bounds")
+        }
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/ScreenshotTables")
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("borderless.png")),
+                       try Data(contentsOf: root.appendingPathComponent("aligned-prose.png")))
+    }
+
+    func testUnrelatedTitleRejectsBorderlessCandidate() throws {
+        let image = try fixture("unruled")
+        XCTAssertNil(ScreenshotTableRecognizer.borderlessCandidate(from: image, lines: try recognizeLines(image)))
+    }
+
     func testCellMarkdownTreatsOCRContentAsLiteralText() throws {
         let cells = ["*Required*", "[label](url)", "`a|b`", "&#124;", "A < B & C"]
         let input = ScreenshotTable(rows: [cells], normalizedBox: .zero, hasMergedCells: false)
@@ -54,6 +74,12 @@ final class ScreenshotTableRecognizerTests: XCTestCase {
         let table = try XCTUnwrap(ScreenshotTableRecognizer.inferredTables(from: image, lines: lines).first)
         XCTAssertEqual(table.rows, expected)
         XCTAssertFalse(table.hasMergedCells)
+        let firstCell = try XCTUnwrap(table.cellRects[0][0])
+        let product = try XCTUnwrap(lines.first { $0.text == "Product" })
+        XCTAssertTrue(firstCell.contains(CGPoint(x: product.normalizedBox.midX, y: product.normalizedBox.midY)))
+        XCTAssertNotNil(table.cellRects[2][1], "A ruled blank cell has known grid boundaries")
+        let replaced = try XCTUnwrap(table.replacingNonEmptyCells(table.nonEmptyCells))
+        XCTAssertEqual(replaced.cellRects, table.cellRects)
     }
 
     func testUnruledAndMergedGridFallbackDeclinesToGuess() throws {

@@ -6,8 +6,17 @@ import Vision
 struct ScreenshotTable: Equatable, Sendable {
     let rows: [[String]]
     let normalizedBox: CGRect
-    /// Markdown tables cannot represent merged cells. Text stays in the top-left cell.
+    /// The recognized text bounds or ruled cell bounds in image coordinates.
+    /// A nil entry means its position could not be established (e.g. an empty unruled cell).
+    let cellRects: [[CGRect?]]
     let hasMergedCells: Bool
+
+    init(rows: [[String]], normalizedBox: CGRect, hasMergedCells: Bool, cellRects: [[CGRect?]]? = nil) {
+        self.rows = rows
+        self.normalizedBox = normalizedBox
+        self.hasMergedCells = hasMergedCells
+        self.cellRects = cellRects ?? rows.map { Array(repeating: nil, count: $0.count) }
+    }
 
     var nonEmptyCells: [String] {
         rows.flatMap { $0 }.filter { !$0.isEmpty }
@@ -22,7 +31,7 @@ struct ScreenshotTable: Equatable, Sendable {
             defer { i += 1 }
             return translated[i]
         } }
-        return ScreenshotTable(rows: result, normalizedBox: normalizedBox, hasMergedCells: hasMergedCells)
+        return ScreenshotTable(rows: result, normalizedBox: normalizedBox, hasMergedCells: hasMergedCells, cellRects: cellRects)
     }
 
     /// A GFM separator is required by the existing table renderer. Encode pipes as an
@@ -63,6 +72,13 @@ enum ScreenshotTableRecognizer {
     struct Assessment: Sendable {
         let tables: [ScreenshotTable]
         let rejected: [RejectionReason]
+    }
+
+    /// A geometry-only inference. A user must inspect and approve it before use.
+    struct BorderlessCandidate: Sendable {
+        let table: ScreenshotTable
+        var rows: [[String]] { table.rows }
+        var normalizedBox: CGRect { table.normalizedBox }
     }
 
     /// Cross-check Vision's structure against an independent OCR layout.
@@ -115,7 +131,7 @@ enum ScreenshotTableRecognizer {
             guard zip(grid.flatMap({ $0 }), match.rows.flatMap({ $0 })).allSatisfy({ normalized($0.0) == normalized($0.1) }) else {
                 rejected.append(.textMismatch); continue
             }
-            accepted.append(ScreenshotTable(rows: grid, normalizedBox: match.normalizedBox, hasMergedCells: false))
+            accepted.append(ScreenshotTable(rows: grid, normalizedBox: match.normalizedBox, hasMergedCells: false, cellRects: match.cellRects))
         }
         return Assessment(tables: accepted, rejected: rejected)
     }
@@ -125,8 +141,30 @@ enum ScreenshotTableRecognizer {
     private static func borderlessMatch(rows: [[String]], box: CGRect, image: CGImage, lines: [OCRService.Line]) -> ScreenshotTable? {
         guard rows.count >= 3, let width = rows.first?.count, width >= 2,
               rows.allSatisfy({ $0.count == width && $0.filter({ !$0.isEmpty }).count >= 2 }) else { return nil }
-        let relevant = lines.filter { box.contains(CGPoint(x: $0.normalizedBox.midX, y: $0.normalizedBox.midY)) }
-        guard relevant.count == rows.flatMap({ $0 }).filter({ !$0.isEmpty }).count else { return nil }
+        guard let candidate = inferBorderless(in: box, image: image, lines: lines),
+              candidate.rows.count == rows.count, candidate.rows.first?.count == width else { return nil }
+        func normalize(_ text: String) -> String {
+            text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+        }
+        guard zip(rows.flatMap({ $0 }), candidate.rows.flatMap({ $0 })).allSatisfy({ normalize($0.0) == normalize($0.1) }) else { return nil }
+        return candidate
+    }
+
+    /// OCR geometry alone cannot determine whether a layout is a table. This
+    /// candidate must be shown alongside the screenshot for user confirmation.
+    static func borderlessCandidate(from image: CGImage, lines: [OCRService.Line]) -> BorderlessCandidate? {
+        let bounds = CGRect(x: 0, y: 0, width: 1, height: 1)
+        guard let raster = Raster(image: image), !raster.hasRuleEvidence(in: bounds),
+              let table = inferBorderless(in: bounds, image: image, lines: lines) else { return nil }
+        return BorderlessCandidate(table: table)
+    }
+
+    private static func inferBorderless(in box: CGRect, image: CGImage, lines: [OCRService.Line]) -> ScreenshotTable? {
+        let relevant = lines.filter {
+            !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            box.contains(CGPoint(x: $0.normalizedBox.midX, y: $0.normalizedBox.midY))
+        }
+        guard relevant.count >= 6, relevant.count <= 1_000 else { return nil }
         let heights = relevant.map { $0.normalizedBox.height * CGFloat(image.height) }.sorted()
         guard let medianHeight = heights.dropFirst(heights.count / 2).first, medianHeight > 2 else { return nil }
         let rowTolerance = medianHeight * 0.65 / CGFloat(image.height)
@@ -138,7 +176,7 @@ enum ScreenshotTableRecognizer {
                 groups[groups.count - 1].append(item)
             } else { groups.append([item]) }
         }
-        guard groups.count == rows.count, groups.allSatisfy({ $0.count >= 2 }) else { return nil }
+        guard groups.count >= 3, groups.count <= 100, groups.allSatisfy({ $0.count >= 2 }) else { return nil }
         let centers = groups.compactMap { $0.first?.normalizedBox.midY }
         let gaps = zip(centers, centers.dropFirst()).map { abs($0 - $1) }.sorted()
         if let smallest = gaps.first, let largest = gaps.last, (smallest <= rowTolerance || largest > smallest * 1.75) { return nil }
@@ -150,22 +188,23 @@ enum ScreenshotTableRecognizer {
                 anchors[anchors.count - 1].append(x)
             } else { anchors.append([x]) }
         }
-        guard anchors.count == width, anchors.allSatisfy({ $0.count >= 2 }) else { return nil }
+        guard anchors.count >= 2, anchors.count <= 40, anchors.allSatisfy({ $0.count >= 2 }),
+              anchors.count * groups.count <= 1_000 else { return nil }
         let xs = anchors.map { $0.reduce(0, +) / CGFloat($0.count) }
         guard zip(xs, xs.dropFirst()).allSatisfy({ $1 - $0 > colTolerance * 2 }) else { return nil }
-        var reconstructed = Array(repeating: Array(repeating: "", count: width), count: rows.count)
+        let width = anchors.count
+        var reconstructed = Array(repeating: Array(repeating: "", count: width), count: groups.count)
+        var rects = Array(repeating: Array<CGRect?>(repeating: nil, count: width), count: groups.count)
         for (r, group) in groups.enumerated() { for line in group {
             let candidates = xs.indices.filter { abs(xs[$0] - line.normalizedBox.minX) <= colTolerance }
             guard candidates.count == 1, let c = candidates.first, reconstructed[r][c].isEmpty else { return nil }
+            if c + 1 < width && line.normalizedBox.maxX >= xs[c + 1] - colTolerance { return nil }
             reconstructed[r][c] = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            rects[r][c] = line.normalizedBox
         } }
-        func normalize(_ text: String) -> String {
-            text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
-        }
-        guard zip(rows.flatMap({ $0 }), reconstructed.flatMap({ $0 })).allSatisfy({ normalize($0.0) == normalize($0.1) }) else { return nil }
         let bounds = relevant.reduce(CGRect.null) { $0.union($1.normalizedBox) }
         guard !bounds.isNull else { return nil }
-        return ScreenshotTable(rows: reconstructed, normalizedBox: bounds, hasMergedCells: false)
+        return ScreenshotTable(rows: reconstructed, normalizedBox: bounds, hasMergedCells: false, cellRects: rects)
     }
 
     /// Conservative pre-macOS-26 fallback: full dark grid lines and OCR boxes must
@@ -210,7 +249,16 @@ enum ScreenshotTableRecognizer {
                           y: 1 - CGFloat(ys.last!) / CGFloat(raster.height),
                           width: CGFloat(xs.last! - xs[0]) / CGFloat(raster.width),
                           height: CGFloat(ys.last! - ys[0]) / CGFloat(raster.height))
-        return ScreenshotTable(rows: rows, normalizedBox: rect, hasMergedCells: false)
+        var rects = Array(repeating: Array<CGRect?>(repeating: nil, count: columnCount), count: rowCount)
+        let pixelWidth = CGFloat(raster.width), pixelHeight = CGFloat(raster.height)
+        for r in 0..<rowCount { for c in 0..<columnCount {
+            let x = CGFloat(xs[c]) / pixelWidth
+            let y = 1 - CGFloat(ys[r + 1]) / pixelHeight
+            let width = CGFloat(xs[c + 1] - xs[c]) / pixelWidth
+            let height = CGFloat(ys[r + 1] - ys[r]) / pixelHeight
+            rects[r][c] = CGRect(x: x, y: y, width: width, height: height)
+        } }
+        return ScreenshotTable(rows: rows, normalizedBox: rect, hasMergedCells: false, cellRects: rects)
         }
         return Assessment(tables: tables, rejected: [])
     }

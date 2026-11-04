@@ -25,11 +25,21 @@ enum OCRService { struct Line { let text: String; let normalizedBox: CGRect; let
    }
    let expected = name == "mixed-zh" ? [["产品", "Quarter", "金额"], ["苹果", "Q1", "100"], ["香蕉", "", "200"], ["橙子", "Q3", "300"]] : [["Product", "Quarter", "Revenue"], [name == "multiline" ? "Alpha Plus" : "Alpha", "Q1", "100"], ["Beta", "", "200"], ["Gamma", "Q3", "300"]]
    let fallback=ScreenshotTableRecognizer.inferredTables(from:image,lines:lines)
+   if name == "borderless" || name == "aligned-prose" {
+       guard let candidate=ScreenshotTableRecognizer.borderlessCandidate(from:image,lines:lines) else { fatalError("Expected a candidate for manual review") }
+       precondition(candidate.rows == expected && candidate.table.cellRects[0][0] != nil && candidate.table.cellRects[2][1] == nil)
+       print("CANDIDATE",name,"requires user confirmation")
+       if name == "aligned-prose" { precondition(fallback.isEmpty);return }
+   }
+   if ["ruled", "unruled", "merged", "merged-fullwidth", "merged-fullwidth-framed"].contains(name) {
+       precondition(ScreenshotTableRecognizer.borderlessCandidate(from:image,lines:lines) == nil)
+   }
    if name == "ruled" || name == "mixed-zh" || name == "multiline" {
        precondition(fallback.count == 1 && fallback[0].rows == expected)
        let original = fallback[0]
        let translated = original.nonEmptyCells.enumerated().map { $0.offset == 0 ? "Name | Code" : "译\($0.offset)" }
        guard let rebuilt = original.replacingNonEmptyCells(translated) else { fatalError("Could not rebuild table") }
+       precondition(rebuilt.cellRects == original.cellRects && original.cellRects[2][1] != nil)
        precondition(rebuilt.rows[0][0] == "Name | Code" && rebuilt.rows[2][1] == "")
        precondition(original.replacingNonEmptyCells(Array(translated.dropLast())) == nil)
        let firstLine = rebuilt.markdown.components(separatedBy: "\n")[0]

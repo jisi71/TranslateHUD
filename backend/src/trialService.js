@@ -4,6 +4,7 @@ const { GIFT_FEN, GIFT_MICRO_YUAN, MESSAGES, decodeSourceHeader, formatDisplayId
 const { prepareUpstreamPayload, readUpstreamConfig } = require('./upstream')
 const { costMicroYuanFromUsage, parseUsage, readTrialPrices, settlementFields } = require('./usageBilling')
 const { createSettlingStream, formatSSE } = require('./usageStream')
+const { restoreBoldResult } = require('./structuredBold')
 
 const MAX_BODY_BYTES = 48 * 1024
 
@@ -278,10 +279,12 @@ async function handleTranslate(ctx) {
 
   let payload
   let stream
+  let format
   try {
     const prepared = prepareUpstreamPayload(rawBody, config, decoded.text)
     payload = prepared.payload
     stream = prepared.stream
+    format = prepared.format
   } catch (error) {
     return errorResult(error.status || 400, error.code || 'trial_body', error.publicMessage || MESSAGES.body)
   }
@@ -382,6 +385,17 @@ async function handleTranslate(ctx) {
       return errorResult(502, 'trial_usage_missing', MESSAGES.usageMissing)
     }
     await recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt })
+    if (format) {
+      try {
+        parsed = restoreBoldResult(parsed, format)
+      } catch {
+        return {
+          status: 422,
+          headers: { ...billingHeaders(settled, usage), 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ error: { code: 'trial_format_invalid', message: '译文格式校验失败；本次请求已按实际用量结算。' }, translatehud_trial: settlementFields(settled, usage) })
+        }
+      }
+    }
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       parsed.translatehud_trial = settlementFields(settled, usage)
     }

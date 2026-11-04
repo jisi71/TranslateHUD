@@ -90,7 +90,7 @@ function prepareUpstreamPayload(rawBody, config, sourceText) {
   if (!stream && JSON_RESPONSE_HOSTS.has(host)) {
     payload.response_format = { type: 'json_object' }
   }
-  return { payload, stream }
+  return { payload, stream, format: bound.format }
 }
 
 async function defaultForward({ endpoint, apiKey, payload, signal }) {

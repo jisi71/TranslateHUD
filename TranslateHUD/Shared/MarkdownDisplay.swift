@@ -47,6 +47,8 @@ enum MarkdownDisplay {
                 if let plain = try? AttributedString(markdown: markdown, options: options) { return plain }
             }
             reinjectBlockBreaks(&parsed, source: markdown)
+            // Source positions are only needed while restoring block breaks.
+            parsed.markdownSourcePosition = nil
             return parsed
         }
         return AttributedString(markdown)

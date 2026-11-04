@@ -45,6 +45,30 @@ final class MarkdownDisplayTests: XCTestCase {
         }
     }
 
+    func testSourcePositionsDoNotReachTextKit() {
+        let input = "# **标题**\n\n第一段\\.\n\n第二段\\!"
+        let parsed = MarkdownDisplay.parse(input)
+        XCTAssertEqual(String(parsed.characters), "标题\n\n第一段.\n\n第二段!")
+        XCTAssertTrue(parsed.runs.allSatisfy { $0.markdownSourcePosition == nil })
+        XCTAssertTrue(parsed.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+        XCTAssertTrue(parsed.runs.contains { run in
+            (run.presentationIntent?.components ?? []).contains { component in
+                if case .header(let level) = component.kind { return level == 1 }
+                return false
+            }
+        })
+        let styled = MarkdownDisplay.styled(input, role: .source, colors: .dark)
+        let text = NSAttributedString(styled)
+        var foundSourcePosition = false
+        text.enumerateAttributes(in: NSRange(location: 0, length: text.length)) { attributes, _, _ in
+            if attributes[NSAttributedString.Key("NSMarkdownSourcePosition")] != nil { foundSourcePosition = true }
+        }
+        XCTAssertFalse(foundSourcePosition)
+        let full = MarkdownDisplay.height(input, role: .source, colors: .dark, width: 432, maxLines: nil)
+        let capped = MarkdownDisplay.height(input, role: .source, colors: .dark, width: 432, maxLines: 6)
+        XCTAssertTrue(full.isFinite && full > 0 && capped.isFinite && capped > 0)
+    }
+
     func testPlainTextStripsHeadingMarkers() {
         let plain = MarkdownDisplay.plainText(from: "# Hello\n\nWorld")
         XCTAssertFalse(plain.contains("#"))

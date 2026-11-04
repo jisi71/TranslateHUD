@@ -284,6 +284,9 @@ final class ScreenshotProofreadModelTests: XCTestCase {
             "Please check the highlighted details before review.", "Empty cells must remain empty.",
             "Name", "Region", "Notes", "A B", "New York", "slow response", "Beta", "Los Angeles", "人工智能系统", "大模型", "处理中"])
         let markdown = try result.render(result.sourceItems)
+        let sourceHeight = MarkdownDisplay.height(markdown, role: .source, colors: .dark, width: 432, maxLines: nil)
+        let cappedHeight = MarkdownDisplay.height(markdown, role: .source, colors: .dark, width: 432, maxLines: 6)
+        XCTAssertTrue(sourceHeight.isFinite && sourceHeight > 0 && cappedHeight.isFinite && cappedHeight > 0)
         let pieces = MarkdownDisplay.prosePieces(from: markdown)
         XCTAssertEqual(pieces.count, 2)
         guard case .markdown(let prose) = pieces[0], case .table(let cells) = pieces[1] else {

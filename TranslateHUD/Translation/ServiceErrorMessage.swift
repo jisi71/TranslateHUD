@@ -108,7 +108,7 @@ enum ServiceErrorMessage {
         case "trial_invite_invalid": return TrialCopy.inviteInvalid
         case "trial_invite_exhausted": return TrialCopy.inviteExhausted
         case "trial_invite_unconfigured": return TrialCopy.inviteUnconfigured
-        case "trial_invite_phone_required": return "邮箱账号可使用每日免费额度，兑换体验余额需要手机号账号。"
+        case "trial_invite_phone_required": return "该账号当前无法兑换体验余额，可使用每日免费额度。"
         default: return nil
         }
     }

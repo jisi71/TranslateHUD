@@ -4,6 +4,44 @@ import XCTest
 
 @MainActor
 final class TrialSessionRaceTests: XCTestCase {
+    func testEligibilityDoesNotCarryOverOnAccountSwitchOrRefreshFailure() async throws {
+        let name = "TrialEligibility.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let keychain = RaceKeychain()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RaceURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let server = RaceServer()
+        RaceURLProtocol.handler = { server.handle($0) }
+        defer { RaceURLProtocol.handler = nil; session.invalidateAndCancel() }
+        let store = TrialAccountStore(networkSession: session, defaults: defaults, defaultsDomain: name,
+                                      keychain: keychain, gatewayURL: URL(string: "https://auth.example")!,
+                                      proxyBaseURL: "https://proxy.example/v1", deviceID: "test", startsQuotaRefresh: false)
+        try save("A", defaults: defaults, keychain: keychain)
+        store.restore(refreshAccount: false)
+        await store.refreshFromServer()
+        XCTAssertEqual(store.canRedeemInvite, true)
+        try save("B", defaults: defaults, keychain: keychain)
+        store.restore(refreshAccount: false)
+        XCTAssertNil(store.canRedeemInvite)
+        await store.refreshFromServer()
+        XCTAssertEqual(store.canRedeemInvite, false)
+
+        try save("A", defaults: defaults, keychain: keychain)
+        store.restore(refreshAccount: false)
+        await store.refreshFromServer()
+        XCTAssertEqual(store.canRedeemInvite, true)
+        let seen = expectation(description: "refresh pending")
+        server.holdNextPath("/v1/trial/account", seen)
+        let refresh = Task { await store.refreshFromServer() }
+        await fulfillment(of: [seen], timeout: 5)
+        XCTAssertNil(store.canRedeemInvite)
+        server.releasePath(status: 503, body: "{}")
+        await refresh.value
+        XCTAssertNil(store.canRedeemInvite)
+    }
+
     func testChangingIdentifierAfterSendingCodeRequiresNewCode() async throws {
         let name = "TrialCodeChange.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
@@ -44,6 +82,7 @@ final class TrialSessionRaceTests: XCTestCase {
         store.restore()
         let loadedA = await waitFor { store.userId == "A" && store.balanceState == .loaded }
         XCTAssertTrue(loadedA)
+        XCTAssertEqual(store.canRedeemInvite, true)
         let oldGeneration = store.sessionGeneration
         let seen = expectation(description: "A refresh reached server")
         server.holdNextA(seen)
@@ -54,9 +93,11 @@ final class TrialSessionRaceTests: XCTestCase {
         store.restore()
         let loadedB = await waitFor { store.userId == "B" && store.balanceState == .loaded }
         XCTAssertTrue(loadedB)
+        XCTAssertEqual(store.canRedeemInvite, false)
         server.releaseA()
         await oldRefresh.value
         XCTAssertEqual(store.userId, "B")
+        XCTAssertEqual(store.canRedeemInvite, false)
         XCTAssertEqual(store.balanceMicroYuan, 200)
         XCTAssertEqual(store.dailyQuota?.used, 20)
         let oldQuota = DailyTranslationQuota(used: 99, limit: 2000, resetsAt: .distantFuture)
@@ -183,7 +224,8 @@ private final class RaceURLProtocol: URLProtocol, @unchecked Sendable {
     func respond(id: String) {
         let amount = id == "B" ? 200 : 100
         let used = id == "B" ? 20 : 10
-        let body = "{\"userId\":\"\(id)\",\"balanceMicroYuan\":\(amount),\"dailyTokens\":\(used),\"dailyLimit\":2000,\"dailyResetsAt\":4102444800000}"
+        let eligible = id == "A" ? "true" : "false"
+        let body = "{\"userId\":\"\(id)\",\"balanceMicroYuan\":\(amount),\"dailyTokens\":\(used),\"dailyLimit\":2000,\"dailyResetsAt\":4102444800000,\"canRedeemInvite\":\(eligible)}"
         respond(status: 200, body: body)
     }
     func respond(status: Int, body: String) {

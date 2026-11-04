@@ -10,7 +10,20 @@
 @@ -76 +80 @@
 -    return { uid: String(user.uid) }
 +    return { uid: String(user.uid), hasEligiblePhone: user.hasEligiblePhone === true }
-@@ -218,0 +223,3 @@
+@@ -95 +99 @@
+-      body: JSON.stringify(accountPayload(identified.uid, opened.record, false, ctx.now()))
++      body: JSON.stringify(accountPayload(identified.uid, opened.record, false, ctx.now(), identified.hasEligiblePhone))
+@@ -170 +174 @@
+-function accountPayload(uid, record, giftedNow, now) {
++function accountPayload(uid, record, giftedNow, now, canRedeemInvite) {
+@@ -181 +185,2 @@
+-    inviteRedeemed: record.giftGranted === true
++    inviteRedeemed: record.giftGranted === true,
++    canRedeemInvite: canRedeemInvite === true
+@@ -218,0 +224,3 @@
 +  if (!identified.hasEligiblePhone) {
-+    return errorResult(403, 'trial_invite_phone_required', '邮箱账号可使用每日免费额度，兑换体验余额需要手机号账号。')
++    return errorResult(403, 'trial_invite_phone_required', '该账号当前无法兑换体验余额，可使用每日免费额度。')
 +  }
+@@ -241 +249 @@
+-      body: JSON.stringify(accountPayload(identified.uid, result.record, true, ctx.now()))
++      body: JSON.stringify(accountPayload(identified.uid, result.record, true, ctx.now(), identified.hasEligiblePhone))

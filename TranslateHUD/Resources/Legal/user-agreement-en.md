@@ -16,7 +16,7 @@ We may upgrade, change or discontinue features and will provide notice, such as 
 ## 2. Accounts and sign-in
 
 1. Some features can be used without signing in. Account features, including trial credit and invitation codes, require sign-in.
-2. To sign in, provide a phone number or email address that can receive a verification code and complete verification. You must be legally entitled to use it. Email accounts can use the daily free allowance; redeeming invitation trial credit requires a phone account.
+2. To sign in, provide a phone number or email address that can receive a verification code and complete verification. You must be legally entitled to use it. Accounts with only an email can use the daily free allowance; redeeming invitation trial credit requires a linked phone number.
 3. Keep your account and verification information secure. You are responsible for consequences of theft or disclosure caused by you, except as otherwise provided by law.
 4. In principle, each person should use only one account. Do not resell or rent accounts, cheat or inflate usage through invitation codes or trial credit, or harm others' rights.
 

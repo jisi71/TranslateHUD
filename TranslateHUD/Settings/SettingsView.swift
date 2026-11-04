@@ -506,8 +506,10 @@ struct SettingsView: View {
 
     private var trialAllowanceSection: some View {
         SettingsCard("体验额度") {
-            if trial.isEmailAccount {
-                Text("邮箱账号可使用每日免费额度，兑换体验余额需要手机号账号。")
+            if trial.isLoggedIn && !trial.inviteRedeemed && trial.canRedeemInvite != true {
+                Text(interfaceLanguage.text(trial.canRedeemInvite == false
+                    ? "该账号当前无法兑换体验余额，可使用每日免费额度。"
+                    : "服务器未返回邀请码兑换资格，请稍后刷新账户信息。"))
                     .font(.caption)
                     .foregroundStyle(colors.muted)
             }
@@ -515,7 +517,7 @@ struct SettingsView: View {
                 TextField("", text: $trial.inviteCode, prompt: Text("邀请码"))
                     .accessibilityLabel(interfaceLanguage.text("邀请码"))
                     .panelTextInput()
-                    .disabled(!trial.isLoggedIn || trial.isEmailAccount || trial.inviteRedeemed || trial.isBusy)
+                    .disabled(!trial.isLoggedIn || trial.canRedeemInvite != true || trial.inviteRedeemed || trial.isBusy)
                     .frame(width: 200)
             }
             // Permanent “once / sign-in to redeem” captions removed: already-redeemed
@@ -525,7 +527,7 @@ struct SettingsView: View {
                 Button(interfaceLanguage.text(trial.isBusy ? "正在兑换…" : "兑换体验额度")) {
                     Task { await trial.redeemInvite() }
                 }
-                .disabled(!trial.isLoggedIn || trial.isEmailAccount || trial.inviteRedeemed || trial.isBusy || trial.balanceState == .loading || trial.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!trial.isLoggedIn || trial.canRedeemInvite != true || trial.inviteRedeemed || trial.isBusy || trial.balanceState == .loading || trial.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }

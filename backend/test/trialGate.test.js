@@ -19,6 +19,7 @@ test('invite eligibility derives only from the authenticated CloudBase profile',
     return defaultVerifyUser({ gateway: 'https://test.invalid', token: 'private', fetchImpl: async () => ({ ok: true, json: async () => body }) })
   }
   assert.deepEqual(await profile({ sub: 'phone-user', phone_number: '+86 13800138000' }), { uid: 'phone-user', hasEligiblePhone: true })
+  assert.deepEqual(await profile({ sub: 'linked-user', phone_number: '+86 13800138000', email: 'a@example.com' }), { uid: 'linked-user', hasEligiblePhone: true })
   assert.deepEqual(await profile({ sub: 'email-user', email: 'a@example.com' }), { uid: 'email-user', hasEligiblePhone: false })
   assert.deepEqual(await profile({ sub: 'unknown', phone_number: 'not-a-phone' }), { uid: 'unknown', hasEligiblePhone: false })
 })
@@ -32,8 +33,11 @@ test('email and unknown identity cannot redeem an invite, even with a supplied p
     })
     assert.equal(response.status, 403)
     assert.equal(response.json.error.code, 'trial_invite_phone_required')
+    const account = await request(base, '/v1/trial/account', { token: 'email-token' })
+    assert.equal(account.status, 200)
+    assert.equal(account.json.canRedeemInvite, false)
     assert.equal(store.invite.redeemedCount, 0)
-    assert.equal(store.users.has('email-user'), false)
+    assert.equal(store.users.get('email-user').balanceMicroYuan, 0)
   } finally {
     server.close()
   }
@@ -116,6 +120,7 @@ test('the default invite code gifts ¥2 once and a repeat does not', async () =>
     assert.equal(ok.status, 200)
     assert.equal(ok.json.giftedNow, true)
     assert.equal(ok.json.inviteRedeemed, true)
+    assert.equal(ok.json.canRedeemInvite, true)
     assert.equal(ok.json.balanceMicroYuan, GIFT_MICRO_YUAN)
     assert.equal(ok.json.giftMicroYuan, GIFT_MICRO_YUAN)
     assert.equal(ok.json.userId, 'uid-1')

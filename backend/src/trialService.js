@@ -93,7 +93,7 @@ async function handleAccount(ctx) {
     return {
       status: 200,
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
-      body: JSON.stringify(accountPayload(identified.uid, opened.record, false))
+      body: JSON.stringify(accountPayload(identified.uid, opened.record, false, identified.hasEligiblePhone))
     }
   } catch (error) {
     return storeFailure(error)
@@ -163,7 +163,7 @@ async function recordUsageEvent(ctx, { uid, usage, settled, startedAt }) {
   }
 }
 
-function accountPayload(uid, record, giftedNow) {
+function accountPayload(uid, record, giftedNow, canRedeemInvite) {
   return {
     userId: uid,
     displayNo: record.displayNo || 0,
@@ -173,7 +173,8 @@ function accountPayload(uid, record, giftedNow) {
     giftedNow: Boolean(giftedNow),
     giftMicroYuan: giftedNow ? GIFT_MICRO_YUAN : 0,
     giftFen: giftedNow ? GIFT_FEN : 0,
-    inviteRedeemed: record.giftGranted === true
+    inviteRedeemed: record.giftGranted === true,
+    canRedeemInvite: canRedeemInvite === true
   }
 }
 
@@ -212,7 +213,7 @@ async function handleRedeem(ctx) {
   const identified = await identify(ctx)
   if (identified.status) return identified
   if (!identified.hasEligiblePhone) {
-    return errorResult(403, 'trial_invite_phone_required', '邮箱账号可使用每日免费额度，兑换体验余额需要手机号账号。')
+    return errorResult(403, 'trial_invite_phone_required', '该账号当前无法兑换体验余额，可使用每日免费额度。')
   }
   let body = {}
   if (ctx.rawBody && String(ctx.rawBody).trim()) {
@@ -236,7 +237,7 @@ async function handleRedeem(ctx) {
     return {
       status: 200,
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
-      body: JSON.stringify(accountPayload(identified.uid, result.record, true))
+      body: JSON.stringify(accountPayload(identified.uid, result.record, true, identified.hasEligiblePhone))
     }
   } catch (error) {
     return storeFailure(error)

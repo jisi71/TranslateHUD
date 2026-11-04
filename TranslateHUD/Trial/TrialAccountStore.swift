@@ -25,8 +25,7 @@ final class TrialAccountStore: ObservableObject {
     }
     @Published private(set) var balanceState: BalanceState = .idle
     @Published private(set) var inviteRedeemed = false
-
-    var isEmailAccount: Bool { isLoggedIn && maskedPhone.contains("@") }
+    @Published private(set) var canRedeemInvite: Bool?
 
     enum BalanceState: Equatable {
         case idle
@@ -115,6 +114,7 @@ final class TrialAccountStore: ObservableObject {
 
     func restore(refreshAccount: Bool = true) {
         sessionGeneration = UUID()
+        canRedeemInvite = nil
         let session = TrialKeychain.restore(
             defaults: defaults,
             domain: defaultsDomain,
@@ -168,6 +168,7 @@ final class TrialAccountStore: ObservableObject {
         }
         isBusy = true
         sessionGeneration = UUID()
+        canRedeemInvite = nil
         let generation = sessionGeneration
         defer { isBusy = false }
         do {
@@ -202,8 +203,10 @@ final class TrialAccountStore: ObservableObject {
 
     func redeemInvite() async {
         guard isLoggedIn, !isBusy else { return }
-        guard !isEmailAccount else {
-            statusMessage = "邮箱账号可使用每日免费额度，兑换体验余额需要手机号账号。"
+        guard canRedeemInvite == true else {
+            statusMessage = canRedeemInvite == false
+                ? "该账号当前无法兑换体验余额，可使用每日免费额度。"
+                : "服务器未返回邀请码兑换资格，请稍后刷新账户信息。"
             return
         }
         let entered = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -233,6 +236,7 @@ final class TrialAccountStore: ObservableObject {
             balanceMicroYuan = snapshot.balanceMicroYuan
             balanceState = .loaded
             inviteRedeemed = snapshot.inviteRedeemed
+            canRedeemInvite = snapshot.canRedeemInvite
             if !snapshot.userId.isEmpty { userId = snapshot.userId }
             if !snapshot.displayId.isEmpty { displayId = snapshot.displayId }
             if snapshot.inviteRedeemed {
@@ -253,6 +257,9 @@ final class TrialAccountStore: ObservableObject {
             if text == TrialCopy.inviteClaimed {
                 inviteRedeemed = true
                 inviteCode = ""
+            }
+            if text == "该账号当前无法兑换体验余额，可使用每日免费额度。" {
+                canRedeemInvite = false
             }
             statusMessage = text
             FailureReporter.report(error, surface: .inviteRedeem, path: .trial)
@@ -317,6 +324,7 @@ final class TrialAccountStore: ObservableObject {
             return
         }
         balanceState = .loading
+        canRedeemInvite = nil
         do {
             let token = try await validAccessToken()
             guard sessionGeneration == generation else { return }
@@ -328,8 +336,11 @@ final class TrialAccountStore: ObservableObject {
             if !snapshot.userId.isEmpty { userId = snapshot.userId }
             if !snapshot.displayId.isEmpty { displayId = snapshot.displayId }
             inviteRedeemed = snapshot.inviteRedeemed
-            if announceGift && isEmailAccount {
-                statusMessage = "已登录。邮箱账号可使用每日免费额度。"
+            canRedeemInvite = snapshot.canRedeemInvite
+            if announceGift && !snapshot.inviteRedeemed && snapshot.canRedeemInvite == false {
+                statusMessage = "已登录。该账号可使用每日免费额度。"
+            } else if announceGift && !snapshot.inviteRedeemed && snapshot.canRedeemInvite == nil {
+                statusMessage = "服务器未返回邀请码兑换资格，请稍后刷新账户信息。"
             } else if announceGift {
                 statusMessage = snapshot.inviteRedeemed
                     ? "已登录。"
@@ -352,6 +363,7 @@ final class TrialAccountStore: ObservableObject {
                 return
             }
             balanceState = .failed
+            canRedeemInvite = nil
             statusMessage = text
             FailureReporter.report(error, surface: .login, path: .trial)
         }
@@ -388,6 +400,7 @@ final class TrialAccountStore: ObservableObject {
         balanceMicroYuan = nil
         balanceState = .idle
         inviteRedeemed = false
+        canRedeemInvite = nil
         inviteCode = ""
         isLoggedIn = false
         verificationId = nil

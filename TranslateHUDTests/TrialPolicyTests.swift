@@ -413,6 +413,36 @@ final class CloudBaseLoginTests: XCTestCase {
         XCTAssertFalse(CloudBaseHTTPStub.requests.contains { $0.url?.path == "/auth/v1/signup" })
     }
 
+    func testInviteEligibilityDecodesOnlyActualBooleans() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CloudBaseHTTPStub.self]
+        let urlSession = URLSession(configuration: configuration)
+        defer { urlSession.invalidateAndCancel() }
+        let cases: [(Any?, Bool?)] = [(true, true), (false, false), (nil, nil), ("true", nil), (1, nil)]
+        for (value, expected) in cases {
+            CloudBaseHTTPStub.responder = { _ in
+                var body: [String: Any] = ["userId": "user", "balanceMicroYuan": 0]
+                if let value { body["canRedeemInvite"] = value }
+                return (200, body)
+            }
+            let snapshot = try await TrialProxyClient.syncAccount(proxyBase: "https://proxy.example/v1", accessToken: "access", session: urlSession)
+            XCTAssertEqual(snapshot.canRedeemInvite, expected)
+        }
+        CloudBaseHTTPStub.responder = { _ in
+            (200, ["userId": "user", "balanceMicroYuan": 2000000, "giftedNow": true,
+                   "inviteRedeemed": true, "canRedeemInvite": true])
+        }
+        let redeemed = try await TrialProxyClient.redeem(proxyBase: "https://proxy.example/v1", accessToken: "access", code: "code", session: urlSession)
+        XCTAssertEqual(redeemed.canRedeemInvite, true)
+        XCTAssertTrue(redeemed.inviteRedeemed)
+        CloudBaseHTTPStub.responder = { _ in
+            (200, ["userId": "legacy", "balanceMicroYuan": 100, "inviteRedeemed": true])
+        }
+        let legacy = try await TrialProxyClient.syncAccount(proxyBase: "https://proxy.example/v1", accessToken: "access", session: urlSession)
+        XCTAssertTrue(legacy.inviteRedeemed)
+        XCTAssertNil(legacy.canRedeemInvite)
+    }
+
     func testExistingUserSignsInWithoutSignup() async throws {
         let api = makeAPI()
         CloudBaseHTTPStub.responder = { request in

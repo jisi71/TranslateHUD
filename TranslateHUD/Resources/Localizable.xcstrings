@@ -1,6 +1,27 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "该账号当前无法兑换体验余额，可使用每日免费额度。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This account cannot redeem trial credit but can use the daily free allowance." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "该账号当前无法兑换体验余额，可使用每日免费额度。" } }
+      }
+    },
+    "服务器未返回邀请码兑换资格，请稍后刷新账户信息。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The server did not provide invite eligibility. Refresh your account information later." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "服务器未返回邀请码兑换资格，请稍后刷新账户信息。" } }
+      }
+    },
+    "已登录。该账号可使用每日免费额度。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Signed in. This account can use the daily free allowance." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已登录。该账号可使用每日免费额度。" } }
+      }
+    },
     "手机号或邮箱登录后可试用": {
       "extractionState": "manual",
       "localizations": {

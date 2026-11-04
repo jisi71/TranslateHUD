@@ -49,9 +49,9 @@ enum ScreenshotProofreadWindow {
 final class ScreenshotConfirmAction: NSObject {
     let state: ScreenshotProofreadState
     weak var alert: NSAlert?
-    private let stop: (NSApplication.ModalResponse) -> Void
+    private let stop: @MainActor (NSApplication.ModalResponse) -> Void
     init(state: ScreenshotProofreadState, alert: NSAlert,
-         stop: @escaping (NSApplication.ModalResponse) -> Void = { NSApp.stopModal(withCode: $0) }) {
+         stop: @escaping @MainActor (NSApplication.ModalResponse) -> Void = { NSApp.stopModal(withCode: $0) }) {
         self.state = state; self.alert = alert; self.stop = stop
     }
     @objc func confirm() {

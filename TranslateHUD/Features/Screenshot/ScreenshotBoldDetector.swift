@@ -22,6 +22,8 @@ struct ScreenshotBoldDetector {
     struct Analysis {
         let runs: [[ScreenshotTextRun]]
         let limited: Bool
+        let samplesVisited: Int
+        let sampledPixels: Int
     }
     private struct Budget {
         var samples = 0
@@ -57,14 +59,15 @@ struct ScreenshotBoldDetector {
     }
 
     func analyze(_ candidates: [VNRecognizedText]) -> Analysis {
+        var budget = Budget()
         func plain() -> Analysis {
-            Analysis(runs: candidates.map { [.init(text: $0.string, isStrong: false)] }, limited: true)
+            Analysis(runs: candidates.map { [.init(text: $0.string, isStrong: false)] }, limited: true,
+                     samplesVisited: budget.samples, sampledPixels: budget.pixels)
         }
         guard candidates.count <= 600,
               candidates.reduce(0, { $0 + $1.string.count }) <= 20_000 else {
             return plain()
         }
-        var budget = Budget()
         var groups: [[Sample]] = []
         for candidate in candidates {
             groups.append(samples(for: candidate, budget: &budget))
@@ -91,7 +94,7 @@ struct ScreenshotBoldDetector {
         let result = zip(candidates, groups).map { candidate, samples in
             classify(candidate.string, samples: samples, baselines: baselines, key: key)
         }
-        return Analysis(runs: result, limited: false)
+        return Analysis(runs: result, limited: false, samplesVisited: budget.samples, sampledPixels: budget.pixels)
     }
 
     private func samples(for candidate: VNRecognizedText, budget: inout Budget) -> [Sample] {

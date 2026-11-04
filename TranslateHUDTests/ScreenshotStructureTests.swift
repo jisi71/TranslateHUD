@@ -1,8 +1,50 @@
 import AppKit
+import Vision
 import XCTest
 @testable import TranslateHUD
 
 final class ScreenshotStructureTests: XCTestCase {
+    func testBoldDetectorStopsAtSampleAndPixelBudgets() throws {
+        func recognized(_ text: String, size: CGFloat, imageSize: NSSize) throws -> (CGImage, VNRecognizedText) {
+            let image = NSImage(size: imageSize)
+            image.lockFocus()
+            NSColor.white.setFill(); NSRect(origin: .zero, size: imageSize).fill()
+            (text as NSString).draw(at: NSPoint(x: 20, y: 20), withAttributes: [
+                .font: NSFont.systemFont(ofSize: size), .foregroundColor: NSColor.black
+            ])
+            image.unlockFocus()
+            let cg = try XCTUnwrap(OCRService.cgImage(from: image))
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.recognitionLanguages = ["en-US"]
+            request.usesLanguageCorrection = false
+            try VNImageRequestHandler(cgImage: cg).perform([request])
+            let candidate = try XCTUnwrap((request.results ?? []).compactMap { $0.topCandidates(1).first }.max { $0.string.count < $1.string.count })
+            return (cg, candidate)
+        }
+
+        let (smallImage, words) = try recognized("aa bb cc dd ee ff gg hh ii jj kk ll", size: 18, imageSize: NSSize(width: 800, height: 80))
+        var wordCount = 0
+        words.string.enumerateSubstrings(in: words.string.startIndex..<words.string.endIndex, options: .byWords) { value, _, _, _ in
+            if let value, value.count >= 2 { wordCount += 1 }
+        }
+        XCTAssertGreaterThanOrEqual(wordCount, 6, words.string)
+        let copies = 3000 / max(wordCount, 1) + 1
+        XCTAssertLessThanOrEqual(copies, 600)
+        let sampled = try XCTUnwrap(ScreenshotBoldDetector(image: smallImage)).analyze(Array(repeating: words, count: copies))
+        XCTAssertTrue(sampled.limited)
+        XCTAssertEqual(sampled.samplesVisited, 3001)
+        XCTAssertLessThanOrEqual(sampled.sampledPixels, 8_000_000)
+        XCTAssertTrue(sampled.runs.flatMap { $0 }.allSatisfy { !$0.isStrong })
+
+        let (largeImage, largeWord) = try recognized("MEASUREMENT", size: 160, imageSize: NSSize(width: 1600, height: 280))
+        let pixelLimited = try XCTUnwrap(ScreenshotBoldDetector(image: largeImage)).analyze(Array(repeating: largeWord, count: 200))
+        XCTAssertTrue(pixelLimited.limited)
+        XCTAssertLessThan(pixelLimited.samplesVisited, 3001)
+        XCTAssertLessThanOrEqual(pixelLimited.sampledPixels, 8_000_000)
+        XCTAssertTrue(pixelLimited.runs.flatMap { $0 }.allSatisfy { !$0.isStrong })
+    }
+
     func testVisionDetectsSyntheticTitleParagraphAndInlineBold() async throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("Document recognition requires macOS 26") }
         let image = NSImage(size: NSSize(width: 1100, height: 650))

@@ -20,7 +20,8 @@ final class FloatingScreenshotWindow {
         image: NSImage,
         originals: [String],
         progress: TranslationProgress,
-        termProgress: TermExplanationProgress
+        termProgress: TermExplanationProgress,
+        recognitionNotice: String? = nil
     ) {
         self.progress = progress
         self.termProgress = termProgress
@@ -55,6 +56,7 @@ final class FloatingScreenshotWindow {
             progress: progress,
             termProgress: termProgress,
             speech: speech,
+            recognitionNotice: recognitionNotice,
             sizeBudget: budget,
             onClose:  { closeRef?() },
             onRetry:  { retryRef?() },
@@ -174,6 +176,7 @@ private struct ResultView: View {
     @ObservedObject var progress: TranslationProgress
     @ObservedObject var termProgress: TermExplanationProgress
     @ObservedObject var speech: SpeechController
+    let recognitionNotice: String?
     @ObservedObject var sizeBudget: PanelSizeBudget
     var onClose: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
@@ -188,6 +191,7 @@ private struct ResultView: View {
             termProgress: termProgress,
             speech: speech,
             heightBudget: sizeBudget.budget,
+            recognitionNotice: recognitionNotice,
             onClose: onClose,
             onRetry: onRetry,
             onPin: onPin,

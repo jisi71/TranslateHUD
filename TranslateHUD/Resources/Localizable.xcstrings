@@ -1,6 +1,261 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "无法自动确认行列。请对照截图逐格核对；本预览不能修改单元格，如有错误请选择按文字翻译或取消。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法自动确认行列。请对照截图逐格核对；本预览不能修改单元格，如有错误请选择按文字翻译或取消。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rows and columns could not be confirmed automatically. Check each cell against the screenshot. This preview cannot edit cells; if anything is wrong, choose text translation or cancel."
+          }
+        }
+      }
+    },
+    "缩小截图": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "缩小截图"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zoom out screenshot"
+          }
+        }
+      }
+    },
+    "放大截图": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放大截图"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zoom in screenshot"
+          }
+        }
+      }
+    },
+    "请核对截图中的表格": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请核对截图中的表格"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check the table in your screenshot"
+          }
+        }
+      }
+    },
+    "按此表翻译": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按此表翻译"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate as table"
+          }
+        }
+      }
+    },
+    "按文字翻译": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按文字翻译"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate as text"
+          }
+        }
+      }
+    },
+    "粗体位置无法可靠对应，请重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "粗体位置无法可靠对应，请重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bold text could not be matched reliably. Please try again."
+          }
+        }
+      }
+    },
+    "截图译文或粗体位置不完整，请重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截图译文或粗体位置不完整，请重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The translation or bold text positions are incomplete. Please try again."
+          }
+        }
+      }
+    },
+    "当前翻译服务暂不支持保留截图中的粗体。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前翻译服务暂不支持保留截图中的粗体。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current translation service cannot preserve bold text in screenshots."
+          }
+        }
+      }
+    },
+    "粗体位置未能可靠保留，翻译用量已结算，请重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "粗体位置未能可靠保留，翻译用量已结算，请重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bold text could not be preserved reliably. Translation usage was charged; please try again."
+          }
+        }
+      }
+    },
+    "表格结构未能可靠识别，相关内容已按普通文字显示，请对照截图核对。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "表格结构未能可靠识别，相关内容已按普通文字显示，请对照截图核对。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The table layout could not be recognized reliably. Its contents are shown as plain text; please check the screenshot."
+          }
+        }
+      }
+    },
+    "截图内容分段过多，请缩小截图范围后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截图内容分段过多，请缩小截图范围后重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The screenshot contains too many text segments. Select a smaller area and try again."
+          }
+        }
+      }
+    },
+    "译文数量与截图内容不一致，请重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译文数量与截图内容不一致，请重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The translation does not match the screenshot. Please try again."
+          }
+        }
+      }
+    },
+    "截图译文不完整，请重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截图译文不完整，请重试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The screenshot translation is incomplete. Please try again."
+          }
+        }
+      }
+    },
+    "截图翻译输入不完整。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截图翻译输入不完整。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The screenshot translation input is incomplete."
+          }
+        }
+      }
+    },
     "该账号当前无法兑换体验余额，可使用每日免费额度。": {
       "extractionState": "manual",
       "localizations": {

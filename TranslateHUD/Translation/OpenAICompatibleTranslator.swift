@@ -1,6 +1,6 @@
 import Foundation
 
-struct OpenAICompatibleTranslator: Translator {
+struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
     let config: ProviderConfig
     let session: URLSession
     let extraHTTPHeaders: [String: String]
@@ -51,7 +51,7 @@ struct OpenAICompatibleTranslator: Translator {
                     strict: strict,
                     context: context,
                     using: retrySession ?? session
-                )
+                ).map(\.text)
             } catch TranslationError.parse where !strict && TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) {
                 AppLog.info("批量响应结构不完整，执行一次严格重试")
                 strict = true
@@ -130,8 +130,10 @@ struct OpenAICompatibleTranslator: Translator {
         to target: TargetLanguage,
         strict: Bool,
         context: SelectionFetcher.TextContext?,
-        using session: URLSession
-    ) async throws -> [String] {
+        using session: URLSession,
+        boldRanges: [[ScreenshotTextSpan]]? = nil,
+        markerRules: String? = nil
+    ) async throws -> [ScreenshotStyledText] {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
             throw TranslationError.missingConfig(config.validationMessage ?? "请打开设置检查 Base URL 和 Model。")
         }
@@ -154,7 +156,13 @@ struct OpenAICompatibleTranslator: Translator {
         Output a strict JSON object: {"results":[{"i": <index>, "t": <translated>}]}. Include each input index exactly once. No explanations, no markdown code fences, just the JSON object.
         """
 
-        let inputArr: [[String: Any]] = texts.enumerated().map { ["i": $0.offset, "text": $0.element] }
+        let inputArr: [[String: Any]] = texts.enumerated().map { index, text in
+            var item: [String: Any] = ["i": index, "text": text]
+            if let boldRanges, boldRanges.indices.contains(index), !boldRanges[index].isEmpty {
+                item["boldRanges"] = boldRanges[index].map { [$0.start, $0.end] }
+            }
+            return item
+        }
         let inputData = try JSONSerialization.data(withJSONObject: inputArr)
         let inputStr  = String(data: inputData, encoding: .utf8) ?? "[]"
         let framed = TranslationContextPrompt.frame(
@@ -162,7 +170,7 @@ struct OpenAICompatibleTranslator: Translator {
             translating: inputStr,
             context: context
         )
-        let systemContent = framed.map { systemPrompt + $0.translationAddendum } ?? systemPrompt
+        let systemContent = (framed.map { systemPrompt + $0.translationAddendum } ?? systemPrompt) + (markerRules ?? "")
         let userContent = framed?.userMessage ?? inputStr
 
         var body: [String: Any] = [
@@ -182,6 +190,15 @@ struct OpenAICompatibleTranslator: Translator {
         try Task.checkCancellation()
         let http = response as? HTTPURLResponse
         guard let code = http?.statusCode, (200..<300).contains(code) else {
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let settlement = TrialSettlement.parse(json: json) {
+                await onTrialSettlement?(settlement)
+                if let error = json["error"] as? [String: Any], error["code"] as? String == "trial_format_invalid" {
+                    throw TranslationError.service("粗体位置未能可靠保留，翻译用量已结算，请重试。")
+                }
+            } else if let http, let settlement = TrialSettlement.parse(response: http) {
+                await onTrialSettlement?(settlement)
+            }
             let bodyStr = String(data: data, encoding: .utf8) ?? "<binary>"
             throw TranslationError.http(code: http?.statusCode ?? -1, body: bodyStr)
         }
@@ -227,7 +244,7 @@ struct OpenAICompatibleTranslator: Translator {
             throw TranslationError.parse("模型返回的译文列表格式不正确，请重试或更换模型。")
         }
 
-        var out = Array(repeating: "", count: texts.count)
+        var out = Array(repeating: ScreenshotStyledText(text: "", boldRanges: []), count: texts.count)
         var seen = Set<Int>()
         for item in arr {
             guard let i = item["i"] as? Int, i >= 0, i < texts.count,
@@ -236,12 +253,54 @@ struct OpenAICompatibleTranslator: Translator {
                     !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw TranslationError.parse("译文与原文未能正确对应，部分内容缺失或重复。请重试或缩短原文。")
             }
-            out[i] = t
+            var spans: [ScreenshotTextSpan] = []
+            if let boldRanges, boldRanges.contains(where: { !$0.isEmpty }) {
+                guard let fields = item["boldRanges"] as? [[Int]], fields.allSatisfy({ $0.count == 2 }),
+                      fields.count == boldRanges[i].count else {
+                    throw TranslationError.parse("粗体位置无法可靠对应，请重试。")
+                }
+                spans = fields.map { .init(start: $0[0], end: $0[1]) }
+            } else if let fields = item["boldRanges"] as? [[Int]], !fields.isEmpty {
+                throw TranslationError.parse("译文出现了未请求的粗体，请重试。")
+            }
+            let styled = ScreenshotStyledText(text: t, boldRanges: spans)
+            _ = try styled.ranges()
+            out[i] = styled
         }
         guard seen.count == texts.count else {
             throw TranslationError.parse("译文数量与原文不一致，结果不完整。请重试或缩短原文。")
         }
         return out
+    }
+
+    /// The trial server validates the original text and annotates the model request.
+    func translateStyledTrial(_ items: [ScreenshotStyledText], to target: TargetLanguage,
+                              context: SelectionFetcher.TextContext?) async throws -> [ScreenshotStyledText] {
+        guard !items.isEmpty else { throw TranslationError.empty }
+        for item in items { _ = try item.ranges() }
+        let results = try await performBatch(texts: items.map(\.text), to: target, strict: false,
+                                             context: context, using: session,
+                                             boldRanges: items.map(\.boldRanges))
+        let failures = batchValidate(originals: items.map(\.text), translations: results.map(\.text), target: target)
+        if !failures.isEmpty || TranslationValidator.isBatchUnderTranslated(originals: items.map(\.text), translations: results.map(\.text), target: target) {
+            throw TranslationError.quality("译文未通过质量检查，请重试。")
+        }
+        return results
+    }
+
+    func translateStyled(_ items: [ScreenshotStyledText], to target: TargetLanguage,
+                         context: SelectionFetcher.TextContext?) async throws -> [ScreenshotStyledText] {
+        guard !items.isEmpty else { throw TranslationError.empty }
+        let markers = try ScreenshotStyleMarkers(items)
+        let rules = "\nKeep every ⟦TH…:S⟧ and ⟦TH…:E⟧ marker exactly once, unchanged, around the translation of the enclosed words. Do not move any marker to another input item or nest markers."
+        let response = try await performBatch(texts: markers.inputs, to: target, strict: false,
+                                              context: context, using: session, markerRules: rules)
+        let results = try markers.restore(response.map(\.text))
+        let failures = batchValidate(originals: items.map(\.text), translations: results.map(\.text), target: target)
+        if !failures.isEmpty || TranslationValidator.isBatchUnderTranslated(originals: items.map(\.text), translations: results.map(\.text), target: target) {
+            throw TranslationError.quality("译文未通过质量检查，请重试。")
+        }
+        return results
     }
 
     private func batchValidate(originals: [String], translations: [String], target: TargetLanguage) -> [Int] {

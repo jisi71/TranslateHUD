@@ -26,7 +26,7 @@ struct FailingTermExplainer: TermExplainer {
     }
 }
 
-struct TrialProxyTranslator: Translator {
+struct TrialProxyTranslator: ScreenshotStyledTranslator {
     let proxyBaseURL: String
     let session: URLSession
 
@@ -51,6 +51,28 @@ struct TrialProxyTranslator: Translator {
         )
         do {
             let result = try await inner.translate(texts, to: target, context: context)
+            await TrialActor.refreshBalance(generation: credential.generation)
+            return result
+        } catch {
+            await TrialActor.refreshBalance(generation: credential.generation, unless: error)
+            throw error
+        }
+    }
+
+    func translateStyled(_ items: [ScreenshotStyledText], to target: TargetLanguage,
+                         context: SelectionFetcher.TextContext?) async throws -> [ScreenshotStyledText] {
+        let credential = try await TrialActor.accessToken()
+        let source = items.map(\.text).joined(separator: "\n")
+        let inner = OpenAICompatibleTranslator(
+            config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: credential.token),
+            session: session,
+            extraHTTPHeaders: TrialHeaders.source(source),
+            onTrialSettlement: { settlement in
+                await TrialActor.apply(settlement, generation: credential.generation)
+            }
+        )
+        do {
+            let result = try await inner.translateStyledTrial(items, to: target, context: context)
             await TrialActor.refreshBalance(generation: credential.generation)
             return result
         } catch {

@@ -38,26 +38,90 @@ enum ScreenshotFlow {
             return
         }
 
-        let originals = lines.map { $0.text }
-        let source = originals.joined(separator: "\n")
+        var textBlocks = ScreenshotTextLayout.fromLines(lines)
+        var tables: [ScreenshotTable] = []
+        var reviewCandidates: [ScreenshotTable] = []
+        var tableWasRejected = false
+        let imageData = OCRService.cgImage(from: image)
+        if #available(macOS 26.0, *) {
+            do {
+                let documents = try await OCRService.recognizeDocuments(image: image)
+                let recognized = documents.flatMap { OCRService.textBlocks(from: $0.document, lines: lines) }
+                if !recognized.isEmpty { textBlocks = recognized }
+                if let imageData {
+                    let assessments = await Task.detached(priority: .userInitiated) {
+                        documents.map { ScreenshotTableRecognizer.assess(from: $0.document, image: imageData, lines: lines) }
+                    }.value
+                    for assessment in assessments {
+                        tables.append(contentsOf: assessment.tables)
+                        reviewCandidates.append(contentsOf: assessment.reviewRequired)
+                        tableWasRejected = tableWasRejected || !assessment.rejected.isEmpty
+                    }
+                    if documents.isEmpty {
+                        let assessment = await Task.detached(priority: .userInitiated) {
+                            ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
+                        }.value
+                        tables = assessment.tables
+                        tableWasRejected = !assessment.rejected.isEmpty
+                    }
+                }
+            } catch {
+                AppLog.info("文档结构识别不可用，使用文字行识别结果")
+                if let imageData {
+                    let assessment = await Task.detached(priority: .userInitiated) {
+                        ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
+                    }.value
+                    tables = assessment.tables
+                    tableWasRejected = !assessment.rejected.isEmpty
+                }
+            }
+        } else if let imageData {
+            let assessment = await Task.detached(priority: .userInitiated) {
+                ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
+            }.value
+            tables = assessment.tables
+            tableWasRejected = !assessment.rejected.isEmpty
+        }
+        if tables.isEmpty, reviewCandidates.isEmpty, !tableWasRejected, let imageData {
+            let candidate = await Task.detached(priority: .userInitiated) {
+                ScreenshotTableRecognizer.borderlessCandidate(from: imageData, lines: lines)
+            }.value
+            if let candidate { reviewCandidates.append(candidate.table) }
+        }
+        for candidate in reviewCandidates.sorted(by: { $0.normalizedBox.maxY > $1.normalizedBox.maxY }) {
+            switch ScreenshotTableReview.ask(image: image, table: candidate) {
+            case .useTable: tables.append(candidate)
+            case .useText: tableWasRejected = true
+            case .cancel: return
+            }
+        }
+
+        tableWasRejected = tableWasRejected || ScreenshotDocumentAssembler.hasCrossingLine(lines, tables: tables)
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: textBlocks, lines: lines, tables: tables,
+                                                         hasRejectedTable: tableWasRejected)
+        let originals = plan.sourceTexts.isEmpty ? [] : [plan.originalMarkdown]
+        let source = plan.sourceForQuota
         let target = TargetLanguage.resolved(
-            for: originals,
+            for: plan.sourceTexts,
             configured: SettingsStore.shared.targetLanguage
         )
         let progress = TranslationProgress()
         let termProgress = TermExplanationProgress(
-            texts: originals,
+            texts: plan.sourceTexts,
             outputLanguage: { progress.targetLanguage ?? target },
             explainer: { TranslationSession.explainer(for: source) }
         )
 
         // 4. 立刻展示浮窗（loading 状态 + 已识别的原文）
         progress.failureSurface = .screenshotOCRTranslate
+        progress.mapTranslator = { ScreenshotPlanTranslator(base: $0, plan: plan) }
+        progress.retrySourceText = source
         let window = FloatingScreenshotWindow(
             image: image,
             originals: originals,
             progress: progress,
-            termProgress: termProgress
+            termProgress: termProgress,
+            recognitionNotice: tableWasRejected ? "表格结构未能可靠识别，相关内容已按普通文字显示，请对照截图核对。" : nil
         )
         window.show()
 
@@ -77,7 +141,8 @@ enum ScreenshotFlow {
         case .blocked(_, let message):
             progress.start(translator: FailingTranslator(message: message), originals: originals, target: target)
         case .ready(let ready):
-            progress.start(translator: ready.translator, originals: originals, target: target)
+            let translator = progress.mapTranslator?(ready.translator) ?? ready.translator
+            progress.start(translator: translator, originals: originals, target: target)
         }
     }
 }

@@ -13,6 +13,7 @@ struct TranslationPanel: View {
     @ObservedObject private var appearance = PanelAppearance.shared
     @Environment(\.colorScheme) private var systemScheme
     var heightBudget: PanelHeightBudget = PopoverContent.heightBudget(visibleHeight: 2_000)
+    var recognitionNotice: String? = nil
     var onClose: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
     var onPin: @MainActor (Bool) -> Void
@@ -40,6 +41,13 @@ struct TranslationPanel: View {
         VStack(spacing: 0) {
             header
             separator
+            if let recognitionNotice {
+                Text(interfaceLanguage.text(recognitionNotice))
+                    .font(.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 8)
+            }
             // Sections take their own content height. A ScrollView around the whole
             // body would expand to the offered height and leave short text in an empty well.
             PanelSectionsLayout(

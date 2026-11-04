@@ -3,6 +3,79 @@ import XCTest
 
 @MainActor
 final class TranslationReliabilityTests: XCTestCase {
+    func testStyledTrialSendsPlainSourceAndReturnsReorderedUTF8Range() async throws {
+        let item = ScreenshotStyledText(text: "I don't recommend this.", boldRanges: [.init(start: 2, end: 7)])
+        let response = "{\"results\":[{\"i\":0,\"t\":\"我不建议这样做。\",\"boldRanges\":[[3,6]]}]}"
+        TranslationURLProtocol.reset([.batch(response)])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let client = OpenAICompatibleTranslator(
+            config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+            session: URLSession(configuration: configuration), extraHTTPHeaders: TrialHeaders.source(item.text))
+        let result = try await client.translateStyledTrial([item], to: .chinese, context: nil)
+        XCTAssertEqual(result, [.init(text: "我不建议这样做。", boldRanges: [.init(start: 3, end: 6)])])
+        let request = try XCTUnwrap(TranslationURLProtocol.requests().first)
+        let header = try XCTUnwrap(request.value(forHTTPHeaderField: TrialHeaders.source))
+        XCTAssertEqual(String(data: try XCTUnwrap(Data(base64Encoded: header)), encoding: .utf8), item.text)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+        let messages = try XCTUnwrap(body["messages"] as? [[String: String]])
+        let content = try XCTUnwrap(messages.first(where: { $0["role"] == "user" })?["content"])
+        let input = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(content.data(using: .utf8))) as? [[String: Any]])
+        XCTAssertEqual(input.first?["text"] as? String, item.text)
+        XCTAssertEqual(input.first?["boldRanges"] as? [[Int]], [[2, 7]])
+    }
+
+    func testStyledTrialFormatFailureAppliesSettlementAndDoesNotRetry() async throws {
+        let item = ScreenshotStyledText(text: "Hello world", boldRanges: [.init(start: 0, end: 5)])
+        let body = "{\"error\":{\"code\":\"trial_format_invalid\"},\"translatehud_trial\":{\"costMicroYuan\":10,\"chargedMicroYuan\":10,\"balanceMicroYuan\":100,\"promptTokens\":20,\"completionTokens\":10}}"
+        TranslationURLProtocol.reset([.init(status: 422, body: body)])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let received = SettlementCollector()
+        let client = OpenAICompatibleTranslator(
+            config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+            session: URLSession(configuration: configuration), extraHTTPHeaders: TrialHeaders.source(item.text),
+            onTrialSettlement: { value in await received.add(value) })
+        do {
+            _ = try await client.translateStyledTrial([item], to: .chinese, context: nil)
+            XCTFail("A damaged marker result must fail")
+        } catch TranslationError.service(let message) {
+            XCTAssertTrue(message.contains("已结算"))
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+        let values = await received.values
+        XCTAssertEqual(values.first?.chargedMicroYuan, 10)
+    }
+
+    func testScreenshotPlanBindsBatchBodyAndTrialSourceHeader() async throws {
+        let plan = ScreenshotTranslationPlan(blocks: [
+            .text(runs: [.init(text: "Weather forecast", isStrong: false)], heading: 1),
+            .table(rows: [["City", "Weather"], ["Paris", "Sunny"], ["Oslo", ""]])
+        ])
+        let result = "{\"results\":[{\"i\":0,\"t\":\"天气预报\"},{\"i\":1,\"t\":\"城市\"},{\"i\":2,\"t\":\"天气\"},{\"i\":3,\"t\":\"巴黎\"},{\"i\":4,\"t\":\"晴天\"},{\"i\":5,\"t\":\"奥斯陆\"}]}"
+        TranslationURLProtocol.reset([.batch(result)])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let client = OpenAICompatibleTranslator(
+            config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+            session: URLSession(configuration: configuration),
+            extraHTTPHeaders: TrialHeaders.source(plan.sourceForQuota)
+        )
+        let output = try await ScreenshotPlanTranslator(base: client, plan: plan)
+            .translate([plan.originalMarkdown], to: .chinese, context: nil)
+        XCTAssertTrue(try XCTUnwrap(output.first).contains("| 奥斯陆 |  |"))
+        let request = try XCTUnwrap(TranslationURLProtocol.requests().first)
+        let encoded = try XCTUnwrap(request.value(forHTTPHeaderField: TrialHeaders.source))
+        let source = try XCTUnwrap(String(data: XCTUnwrap(Data(base64Encoded: encoded)), encoding: .utf8))
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+        let messages = try XCTUnwrap(body["messages"] as? [[String: String]])
+        let userContent = try XCTUnwrap(messages.first(where: { $0["role"] == "user" })?["content"])
+        let items = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(userContent.data(using: .utf8))) as? [[String: Any]])
+        let texts = try items.map { try XCTUnwrap($0["text"] as? String) }
+        XCTAssertEqual(source, texts.joined(separator: "\n"))
+        XCTAssertEqual(source, plan.sourceForQuota)
+    }
+
     func testEndpointAcceptsRootAndFullEndpointWithoutDuplicatingPath() {
         for base in [" https://example.com/v1/ ", "https://example.com/v1/chat/completions"] {
             let config = ProviderConfig(baseURL: base, model: "test", apiKey: "")
@@ -506,6 +579,11 @@ final class TranslationReliabilityTests: XCTestCase {
             session: URLSession(configuration: configuration)
         )
     }
+}
+
+private actor SettlementCollector {
+    private(set) var values: [TrialSettlement] = []
+    func add(_ value: TrialSettlement) { values.append(value) }
 }
 
 private struct FixedTranslator: Translator {

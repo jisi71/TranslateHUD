@@ -100,11 +100,12 @@ struct ScreenshotProofreadModel {
         return next.id
     }
 
-    mutating func mergeWithNext(_ id: UUID) throws {
+    mutating func mergeWithNext(_ id: UUID, separator: String = "") throws {
         guard let index = items.firstIndex(where: { $0.id == id }), items.indices.contains(index + 1),
               case .text(let first, let heading) = items[index].content,
-              case .text(let second, _) = items[index + 1].content else { throw EditError.invalidItem }
-        items[index].content = .text(runs: first + second, heading: heading)
+              case .text(let second, _) = items[index + 1].content,
+              separator == "" || separator == " " else { throw EditError.invalidItem }
+        items[index].content = .text(runs: first + (separator.isEmpty ? [] : [.init(text: separator, isStrong: false)]) + second, heading: heading)
         items.remove(at: index + 1)
     }
 

@@ -11,6 +11,14 @@ enum ScreenshotProofreadWindow {
         alert.informativeText = InterfaceLanguageStore.shared.text("文字和样式由本机识别，请对照截图检查。只有点击翻译后才会发送文字。")
         alert.addButton(withTitle: InterfaceLanguageStore.shared.text("确认并翻译"))
         alert.addButton(withTitle: InterfaceLanguageStore.shared.text("取消"))
+        let confirm = ScreenshotConfirmAction(state: state, alert: alert)
+        alert.buttons[0].keyEquivalent = ""
+        alert.buttons[0].target = confirm
+        alert.buttons[0].action = #selector(ScreenshotConfirmAction.confirm)
+        alert.buttons[1].target = confirm
+        alert.buttons[1].action = #selector(ScreenshotConfirmAction.cancel)
+        alert.window.styleMask.remove(.closable)
+        alert.window.defaultButtonCell = nil
         let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 850)
         let width = min(1000, max(700, visible.width - 80))
         let height = min(650, max(480, visible.height - 160))
@@ -22,6 +30,7 @@ enum ScreenshotProofreadWindow {
         alert.accessoryView = content
         NSApp.activate(ignoringOtherApps: true)
         while alert.runModal() == .alertFirstButtonReturn {
+            guard state.readyForAction() else { continue }
             do { return try state.model.plan() }
             catch {
                 let message = NSAlert()
@@ -36,12 +45,36 @@ enum ScreenshotProofreadWindow {
 }
 
 @MainActor
+final class ScreenshotConfirmAction: NSObject {
+    let state: ScreenshotProofreadState
+    weak var alert: NSAlert?
+    init(state: ScreenshotProofreadState, alert: NSAlert) { self.state = state; self.alert = alert }
+    @objc func confirm() {
+        guard state.readyForAction() else { return }
+        NSApp.stopModal(withCode: .alertFirstButtonReturn)
+        alert?.window.orderOut(nil)
+    }
+    @objc func cancel() {
+        guard state.readyForAction() else { return }
+        NSApp.stopModal(withCode: .alertSecondButtonReturn)
+        alert?.window.orderOut(nil)
+    }
+}
+
+@MainActor
 final class ScreenshotProofreadState: ObservableObject {
     @Published var model: ScreenshotProofreadModel
     @Published var selectedID: UUID?
     @Published var cell: ScreenshotTableEditModel.Position?
     @Published var selection = NSRange(location: 0, length: 0)
     @Published var errorMessage: String?
+    weak var activeEditor: NSTextView?
+    private var editorOwner: EditorOwner?
+
+    private struct EditorOwner: Equatable {
+        let item: UUID
+        let cell: ScreenshotTableEditModel.Position?
+    }
 
     init(plan: ScreenshotTranslationPlan) throws {
         model = try ScreenshotProofreadModel(plan: plan)
@@ -60,22 +93,44 @@ final class ScreenshotProofreadState: ObservableObject {
     }
 
     func select(_ id: UUID, cell: ScreenshotTableEditModel.Position? = nil) {
+        guard readyForAction() else { return }
         selectedID = id
         self.cell = cell
         selection = NSRange(location: 0, length: 0)
         errorMessage = nil
     }
 
-    func setText(_ value: String) {
-        guard let id = selectedID else { return }
+    @discardableResult
+    func setText(_ value: String) -> Bool {
+        guard let id = selectedID else { return false }
+        guard !value.utf8.elementsEqual(runs.map(\.text).joined().utf8) else { return true }
         do {
             if let cell { try model.editTable(id) { try $0.setText(value, at: cell) } }
             else { try model.setText(value, item: id) }
             errorMessage = nil
-        } catch { errorMessage = "无法修改这段文字，请检查后重试。" }
+            return value.utf8.elementsEqual(runs.map(\.text).joined().utf8)
+        } catch { errorMessage = "无法修改这段文字，请检查后重试。"; return false }
+    }
+
+    func registerEditor(_ editor: NSTextView, item: UUID, cell: ScreenshotTableEditModel.Position?) {
+        guard selectedID == item, self.cell == cell else { return }
+        activeEditor = editor
+        editorOwner = EditorOwner(item: item, cell: cell)
+    }
+
+    @discardableResult
+    func setText(_ value: String, item: UUID, cell: ScreenshotTableEditModel.Position?) -> Bool {
+        guard selectedID == item, self.cell == cell else { return false }
+        return setText(value)
+    }
+
+    func setSelection(_ value: NSRange, item: UUID, cell: ScreenshotTableEditModel.Position?) {
+        guard selectedID == item, self.cell == cell else { return }
+        selection = value
     }
 
     func setStrong(_ strong: Bool) {
+        guard readyForAction() else { return }
         guard let id = selectedID else { return }
         do {
             if let cell { try model.editTable(id) { try $0.setStrong(strong, in: selection, at: cell) } }
@@ -85,13 +140,15 @@ final class ScreenshotProofreadState: ObservableObject {
     }
 
     func heading(_ value: Int) {
+        guard readyForAction() else { return }
         guard let id = selectedID else { return }
         do { try model.setHeading(value == 0 ? nil : value, item: id); errorMessage = nil }
         catch { errorMessage = "无法修改段落样式。" }
     }
 
-    func editTable(_ change: (inout ScreenshotTableEditModel) throws -> Void) {
-        guard let id = selectedID else { return }
+    @discardableResult
+    func editTable(_ change: (inout ScreenshotTableEditModel) throws -> Void) -> Bool {
+        guard readyForAction(), let id = selectedID else { return false }
         do {
             try model.editTable(id, change)
             if let cell, let item, case .table(let table) = item.content,
@@ -100,24 +157,52 @@ final class ScreenshotProofreadState: ObservableObject {
                 selection = NSRange(location: 0, length: 0)
             }
             errorMessage = nil
+            return true
         }
-        catch { errorMessage = "无法修改表格，请检查行列和单元格内容。" }
+        catch { errorMessage = "无法修改表格，请检查行列和单元格内容。"; return false }
     }
 
-    func addText() { let id = model.insertText(after: selectedID); select(id) }
+    func readyForAction() -> Bool {
+        guard let id = selectedID, editorOwner == EditorOwner(item: id, cell: cell) else { return true }
+        if activeEditor?.hasMarkedText() == true {
+            errorMessage = "请先完成输入法选词，再继续操作。"
+            return false
+        }
+        if let editor = activeEditor, !editor.string.utf8.elementsEqual(runs.map(\.text).joined().utf8) {
+            return setText(editor.string)
+        }
+        return true
+    }
+
+    func addText() {
+        guard readyForAction() else { return }
+        let id = model.insertText(after: selectedID); select(id)
+    }
     func split() {
+        guard readyForAction() else { return }
         guard let id = selectedID else { return }
         do { let next = try model.splitText(id, at: selection); select(next) }
         catch { errorMessage = "请把光标放在段落中间再拆分。" }
     }
-    func merge() {
+    func merge(separator: String) {
+        guard readyForAction() else { return }
         guard let id = selectedID else { return }
-        do { try model.mergeWithNext(id); errorMessage = nil }
+        do { try model.mergeWithNext(id, separator: separator); errorMessage = nil }
         catch { errorMessage = "只能与下一段文字合并。" }
     }
     func addTable() {
+        guard readyForAction() else { return }
         do { let id = try model.insertTable(after: selectedID); select(id, cell: .init(row: 0, column: 0)) }
         catch { errorMessage = "无法添加表格。" }
+    }
+    func moveItem(by offset: Int) {
+        guard readyForAction(), let id = selectedID else { return }
+        model.moveItem(id, by: offset)
+    }
+    func removeSelected() {
+        guard readyForAction(), let id = selectedID else { return }
+        model.removeItem(id)
+        if let first = model.items.first { select(first.id) } else { selectedID = nil; cell = nil }
     }
 }
 
@@ -163,12 +248,11 @@ private struct ScreenshotProofreadView: View {
                 HStack {
                     Button(text("添加段落")) { state.addText() }
                     Button(text("添加表格")) { state.addTable() }
-                    Button("↑") { if let id = state.selectedID { state.model.moveItem(id, by: -1) } }.accessibilityLabel(text("上移"))
-                    Button("↓") { if let id = state.selectedID { state.model.moveItem(id, by: 1) } }.accessibilityLabel(text("下移"))
+                    Button("↑") { state.moveItem(by: -1) }.accessibilityLabel(text("上移"))
+                    Button("↓") { state.moveItem(by: 1) }.accessibilityLabel(text("下移"))
                     Button(text("删除")) {
-                        guard let id = state.selectedID, confirm("删除所选内容？", "此操作会删除所选段落或整个表格。") else { return }
-                        state.model.removeItem(id)
-                        if let first = state.model.items.first { state.select(first.id) } else { state.selectedID = nil; state.cell = nil }
+                        guard state.readyForAction(), confirm("删除所选内容？", "此操作会删除所选段落或整个表格。") else { return }
+                        state.removeSelected()
                     }
                 }
                 ScrollView {
@@ -234,20 +318,27 @@ private struct ScreenshotProofreadView: View {
                         Text(text("小标题")).tag(2)
                     }.pickerStyle(.segmented)
                     Button(text("拆分")) { state.split() }
-                    Button(text("合并下一段")) { state.merge() }
+                    Menu(text("合并下一段")) {
+                        Button(text("直接合并")) { state.merge(separator: "") }
+                        Button(text("加空格合并")) { state.merge(separator: " ") }
+                    }
                 }
             }
             if case .table(let table) = item.content, let cell = state.cell {
                 tableControls(table: table, cell: cell)
             }
             if state.cell != nil || { if case .text = item.content { return true }; return false }() {
+                let activeCell = state.cell
                 HStack {
                     Text(text("编辑所选文字")).font(.subheadline)
                     Spacer()
                     Button(text("加粗选中文字")) { state.setStrong(true) }
                     Button(text("取消加粗")) { state.setStrong(false) }
                 }
-                ScreenshotTextEditor(runs: state.runs, onText: state.setText, onSelection: { state.selection = $0 })
+                ScreenshotTextEditor(runs: state.runs,
+                                     onText: { state.setText($0, item: item.id, cell: activeCell) },
+                                     onSelection: { state.setSelection($0, item: item.id, cell: activeCell) },
+                                     register: { state.registerEditor($0, item: item.id, cell: activeCell) })
                     .id("\(item.id)-\(state.cell?.row ?? -1)-\(state.cell?.column ?? -1)")
                     .frame(height: 95).border(Color.secondary.opacity(0.3))
                 Text(text("修改文字会清除该段或单元格已有的粗体，请重新选择文字标注。"))
@@ -265,16 +356,16 @@ private struct ScreenshotProofreadView: View {
                 Button(text("加一行")) { state.editTable { try $0.insertRow(at: $0.rowCount) } }
                 Button(text("加一列")) { state.editTable { try $0.insertColumn(at: $0.columnCount) } }
                 Button(text("删此行")) {
+                    guard state.readyForAction() else { return }
                     let hasText = table.cells[cell.row].contains { !$0.text.isEmpty }
                     guard !hasText || confirm("删除这一行？", "该行已有文字，删除后将不再翻译。") else { return }
-                    state.editTable { try $0.deleteRow(at: cell.row, discardContent: hasText) }
-                    state.cell = nil
+                    if state.editTable({ try $0.deleteRow(at: cell.row, discardContent: hasText) }) { state.cell = nil }
                 }
                 Button(text("删此列")) {
+                    guard state.readyForAction() else { return }
                     let hasText = table.cells.contains { !$0[cell.column].text.isEmpty }
                     guard !hasText || confirm("删除这一列？", "该列已有文字，删除后将不再翻译。") else { return }
-                    state.editTable { try $0.deleteColumn(at: cell.column, discardContent: hasText) }
-                    state.cell = nil
+                    if state.editTable({ try $0.deleteColumn(at: cell.column, discardContent: hasText) }) { state.cell = nil }
                 }
                 Button(text("撤销")) { state.editTable { _ = $0.undo() } }.disabled(!table.canUndo)
             }
@@ -284,14 +375,16 @@ private struct ScreenshotProofreadView: View {
                 Stepper("\(text("目标列")) \(min(targetColumn, table.columnCount))", value: Binding(
                     get: { min(max(1, targetColumn), table.columnCount) }, set: { targetColumn = $0 }), in: 1...table.columnCount)
                 Button(text("移动")) {
+                    guard state.readyForAction() else { return }
                     let target = ScreenshotTableEditModel.Position(row: min(targetRow, table.rowCount) - 1,
                                                                    column: min(targetColumn, table.columnCount) - 1)
                     guard table.cells.indices.contains(target.row), table.cells[target.row].indices.contains(target.column) else { return }
+                    let moved: Bool
                     if !table.cells[target.row][target.column].text.isEmpty {
                         guard confirm("交换两个单元格？", "目标单元格已有文字，将交换两格内容。") else { return }
-                        state.editTable { try $0.swap(cell, target) }
-                    } else { state.editTable { try $0.move(from: cell, to: target) } }
-                    state.cell = target
+                        moved = state.editTable { try $0.swap(cell, target) }
+                    } else { moved = state.editTable { try $0.move(from: cell, to: target) } }
+                    if moved { state.cell = target }
                 }
             }.font(.caption)
         }
@@ -305,16 +398,44 @@ private struct ScreenshotProofreadView: View {
     }
 }
 
-private struct ScreenshotTextEditor: NSViewRepresentable {
+final class ScreenshotInputTextView: NSTextView {
+    var didCommitText: (() -> Void)?
+    private(set) var isUpdatingInput = false
+
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        isUpdatingInput = true
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        isUpdatingInput = false
+    }
+
+    override func unmarkText() {
+        let wasUpdating = isUpdatingInput
+        isUpdatingInput = true
+        super.unmarkText()
+        isUpdatingInput = wasUpdating
+        if !wasUpdating && !hasMarkedText() { didCommitText?() }
+    }
+
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        let wasUpdating = isUpdatingInput
+        isUpdatingInput = true
+        super.insertText(string, replacementRange: replacementRange)
+        isUpdatingInput = wasUpdating
+        if !wasUpdating && !hasMarkedText() { didCommitText?() }
+    }
+}
+
+struct ScreenshotTextEditor: NSViewRepresentable {
     let runs: [ScreenshotTextRun]
-    let onText: (String) -> Void
+    let onText: (String) -> Bool
     let onSelection: (NSRange) -> Void
+    let register: (NSTextView) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(onText: onText, onSelection: onSelection) }
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
-        let view = NSTextView()
+        let view = ScreenshotInputTextView()
         view.frame = NSRect(origin: .zero, size: scroll.contentSize)
         view.minSize = NSSize(width: 0, height: scroll.contentSize.height)
         view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
@@ -322,6 +443,10 @@ private struct ScreenshotTextEditor: NSViewRepresentable {
         view.isEditable = true; view.isSelectable = true; view.isRichText = false
         view.allowsUndo = true
         view.delegate = context.coordinator
+        view.didCommitText = { [weak view, weak coordinator = context.coordinator] in
+            guard let view, let coordinator else { return }
+            coordinator.publish(view)
+        }
         view.textContainerInset = NSSize(width: 6, height: 6)
         view.autoresizingMask = [.width]
         view.textContainer?.widthTracksTextView = true
@@ -331,6 +456,12 @@ private struct ScreenshotTextEditor: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let view = scroll.documentView as? NSTextView else { return }
         context.coordinator.onText = onText; context.coordinator.onSelection = onSelection
+        register(view)
+        Self.apply(runs: runs, to: view, coordinator: context.coordinator)
+    }
+    static func apply(runs: [ScreenshotTextRun], to view: NSTextView, coordinator: Coordinator) {
+        guard !view.hasMarkedText(), (view as? ScreenshotInputTextView)?.isUpdatingInput != true else { return }
+        guard !coordinator.hasUnsavedInput else { return }
         let value = NSMutableAttributedString(string: "")
         for run in runs {
             value.append(NSAttributedString(string: run.text, attributes: [
@@ -340,20 +471,25 @@ private struct ScreenshotTextEditor: NSViewRepresentable {
         }
         guard !view.attributedString().isEqual(to: value) else { return }
         let old = view.selectedRange()
-        context.coordinator.updating = true
+        coordinator.updating = true
         view.textStorage?.setAttributedString(value)
         let location = min(old.location, value.length)
         view.setSelectedRange(NSRange(location: location, length: min(old.length, value.length - location)))
-        context.coordinator.updating = false
+        coordinator.updating = false
     }
     final class Coordinator: NSObject, NSTextViewDelegate {
-        var onText: (String) -> Void
+        var onText: (String) -> Bool
         var onSelection: (NSRange) -> Void
         var updating = false
-        init(onText: @escaping (String) -> Void, onSelection: @escaping (NSRange) -> Void) { self.onText = onText; self.onSelection = onSelection }
+        private(set) var hasUnsavedInput = false
+        init(onText: @escaping (String) -> Bool, onSelection: @escaping (NSRange) -> Void) { self.onText = onText; self.onSelection = onSelection }
         func textDidChange(_ notification: Notification) {
             guard !updating, let view = notification.object as? NSTextView else { return }
-            onText(view.string)
+            publish(view)
+        }
+        func publish(_ view: NSTextView) {
+            guard !updating, !view.hasMarkedText(), (view as? ScreenshotInputTextView)?.isUpdatingInput != true else { return }
+            hasUnsavedInput = !onText(view.string)
         }
         func textViewDidChangeSelection(_ notification: Notification) {
             guard !updating, let view = notification.object as? NSTextView else { return }

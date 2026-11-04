@@ -1,6 +1,27 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "请先完成输入法选词，再继续操作。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请先完成输入法选词，再继续操作。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Finish composing text with the input method before continuing." } }
+      }
+    },
+    "直接合并": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "直接合并" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Join directly" } }
+      }
+    },
+    "加空格合并": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "加空格合并" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Join with a space" } }
+      }
+    },
     "截图尺寸或文字量过大，未自动识别粗体；请手动核对和标注。": {
       "extractionState": "manual",
       "localizations": {

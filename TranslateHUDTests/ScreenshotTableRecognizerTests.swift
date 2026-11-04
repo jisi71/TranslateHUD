@@ -88,18 +88,43 @@ final class ScreenshotTableRecognizerTests: XCTestCase {
         }
     }
 
-    func testSeparateRuledTablesStaySeparate() async throws {
-        let image = try fixture("two-tables")
+    func testSeparatedGridsAreNotAssumedToBeSeparateTables() async throws {
+        for name in ["two-tables", "merged-fullwidth"] {
+        let image = try fixture(name)
         let lines = try recognizeLines(image)
-        let tables = ScreenshotTableRecognizer.inferredTables(from: image, lines: lines)
-        XCTAssertEqual(tables.count, 2)
-        XCTAssertTrue(tables.allSatisfy { $0.rows == expected })
+        let fallback = ScreenshotTableRecognizer.assessFallback(from: image, lines: lines)
+        XCTAssertTrue(fallback.tables.isEmpty)
+        XCTAssertTrue(fallback.rejected.contains(.ambiguousGrid))
         if #available(macOS 26, *) {
             let documents = try await RecognizeDocumentsRequest().perform(on: image)
             let assessment = try XCTUnwrap(documents.map { ScreenshotTableRecognizer.assess(from: $0.document, image: image, lines: lines) }.first)
-            XCTAssertEqual(assessment.tables.count, 2)
-            XCTAssertTrue(assessment.tables.allSatisfy { $0.rows == expected })
+            XCTAssertTrue(assessment.tables.isEmpty)
+            XCTAssertTrue(assessment.rejected.contains(.ambiguousGrid))
         }
+        }
+    }
+
+    func testFullWidthMergedRowWithOuterBordersIsRejected() async throws {
+        let image = try fixture("merged-fullwidth-framed")
+        let lines = try recognizeLines(image)
+        XCTAssertTrue(ScreenshotTableRecognizer.inferredTables(from: image, lines: lines).isEmpty)
+        if #available(macOS 26, *) {
+            let documents = try await RecognizeDocumentsRequest().perform(on: image)
+            let assessment = try XCTUnwrap(documents.map { ScreenshotTableRecognizer.assess(from: $0.document, image: image, lines: lines) }.first)
+            XCTAssertTrue(assessment.tables.isEmpty)
+            XCTAssertTrue(assessment.rejected.contains(.mergedCells))
+        }
+    }
+
+    func testRuleEvidenceIsLocalToEachTable() async throws {
+        guard #available(macOS 26, *) else { throw XCTSkip("RecognizeDocumentsRequest requires macOS 26") }
+        let image = try fixture("ruled-and-borderless")
+        let lines = try recognizeLines(image)
+        let documents = try await RecognizeDocumentsRequest().perform(on: image)
+        let assessment = try XCTUnwrap(documents.map { ScreenshotTableRecognizer.assess(from: $0.document, image: image, lines: lines) }.first)
+        XCTAssertEqual(assessment.tables.count, 2)
+        XCTAssertTrue(assessment.tables.allSatisfy { $0.rows == expected })
+        XCTAssertTrue(assessment.rejected.isEmpty)
     }
 
     func testMacOS26AcceptsConfirmedBorderlessGrid() async throws {

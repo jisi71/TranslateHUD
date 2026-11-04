@@ -47,7 +47,11 @@ enum OCRService { struct Line { let text: String; let normalizedBox: CGRect; let
            precondition(String(rendered.characters) == expected, "Cell mismatch: \(cell) expected \(expected)")
        }
    }
-   else if name == "two-tables" { precondition(fallback.count == 2 && fallback.allSatisfy { $0.rows == expected }) }
+   else if name == "ruled-and-borderless" { precondition(fallback.count == 1 && fallback[0].rows == expected) }
+   else if name == "two-tables" || name == "merged-fullwidth" {
+       let decision=ScreenshotTableRecognizer.assessFallback(from:image,lines:lines)
+       precondition(fallback.isEmpty && decision.rejected.contains(.ambiguousGrid))
+   }
    else { precondition(fallback.isEmpty) }
    print("FALLBACK",name,fallback.map(\.rows))
    if #available(macOS 26, *) {
@@ -56,7 +60,8 @@ enum OCRService { struct Line { let text: String; let normalizedBox: CGRect; let
        for doc in docs {
          let a=ScreenshotTableRecognizer.assess(from:doc.document,image:image,lines:lines)
          if name == "ruled" || name == "borderless" || name == "mixed-zh" || name == "multiline" { precondition(a.tables.count == 1 && a.tables[0].rows == expected && a.rejected.isEmpty) }
-         else if name == "two-tables" { precondition(a.tables.count == 2 && a.tables.allSatisfy { $0.rows == expected } && a.rejected.isEmpty) }
+         else if name == "ruled-and-borderless" { precondition(a.tables.count == 2 && a.tables.allSatisfy { $0.rows == expected } && a.rejected.isEmpty) }
+         else if name == "two-tables" || name == "merged-fullwidth" { precondition(a.tables.isEmpty && !a.rejected.isEmpty) }
          else { precondition(a.tables.isEmpty && !a.rejected.isEmpty) }
          print("VISION",name,"accepted",a.tables.count,"rejected",a.rejected)
        }

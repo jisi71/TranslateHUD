@@ -69,9 +69,11 @@ enum ScreenshotTableRecognizer {
     /// Visible borders must be complete; borderless layouts need repeated row and column anchors.
     @available(macOS 26.0, *)
     static func assess(from document: DocumentObservation.Container, image: CGImage, lines: [OCRService.Line]) -> Assessment {
-        let ruled = inferredTables(from: image, lines: lines)
-        let hasRuleEvidence = Raster(image: image)?.hasRuleEvidence() ?? true
-        var accepted: [ScreenshotTable] = [], rejected: [RejectionReason] = []
+        let fallback = assessFallback(from: image, lines: lines)
+        let ruled = fallback.tables
+        let raster = Raster(image: image)
+        var accepted: [ScreenshotTable] = []
+        var rejected: [RejectionReason] = document.tables.isEmpty ? fallback.rejected : []
         for table in document.tables {
             let height = table.rows.count
             let width = table.columns.count
@@ -98,6 +100,7 @@ enum ScreenshotTableRecognizer {
             }
             if let issue { rejected.append(issue); continue }
             let box = table.boundingRegion.boundingBox.cgRect
+            let hasRuleEvidence = raster?.hasRuleEvidence(in: box) ?? true
             let match = ruled.first(where: { candidate in
                 guard candidate.rows.count == height, candidate.rows.first?.count == width else { return false }
                 let intersection = candidate.normalizedBox.intersection(box)
@@ -168,8 +171,16 @@ enum ScreenshotTableRecognizer {
     /// Conservative pre-macOS-26 fallback: full dark grid lines and OCR boxes must
     /// unambiguously fit cells. It rejects partial/merged/unruled grids and crossing text.
     static func inferredTables(from image: CGImage, lines: [OCRService.Line]) -> [ScreenshotTable] {
-        guard let raster = Raster(image: image) else { return [] }
-        return raster.grids().compactMap { grid in
+        assessFallback(from: image, lines: lines).tables
+    }
+
+    static func assessFallback(from image: CGImage, lines: [OCRService.Line]) -> Assessment {
+        guard let raster = Raster(image: image) else { return Assessment(tables: [], rejected: []) }
+        let grids = raster.grids()
+        // Two visual grids can also be one grid with a full-width cell whose
+        // vertical border is missing. Never invent a separation or drop a row.
+        guard grids.count <= 1 else { return Assessment(tables: [], rejected: [.ambiguousGrid]) }
+        let tables: [ScreenshotTable] = grids.compactMap { grid in
         let xs = grid.xs, ys = grid.ys
         let columnCount = xs.count - 1, rowCount = ys.count - 1
         guard rowCount <= 100, columnCount <= 40, rowCount * columnCount <= 1_000 else { return nil }
@@ -201,6 +212,7 @@ enum ScreenshotTableRecognizer {
                           height: CGFloat(ys.last! - ys[0]) / CGFloat(raster.height))
         return ScreenshotTable(rows: rows, normalizedBox: rect, hasMergedCells: false)
         }
+        return Assessment(tables: tables, rejected: [])
     }
 }
 
@@ -284,13 +296,19 @@ private struct Raster {
         }
     }
 
-    func hasRuleEvidence() -> Bool {
+    func hasRuleEvidence(in region: CGRect) -> Bool {
+        let x0 = max(0, min(width - 1, Int(region.minX * CGFloat(width))))
+        let x1 = max(0, min(width, Int(ceil(region.maxX * CGFloat(width)))))
+        let y0 = max(0, min(height - 1, Int((1 - region.maxY) * CGFloat(height))))
+        let y1 = max(0, min(height, Int(ceil((1 - region.minY) * CGFloat(height)))))
+        guard x1 > x0, y1 > y0 else { return true }
+        let threshold = max(30, (x1 - x0) / 5)
         var horizontal = 0
-        for y in 0..<height {
+        for y in y0..<y1 {
             var length = 0
-            for x in 0..<width {
+            for x in x0..<x1 {
                 length = dark(x, y) ? length + 1 : 0
-                if length >= max(80, width / 5) { horizontal += 1; break }
+                if length >= threshold { horizontal += 1; break }
             }
             if horizontal >= 2 { return true }
         }

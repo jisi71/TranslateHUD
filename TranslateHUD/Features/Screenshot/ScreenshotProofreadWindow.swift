@@ -549,7 +549,7 @@ struct ScreenshotTextEditor: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
-        let view = ScreenshotInputTextView()
+        let view = ScreenshotInputTextView(usingTextLayoutManager: false)
         view.frame = NSRect(origin: .zero, size: scroll.contentSize)
         view.minSize = NSSize(width: 0, height: scroll.contentSize.height)
         view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)

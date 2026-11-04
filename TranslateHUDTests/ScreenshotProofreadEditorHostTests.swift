@@ -27,6 +27,27 @@ final class ScreenshotProofreadEditorHostTests: XCTestCase {
         try XCTUnwrap(descendants(host).compactMap { $0 as? ScreenshotInputTextView }.first)
     }
 
+    func testProofreadEditorUsesTextKit1AcrossOwnerSwitches() throws {
+        let state = try ScreenshotProofreadState(plan: .init(blocks: [
+            .text(runs: [.init(text: "Heading", isStrong: true)], heading: 1),
+            .table(rows: [["A", "B"]])
+        ]))
+        let first = try XCTUnwrap(state.selectedID)
+        let table = state.model.items[1].id
+        let host = makeHost(state)
+        let view = try editor(host)
+        XCTAssertNil(view.textLayoutManager)
+        XCTAssertNotNil(view.layoutManager)
+        state.select(table, cell: .init(row: 0, column: 1))
+        pump()
+        XCTAssertTrue(view === (try editor(host)))
+        XCTAssertNil(view.textLayoutManager)
+        state.select(first)
+        pump()
+        XCTAssertTrue(view === (try editor(host)))
+        XCTAssertNil(view.textLayoutManager)
+    }
+
     func testRealHostingViewReusesEditorAcrossOwnersAndEmptyState() throws {
         let state = try ScreenshotProofreadState(plan: .init(blocks: [
             .text(runs: [.init(text: "Same", isStrong: true)], heading: nil),

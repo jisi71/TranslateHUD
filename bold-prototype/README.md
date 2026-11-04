@@ -23,25 +23,26 @@
 
 ## 离线复现
 
-两份原包都内含 `@huggingface/tokenizers` 0.2.0，必须完整解压含 `node_modules`；仅解压 src 会使基线测试因找不到 tokenizer 返回 503，不能用于计费或取消对比。本会话原始包路径：
+两份原包都内含 `@huggingface/tokenizers` 0.2.0；仅解压 `src` 会使基线测试因找不到 tokenizer 返回 503，不能用于计费或取消对比。本机当前保存原始包的路径如下；其他机器需要通过安全途径获取 SHA-256 相同的原包，这些路径不是跨机器制品存储：
 
 ```text
-/private/tmp/translatehud-live-trial-20261104.zip
-/Users/qi/TranslateHUD/build/pr45-49-local-20261103/trial-stream-candidate.zip
+/Users/qi/TranslateHUD/build/ocr-email-baselines-20261104/trial-original.zip
+/Users/qi/TranslateHUD/build/ocr-email-baselines-20261104/trial-stream-original.zip
 ```
 
-先在干净目录解压可信包，使用脚本验证原包、三个会被修改的源码文件、tokenizer 模块和 tokenizer 数据哈希：
+需要 Python 3.9 或更新版本、Node.js 20 或更新版本及系统 `patch`。从仓库根目录执行，`--output` 必须是仓库外尚不存在的绝对路径：
 
 ```sh
-node bold-prototype/verify-baseline.cjs trial /absolute/trial.zip /absolute/trial-base
-node bold-prototype/verify-baseline.cjs trial-stream /absolute/trial-stream.zip /absolute/stream-base
+python3 bold-prototype/build-candidates.py \
+  --trial-zip /absolute/path/to/trial-original.zip \
+  --stream-zip /absolute/path/to/trial-stream-original.zip \
+  --output /absolute/path/to/new-candidate-build
 ```
 
-分别复制已验证的原始目录到候选目录，再于候选目录 `patch -p1 < /absolute/path/to/bold-prototype/patches/trial-bold-and-email.patch`（stream 使用其对应文件），随后执行：
+构建器不部署、不下载依赖，也不修改原包或已有目录。它先检查两份原包和对应组合补丁的 SHA-256，再分别从原包重建完整基线（包括依赖和符号链接），逐项比较文件内容、类型和权限。每个候选只应用一次对应的组合补丁；构建器要求全部差异恰为 `src/trialMessages.js`、`src/trialService.js`、`src/upstream.js` 和新文件 `src/structuredBold.js`，并检查四个文件的预期哈希。任一额外变化、补丁失败或测试失败都会中止。
 
-```sh
-TRIAL_BASELINE_ROOT=/absolute/trial-base TRIAL_CANDIDATE_ROOT=/absolute/trial-candidate node --test bold-prototype/format.test.cjs
-TRIAL_BASELINE_ROOT=/absolute/stream-base TRIAL_CANDIDATE_ROOT=/absolute/stream-candidate node --test bold-prototype/format.test.cjs
-```
+构建器检查测试文件的 SHA-256，对两个候选分别运行格式协议和邮箱资格测试，随后重新检查基线与候选树，再生成固定时间戳、保留权限与符号链接的 ZIP，并核对 ZIP 内容与候选树一致。输出目录包含 `baselines/`、`candidates/`、`logs/`、两个候选 ZIP 和 `report.json`；报告记录输入、补丁、测试文件、候选树、候选 ZIP 的 SHA-256、变化文件和测试结果。没有 `report.json` 表示整个构建没有完成，不能将中间文件当作已通过的候选。不要将原包、候选包、日志或任何密钥提交到 Git。
 
 测试覆盖 UTF-8 和组合字素边界、标记碰撞、整对重排、缺失／重复／交叉／跨项／跨行、超量和原文伪造、真实 token 计数、免费与有余额失败结算，以及旧请求和取消／缺失 usage 与对应基线的对比。两份组合候选还分别通过邮箱资格与免费额度模拟测试。真实模型稳定保留标记、不同平台的字素分段版本差异和线上取消计费仍须实际验证。
+
+这些 SHA 只对应记录时点的线上基线。正式部署前必须重新从目标环境分别下载 `trial` 和 `trial-stream`，核对哈希、当前路由与函数配置；如果任一原包已变化，先审查差异并重新制作、测试补丁，不得绕过哈希检查。构建通过不等于真实环境验收或已部署。

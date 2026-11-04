@@ -1,6 +1,6 @@
 # 体验额度服务
 
-> **部署保护：**本目录历史 `src/` 不是当前线上 `trial` / `trial-stream` 的完整源码，直接部署会丢失每日免费额度。`npm run stage` 已阻止执行。当前两个函数的基线、补丁和验证见 [deployment-tests/README.md](deployment-tests/README.md)；基线或部署方式核对完成前，不要照下文历史部署命令覆盖线上。
+> **部署保护：**本目录的 `src/`、`server.js` 和 `Dockerfile` 是历史实现，不是线上 `trial` / `trial-stream` 的完整源码；将其构建的容器或函数用于线上会丢失每日免费额度。`npm run stage` 已阻止执行。下文的规则与配置属于历史说明，不能作为线上现状或部署指南。离线构建候选包请看 [基线及验证](../bold-prototype/README.md)；正式部署前必须重新核验当前线上包和路由。
 
 TranslateHUD 0.4.0 让没有自己 API Key 的人先用手机号试翻译。这一层服务做三件事：
 
@@ -15,7 +15,7 @@ TranslateHUD 0.4.0 让没有自己 API Key 的人先用手机号试翻译。这�
 - 控制台里的「短信验证码登录」需要在这个新环境里打开，渠道用云开发短信资源包。
 - 账本用云数据库（文档型），集合名 `trial_accounts`。不要改成 PostgreSQL。新环境不用先在控制台手工建这个集合：服务第一次读余额时会自己创建。创建失败时，App 会显示「读取失败」，点设置里余额旁边的刷新图标可以再读一次。
 
-微信登录和邮箱登录这次不做。
+本节记述手机号试用服务的历史设计；邮箱登录及后续改动以代码和当前验收结果为准。
 
 ## 规则
 
@@ -82,61 +82,24 @@ node --env-file=.env server.js
 
 要对着本机服务试 App，把 `project.yml` 里的 `TRIAL_PROXY_BASE_URL` 改成 `http://127.0.0.1:8787/v1`，再重新生成工程。
 
-## 正式部署（推荐云托管，可以边出字）
+## 生产候选包
 
-`Dockerfile` 用来部署到云开发「云托管」，或其他能跑容器的地方。容器里要设置：
+不要将本目录或其 `Dockerfile` 部署到云托管，也不要用历史 `stage` 覆盖云函数。当前两个函数必须分别从其对应的真实线上基线构建；离线构建器、完整性检查及测试见 [候选包构建说明](../bold-prototype/README.md)。
 
-```text
-TRIAL_STORE=cloudbase
-CLOUDBASE_ENV_ID=translatehud-d4gl951eo8bef4702
-TRANSLATION_API_KEY=（你的密钥）
-TRANSLATION_BASE_URL=https://api.deepseek.com/v1
-TRANSLATION_MODEL=（你的模型）
-TRIAL_PRICE_INPUT_YUAN_PER_MILLION=2
-TRIAL_PRICE_CACHE_HIT_YUAN_PER_MILLION=0.04
-TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION=8
-TRIAL_INVITE_CODE=translatehud-200
-TRIAL_INVITE_MAX_REDEEMS=200
-TENCENT_SECRET_ID=（腾讯云密钥）
-TENCENT_SECRET_KEY=（腾讯云密钥）
-PORT=8080
-```
-
-服务起来之后，把外网地址加上 `/v1`，写进 `project.yml` 的 `TRIAL_PROXY_BASE_URL`，再重新生成工程。例如 `https://你的服务域名/v1`。
-
-云托管需要能访问这个环境的云数据库（文档型）。镜像里会安装 `@cloudbase/node-sdk`。第一次读余额或邀请码次数时，服务会调用 `createCollection('trial_accounts')` 和 `createCollection('trial_invite')`。集合已经存在就跳过。问题反馈用集合 `trial_feedback`，第一次提交时自己建。失败记录用另一个集合 `trial_error_events`，不放在这次余额读取里：翻译不能因为失败记录建集合失败而中断。`npm run ensure-collection` 会把 `trial_accounts`、`trial_invite`、`trial_feedback`、`trial_error_events` 和 `trial_usage_events` 一起建好。服务第一次写入失败记录时，如果集合还没有，也会自己建 `trial_error_events`。账本文档 ID 仍是腾讯云用户 ID，登录和扣费都用它。App 设置里显示的是短号 `displayId`（第 1 个用户 `00001`），存在账本文档的 `displayNo` 上。发号计数在 `trial_invite` 文档 `config` 的 `nextDisplayNo`。邀请码计数也在这份 `config` 里。不需要先在控制台建集合，也不要改成 PostgreSQL。
-
-数据库报错会变成 `trial_store`，不会把数据库原文交给 App。App 显示：`体验余额暂时读不出来。请在设置里点余额旁的刷新。`
-
-可选：在部署前先建集合（需要本机已经 `npm install`，并在 `.env` 里填好腾讯云密钥）：
-
-```bash
-cd backend
-npm install
-npm run ensure-collection
-```
-
-改过 `project.yml` 里的 `CLOUDBASE_ENV_ID` 之后，Mac 上要重新生成工程再安装，否则 App 里仍是旧环境，登录凭证对不上，余额会一直读失败：
-
-```bash
-xcodegen generate
-bash scripts/install-local.sh
-```
-
-`TranslateHUD.xcodeproj` 不入库。`install-local.sh` 里已经包含 `xcodegen generate`。换了环境之后，请退出登录再登一次。旧环境的登录不能用来读新环境的余额。
+构建通过只证明本地候选符合记录的基线和测试，并不执行部署。正式部署前须重新获取当前线上包并核对哈希、路由和函数配置；若线上已变更，应重新审查差异并更新补丁，不能硬套旧基线。密钥和运行配置单独保管，不放进候选源码包或 Git。
 
 ## 线上云函数
 
 目前 `trial` 和 `trial-stream` 的线上源码不同，也不同于这里的历史 `src/`。不要用旧的 `npm run stage` 和 `cloudbaserc.json` 直接覆盖线上。修改、验证和后续部署前，请先阅读 [线上基线补丁与验证](deployment-tests/README.md)，分别核验两个函数当前的代码包及目标网关路由。
 
-`cloudbaserc.json` 里的 envId 已经填好。函数超时是 120 秒。HTTP 访问路径要能匹配下面这些地址的结尾：
+下列是历史接口列表；具体线上路由和函数配置必须在部署前重新核对：
 
 - `POST /v1/trial/account`：查询余额。不送钱
 - `POST /v1/trial/redeem`：登录后提交邀请码，领 ¥2.00。请求头带云开发 access token
 - `GET /v1/trial/invite-status`：不用登录。给官网看邀请码和剩余次数
 - `POST /v1/trial/errors`：只在失败时记一条短记录。见下面「失败记录」
 - `POST /v1/chat/completions`：翻译。请求头带用户的云开发 access token，以及 `X-TranslateHUD-Source`
-- `POST /v1/trial/feedback`：问题反馈。见下面一节。云函数请求体通常比云托管小，带图片时请走云托管。
+- `POST /v1/trial/feedback`：问题反馈。见下面一节。
 
 如果 CLI 报事务写法不对，对照当前 `@cloudbase/node-sdk` 的 `startTransaction` / `doc().set()`。逻辑在 `src/cloudBaseStore.js`。失败记录的写入在 `src/errorLogStore.js`，用的是普通 `add`，不走账本事务。
 
@@ -184,17 +147,9 @@ bash scripts/install-local.sh
 
 本地 `TRIAL_STORE=file` 时，记录追加在账本旁边的 `backend/data/error-events.jsonl`，这个文件不入库。`TRIAL_STORE=memory` 只留在内存里。正式环境 `TRIAL_STORE=cloudbase` 写入上面的集合。不需要新的环境变量，也不要把密钥写进仓库。
 
-### 部署到 `translatehud-d4gl951eo8bef4702`
+### 查看线上失败记录
 
-在自己的 Mac 上做，密钥留在本机 `.env`，不要贴进 PR。
-
-1. 拉下包含这次改动的代码。
-2. `cd backend && npm install`
-3. `.env` 里已经是 `TRIAL_STORE=cloudbase`、`CLOUDBASE_ENV_ID=translatehud-d4gl951eo8bef4702`，并且填了腾讯云密钥时，运行 `npm run ensure-collection`。这会补上 `trial_error_events` 和 `trial_usage_events`。集合已存在会跳过。没跑也行：第一次写入失败记录时服务会自己建。建集合失败只影响失败记录，不影响翻译和扣费。
-4. 用现在的云托管重新部署 `backend/`（镜像是 `Dockerfile`）。App 打到的是 `TRIAL_PROXY_BASE_URL`，新接口是同一个服务上的 `POST /v1/trial/errors`。只部署备用云函数不会接到正式 App 的失败记录。
-5. 如需更新线上云函数，先核对 [线上基线补丁与验证](deployment-tests/README.md)；不要使用历史 `stage` 命令覆盖线上函数。HTTP 路径要能匹配 `/v1/trial/errors`。
-6. 看记录：云开发控制台 → 数据库 → 文档型数据库 → 集合 `trial_error_events`。
-7. 发一版新的 App 之后才会有客户端上报。这一步不在这次改动里做公证或 Release。旧 App 不会打这个接口；新 App 碰上还没升级的服务会得到 404，然后照常显示原来的错误。
+在云开发控制台的文档型数据库中查看 `trial_error_events`。要更新线上服务，先按 [候选包构建说明](../bold-prototype/README.md) 核对现有基线与实际路由；不要部署历史 `backend/` 容器，也不要用历史 `stage` 覆盖线上函数。
 
 ## 体验扣费流水
 

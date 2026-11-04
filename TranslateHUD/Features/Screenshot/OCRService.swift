@@ -106,11 +106,16 @@ enum OCRService {
                 }
                 let observations = (request.results ?? [])
                 let bold = ScreenshotBoldDetector(image: cg)
+                let candidates = observations.compactMap { $0.topCandidates(1).first }
+                let detectedRuns = bold?.runs(for: candidates) ?? candidates.map { _ in [] }
+                var candidateIndex = 0
                 let lines: [Line] = observations.compactMap { obs in
                     guard let cand = obs.topCandidates(1).first else { return nil }
+                    let index = candidateIndex
+                    candidateIndex += 1
                     let txt = cand.string.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !txt.isEmpty else { return nil }
-                    let runs = cand.string == txt ? (bold?.runs(for: cand) ?? []) : []
+                    let runs = cand.string == txt && detectedRuns.indices.contains(index) ? detectedRuns[index] : []
                     return Line(text: txt, normalizedBox: obs.boundingBox, confidence: cand.confidence, runs: runs)
                 }
                 // 从上到下：Vision 的 y 是底-up，因此 1 - midY 升序就是从上到下

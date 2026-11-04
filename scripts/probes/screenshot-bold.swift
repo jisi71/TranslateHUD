@@ -30,6 +30,34 @@ func recognize(_ text: String, strong: [String], dark: Bool) throws -> [Screensh
     return detector.runs(for: candidate)
 }
 
+func recognizeMultipleLines(dark: Bool) throws -> [(String, [ScreenshotTextRun])] {
+    let image = NSImage(size: NSSize(width: 1100, height: 500))
+    image.lockFocus()
+    (dark ? NSColor.black : NSColor.white).setFill()
+    NSRect(x: 0, y: 0, width: 1100, height: 500).fill()
+    let color = dark ? NSColor.white : NSColor.black
+    let lines: [(String, CGFloat, CGFloat, NSFont.Weight)] = [
+        ("Regular sentence provides a normal reference here.", 400, 25, .regular),
+        ("Entire sentence appears in bold text.", 335, 25, .bold),
+        ("Bold phrase", 270, 25, .bold),
+        ("Normal WIDE MMMMMM TEXT across many words.", 205, 25, .regular),
+        ("Larger normal letters without any bold.", 120, 34, .regular)
+    ]
+    for (text, y, size, weight) in lines {
+        (text as NSString).draw(at: CGPoint(x: 20, y: y), withAttributes: [
+            .font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: color
+        ])
+    }
+    image.unlockFocus()
+    guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { fatalError("image conversion") }
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    try VNImageRequestHandler(cgImage: cg).perform([request])
+    let candidates = (request.results ?? []).compactMap { $0.topCandidates(1).first }
+    guard let detector = ScreenshotBoldDetector(image: cg) else { fatalError("image sample unavailable") }
+    return Array(zip(candidates.map(\.string), detector.runs(for: candidates)))
+}
+
 @main struct Run {
     static func main() throws {
         let english = "A normal sentence has a bold phrase and resumes again."
@@ -46,6 +74,16 @@ func recognize(_ text: String, strong: [String], dark: Bool) throws -> [Screensh
         let split = try recognize("这是普通文字 这里加粗正常文字显示加粗 然后继续阅读。",
                                   strong: ["这里加粗", "显示加粗"], dark: false)
         precondition(!split.filter(\.isStrong).contains { $0.text.contains("正常文字") })
+        for dark in [false, true] {
+            let lines = try recognizeMultipleLines(dark: dark)
+            let whole = lines.first { $0.0.contains("Entire sentence") }!
+            let short = lines.first { $0.0 == "Bold phrase" }!
+            let normal = lines.filter { $0.0.contains("Regular sentence") || $0.0.contains("Normal WIDE") || $0.0.contains("Larger normal") }
+            fputs("Multi-line \(dark ? "dark" : "light") whole: \(whole.1.filter(\.isStrong).map(\.text)) short: \(short.1.filter(\.isStrong).map(\.text)) normal: \(normal.flatMap { $0.1.filter(\.isStrong).map(\.text) })\n", stderr)
+            precondition(whole.1.filter(\.isStrong).map(\.text) == ["Entire", "sentence", "appears", "in", "bold", "text"])
+            precondition(short.1.filter(\.isStrong).map(\.text) == ["Bold", "phrase"])
+            precondition(normal.allSatisfy { $0.1.allSatisfy { !$0.isStrong } })
+        }
         print("Synthetic English/Chinese, light/dark background and normal-text controls passed.")
         print("Known gap: adjacent Chinese bold spans may be partially missed:", split.filter(\.isStrong).map(\.text))
     }

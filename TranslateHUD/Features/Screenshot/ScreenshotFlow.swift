@@ -121,7 +121,7 @@ enum ScreenshotFlow {
             originals: originals,
             progress: progress,
             termProgress: termProgress,
-            recognitionNotice: tableWasRejected ? "表格结构未能可靠识别，相关内容已按普通文字显示，请对照截图核对。" : nil
+            recognitionNotice: tableWasRejected ? "表格结构未能可靠识别，相关内容已按普通文字显示，请对照截图核对。" : (!plan.sourceIsRepresentable ? "粗体位置无法可靠对应，请重试。" : nil)
         )
         window.show()
 

@@ -111,6 +111,17 @@ final class ScreenshotStructureTests: XCTestCase {
         XCTAssertTrue(paddedRich.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
     }
 
+    func testMarkdownBoldBoundaryThatCannotRenderIsRejectedWithoutLosingText() {
+        for (before, marked, after) in [("a", "!", "b"), ("a", "(red)", "b"), ("a", " ", "b")] {
+            let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [
+                .init(text: before, isStrong: false), .init(text: marked, isStrong: true), .init(text: after, isStrong: false)
+            ], heading: nil)])
+            XCTAssertFalse(plan.sourceIsRepresentable)
+            XCTAssertFalse(plan.originalMarkdown.isEmpty)
+            XCTAssertThrowsError(try plan.render(plan.sourceItems))
+        }
+    }
+
     func testLegacyOCRGroupsLinesOnlyWhenGeometricallyAdjacent() {
         let lines = [
             OCRService.Line(text: "Second line.", normalizedBox: CGRect(x: 0.1, y: 0.74, width: 0.6, height: 0.04), confidence: 1),

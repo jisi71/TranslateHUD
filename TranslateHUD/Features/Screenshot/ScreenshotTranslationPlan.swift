@@ -54,7 +54,7 @@ struct ScreenshotTranslationPlan: Sendable {
                 for run in runs {
                     let start = value.utf8.count
                     value += run.text
-                    if run.isStrong && !run.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if run.isStrong && !run.text.isEmpty {
                         ranges.append(.init(start: start, end: value.utf8.count))
                     }
                 }
@@ -68,7 +68,19 @@ struct ScreenshotTranslationPlan: Sendable {
 
     var sourceTexts: [String] { sourceItems.map(\.text) }
     var sourceForQuota: String { sourceTexts.joined(separator: "\n") }
-    var originalMarkdown: String { (try? render(sourceItems)) ?? "" }
+    var sourceIsRepresentable: Bool { (try? render(sourceItems)) != nil }
+    var originalMarkdown: String {
+        if let result = try? render(sourceItems) { return result }
+        let plainBlocks = blocks.map { block -> Block in
+            switch block {
+            case .text(let runs, let heading):
+                return .text(runs: runs.map { .init(text: $0.text, isStrong: false) }, heading: heading)
+            case .table: return block
+            }
+        }
+        let plain = ScreenshotTranslationPlan(blocks: plainBlocks)
+        return (try? plain.render(plain.sourceItems)) ?? sourceTexts.map(Self.escape).joined(separator: "\n\n")
+    }
 
     func render(_ translations: [ScreenshotStyledText]) throws -> String {
         let sources = sourceItems
@@ -119,17 +131,33 @@ struct ScreenshotTranslationPlan: Sendable {
             }
         }
         var output = "", cursor = value.text.startIndex
+        var expectedRanges: [Range<String.Index>] = []
         for range in ranges {
             output += escape(String(value.text[cursor..<range.lowerBound]))
             let content = String(value.text[range])
             let leading = String(content.prefix(while: \.isWhitespace))
             let trailing = String(content.reversed().prefix(while: \.isWhitespace).reversed())
             let inner = content.trimmingCharacters(in: .whitespacesAndNewlines)
-            if inner.isEmpty { output += escape(content) }
-            else { output += escape(leading) + "**" + escape(inner) + "**" + escape(trailing) }
+            guard !inner.isEmpty else { throw TranslationError.parse("粗体位置无法可靠对应，请重试。") }
+            let start = value.text.index(range.lowerBound, offsetBy: leading.count)
+            let end = value.text.index(range.upperBound, offsetBy: -trailing.count)
+            expectedRanges.append(start..<end)
+            output += escape(leading) + "**" + escape(inner) + "**" + escape(trailing)
             cursor = range.upperBound
         }
         output += escape(String(value.text[cursor...]))
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        let attributed = try AttributedString(markdown: output, options: options)
+        guard String(attributed.characters) == value.text else {
+            throw TranslationError.parse("粗体位置无法可靠对应，请重试。")
+        }
+        var actual: [Bool] = []
+        for run in attributed.runs {
+            let strong = run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true
+            actual.append(contentsOf: repeatElement(strong, count: attributed[run.range].characters.count))
+        }
+        let expected = value.text.indices.map { index in expectedRanges.contains { $0.contains(index) } }
+        guard actual == expected else { throw TranslationError.parse("粗体位置无法可靠对应，请重试。") }
         return output
     }
 
@@ -155,6 +183,7 @@ struct ScreenshotPlanTranslator: Translator {
     func translate(_ texts: [String], to target: TargetLanguage,
                    context: SelectionFetcher.TextContext?) async throws -> [String] {
         guard texts.count == 1 else { throw TranslationError.parse("截图翻译输入不完整。") }
+        guard plan.sourceIsRepresentable else { throw TranslationError.parse("粗体位置无法可靠对应，请重试。") }
         if base is TrialProxyTranslator && plan.sourceTexts.count > 600 {
             throw TranslationError.service("截图内容分段过多，请缩小截图范围后重试。")
         }

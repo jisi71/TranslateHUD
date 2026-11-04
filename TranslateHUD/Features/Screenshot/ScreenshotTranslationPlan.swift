@@ -90,12 +90,12 @@ struct ScreenshotUnconfirmedFailure: LocalizedError, Sendable {
 }
 
 func screenshotSettledFailure(_ stage: ScreenshotFailureStage) -> ScreenshotSettledFailure {
-    AppLog.info("screenshot_translation_failure stage=\(stage.rawValue) settled=true")
+    AppLog.error("screenshot_translation_failure stage=\(stage.rawValue) settled=true")
     return ScreenshotSettledFailure(stage: stage)
 }
 
 func screenshotUnconfirmedFailure(_ stage: ScreenshotFailureStage) -> ScreenshotUnconfirmedFailure {
-    AppLog.info("screenshot_translation_failure stage=\(stage.rawValue) settled=false")
+    AppLog.error("screenshot_translation_failure stage=\(stage.rawValue) settled=false")
     return ScreenshotUnconfirmedFailure(stage: stage)
 }
 

@@ -25,8 +25,24 @@ struct ScreenshotTableEditModel: Sendable {
         fileprivate(set) var sourceRect: CGRect?
     }
 
+    struct Snapshot: Sendable {
+        let table: ScreenshotTable
+        let cellRuns: [[[ScreenshotTextRun]]]
+    }
+
+    private struct HistoryEntry: Sendable {
+        let cells: [[Cell]]
+        let estimatedBytes: Int
+    }
+
+    private static let maxCellBytes = 64 * 1024
+    private static let maxTextBytes = 256 * 1024
+    private static let maxRuns = 8_192
+    private static let maxHistoryBytes = 2 * 1024 * 1024
+
     private(set) var cells: [[Cell]]
-    private var history: [[[Cell]]] = []
+    private var history: [HistoryEntry] = []
+    private var historyBytes = 0
     private let normalizedBox: CGRect
 
     var rowCount: Int { cells.count }
@@ -49,11 +65,13 @@ struct ScreenshotTableEditModel: Sendable {
             for c in table.rows[r].indices {
                 let text = table.rows[r][c]
                 let runs = cellRuns.isEmpty ? Self.plain(text) : cellRuns[r][c]
-                guard Self.validRuns(runs, text: text) else { throw EditError.invalidRuns }
+                guard text.utf8.count <= Self.maxCellBytes else { throw EditError.sizeLimit }
+                guard ScreenshotRunEditing.validRuns(runs, text: text) else { throw EditError.invalidRuns }
                 row.append(Cell(text: text, runs: runs, sourceRect: table.cellRects[r][c]))
             }
             result.append(row)
         }
+        guard Self.textBytes(result) <= Self.maxTextBytes, Self.runCount(result) <= Self.maxRuns else { throw EditError.sizeLimit }
         self.cells = result
         self.normalizedBox = table.normalizedBox
     }
@@ -68,6 +86,10 @@ struct ScreenshotTableEditModel: Sendable {
     mutating func setText(_ text: String, at position: Position) throws {
         try check(position)
         guard !cells[position.row][position.column].text.utf8.elementsEqual(text.utf8) else { return }
+        let old = cells[position.row][position.column]
+        guard text.utf8.count <= Self.maxCellBytes,
+              Self.textBytes(cells) - old.text.utf8.count + text.utf8.count <= Self.maxTextBytes,
+              Self.runCount(cells) - old.runs.count + (text.isEmpty ? 0 : 1) <= Self.maxRuns else { throw EditError.sizeLimit }
         saveUndo()
         cells[position.row][position.column] = Cell(text: text, runs: Self.plain(text), sourceRect: nil)
     }
@@ -76,24 +98,11 @@ struct ScreenshotTableEditModel: Sendable {
     mutating func setStrong(_ strong: Bool, in selection: NSRange, at position: Position) throws {
         try check(position)
         let cell = cells[position.row][position.column]
-        guard selection.location != NSNotFound, selection.location >= 0, selection.length > 0,
-              selection.location <= cell.text.utf16.count,
-              selection.length <= cell.text.utf16.count - selection.location,
-              let range = Range(selection, in: cell.text),
-              (range.lowerBound == cell.text.endIndex || cell.text.indices.contains(range.lowerBound)),
-              (range.upperBound == cell.text.endIndex || cell.text.indices.contains(range.upperBound)),
-              cell.text[range].rangeOfCharacter(from: .newlines) == nil else { throw EditError.invalidSelection }
-        var result: [ScreenshotTextRun] = []
-        var offset = 0
-        for run in cell.runs {
-            for character in run.text {
-                let value = String(character), end = offset + value.utf16.count
-                let selected = offset >= selection.location && end <= selection.location + selection.length
-                Self.append(value, strong: selected ? strong : run.isStrong, to: &result)
-                offset = end
-            }
-        }
-        guard result.map(\.text).joined().utf8.elementsEqual(cell.text.utf8) else { throw EditError.invalidRuns }
+        let result: [ScreenshotTextRun]
+        do { result = try ScreenshotRunEditing.setStrong(runs: cell.runs, text: cell.text, selection: selection, strong: strong) }
+        catch ScreenshotRunEditing.Failure.invalidSelection { throw EditError.invalidSelection }
+        catch { throw EditError.invalidRuns }
+        guard Self.runCount(cells) - cell.runs.count + result.count <= Self.maxRuns else { throw EditError.sizeLimit }
         guard result != cell.runs else { return }
         saveUndo()
         cells[position.row][position.column].runs = result
@@ -153,7 +162,8 @@ struct ScreenshotTableEditModel: Sendable {
     @discardableResult
     mutating func undo() -> Bool {
         guard let previous = history.popLast() else { return false }
-        cells = previous
+        historyBytes -= previous.estimatedBytes
+        cells = previous.cells
         return true
     }
 
@@ -162,13 +172,21 @@ struct ScreenshotTableEditModel: Sendable {
                         hasMergedCells: false, cellRects: cells.map { $0.map(\.sourceRect) })
     }
 
+    /// Table and style runs are captured from the same value-state.
+    func snapshot() -> Snapshot { Snapshot(table: validatedTable(), cellRuns: cellRuns) }
+
     private func check(_ position: Position) throws {
         guard (0..<rowCount).contains(position.row), (0..<columnCount).contains(position.column) else { throw EditError.invalidPosition }
     }
 
     private mutating func saveUndo() {
-        history.append(cells)
-        if history.count > 40 { history.removeFirst() }
+        let cost = Self.textBytes(cells) * 2 + Self.runCount(cells) * 64 + rowCount * columnCount * 128
+        while !history.isEmpty && (history.count >= 40 || historyBytes + cost > Self.maxHistoryBytes) {
+            historyBytes -= history.removeFirst().estimatedBytes
+        }
+        guard cost <= Self.maxHistoryBytes else { return }
+        history.append(HistoryEntry(cells: cells, estimatedBytes: cost))
+        historyBytes += cost
     }
 
     private static func validSize(rows: Int, columns: Int) -> Bool {
@@ -178,26 +196,6 @@ struct ScreenshotTableEditModel: Sendable {
     private static func emptyCell() -> Cell { Cell(text: "", runs: [], sourceRect: nil) }
     private static func plain(_ text: String) -> [ScreenshotTextRun] { text.isEmpty ? [] : [.init(text: text, isStrong: false)] }
 
-    private static func validRuns(_ runs: [ScreenshotTextRun], text: String) -> Bool {
-        guard runs.map(\.text).joined().utf8.elementsEqual(text.utf8) else { return false }
-        var boundaries: Set<Int> = [0]
-        var offset = 0
-        for character in text {
-            offset += String(character).utf8.count
-            boundaries.insert(offset)
-        }
-        offset = 0
-        for run in runs {
-            if run.isStrong && run.text.rangeOfCharacter(from: .newlines) != nil { return false }
-            offset += run.text.utf8.count
-            guard boundaries.contains(offset) else { return false }
-        }
-        return true
-    }
-
-    private static func append(_ text: String, strong: Bool, to runs: inout [ScreenshotTextRun]) {
-        if let last = runs.last, last.isStrong == strong {
-            runs[runs.count - 1] = ScreenshotTextRun(text: last.text + text, isStrong: strong)
-        } else { runs.append(ScreenshotTextRun(text: text, isStrong: strong)) }
-    }
+    private static func textBytes(_ grid: [[Cell]]) -> Int { grid.reduce(0) { $0 + $1.reduce(0) { $0 + $1.text.utf8.count } } }
+    private static func runCount(_ grid: [[Cell]]) -> Int { grid.reduce(0) { $0 + $1.reduce(0) { $0 + $1.runs.count } } }
 }

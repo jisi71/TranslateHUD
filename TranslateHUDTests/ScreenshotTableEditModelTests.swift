@@ -92,6 +92,52 @@ final class ScreenshotTableEditModelTests: XCTestCase {
         XCTAssertThrowsError(try Model(table: original, cellRuns: wrong)) { XCTAssertEqual($0 as? Model.EditError, .invalidRuns) }
     }
 
+    func testSnapshotKeepsTextAndStylesFromSameState() throws {
+        var model = try Model(table: table())
+        try model.setStrong(true, in: NSRange(location: 4, length: 4), at: p(1, 0))
+        let snapshot = model.snapshot()
+        try model.setText("changed", at: p(1, 0))
+        XCTAssertEqual(snapshot.table.rows[1][0], "New York")
+        XCTAssertEqual(snapshot.cellRuns[1][0].map(\.text).joined(), "New York")
+        XCTAssertEqual(snapshot.cellRuns[1][0].last, .init(text: "York", isStrong: true))
+    }
+
+    func testUnboldCanCrossLinesButBoldRejectsWhitespaceOnly() throws {
+        let input = ScreenshotTable(rows: [["one \n二", ""]], normalizedBox: .zero, hasMergedCells: false)
+        var model = try Model(table: input)
+        try model.setStrong(true, in: NSRange(location: 0, length: 3), at: p(0, 0))
+        try model.setStrong(true, in: NSRange(location: 5, length: 1), at: p(0, 0))
+        try model.setStrong(false, in: NSRange(location: 0, length: "one \n二".utf16.count), at: p(0, 0))
+        XCTAssertEqual(model.cells[0][0].runs, [.init(text: "one \n二", isStrong: false)])
+        XCTAssertThrowsError(try model.setStrong(true, in: NSRange(location: 3, length: 1), at: p(0, 0))) {
+            XCTAssertEqual($0 as? Model.EditError, .invalidSelection)
+        }
+        XCTAssertEqual(model.cells[0][0].text, "one \n二")
+    }
+
+    func testLargePasteAndUndoHistoryAreBounded() throws {
+        var model = try Model(rows: 1, columns: 2, normalizedBox: .zero)
+        XCTAssertThrowsError(try model.setText(String(repeating: "x", count: 64 * 1024 + 1), at: p(0, 0))) {
+            XCTAssertEqual($0 as? Model.EditError, .sizeLimit)
+        }
+        XCTAssertEqual(model.cells[0][0].text, "")
+        let long = String(repeating: "x", count: 64 * 1024 - 10)
+        for i in 0..<30 { try model.setText(long + String(i), at: p(0, 0)) }
+        var count = 0
+        while model.undo() { count += 1 }
+        XCTAssertGreaterThan(count, 0)
+        XCTAssertLessThan(count, 30, "History must stay under its memory bound")
+    }
+
+    func testTotalTextBudgetRejectsOversizedInputWithoutDiscardingExistingCells() throws {
+        var model = try Model(rows: 3, columns: 2, normalizedBox: .zero)
+        let chunk = String(repeating: "x", count: 64 * 1024)
+        for position in [p(0, 0), p(0, 1), p(1, 0), p(1, 1)] { try model.setText(chunk, at: position) }
+        XCTAssertThrowsError(try model.setText("x", at: p(2, 0))) { XCTAssertEqual($0 as? Model.EditError, .sizeLimit) }
+        XCTAssertEqual(model.cells[2][0].text, "")
+        XCTAssertEqual(model.cells[1][1].text.utf8.count, chunk.utf8.count)
+    }
+
     func testGridLimitsAndMinimumColumns() throws {
         var model = try Model(rows: 1, columns: 2, normalizedBox: .zero)
         XCTAssertThrowsError(try model.deleteRow(at: 0)) { XCTAssertEqual($0 as? Model.EditError, .invalidGrid) }

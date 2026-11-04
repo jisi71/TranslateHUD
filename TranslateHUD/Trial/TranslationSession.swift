@@ -81,6 +81,24 @@ struct TrialProxyTranslator: ScreenshotStyledTranslator, ScreenshotTrialBillingR
         }
     }
 
+    func translateScreenshot(_ items: [ScreenshotStyledText], to target: TargetLanguage,
+                             context: SelectionFetcher.TextContext?) async throws -> ScreenshotTrialResult {
+        let credential = try await TrialActor.accessToken()
+        let request = ScreenshotTrialRequest(
+            config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: credential.token),
+            session: session,
+            applySettlement: { value in await TrialActor.apply(value, generation: credential.generation) }
+        )
+        do {
+            let result = try await request.translate(items, to: target, context: context)
+            await TrialActor.refreshBalance(generation: credential.generation)
+            return result
+        } catch {
+            await TrialActor.refreshBalance(generation: credential.generation, unless: error)
+            throw error
+        }
+    }
+
     func translateStreaming(
         _ text: String,
         to target: TargetLanguage,
@@ -116,6 +134,39 @@ struct TrialProxyTranslator: ScreenshotStyledTranslator, ScreenshotTrialBillingR
         }
     }
 
+}
+
+private actor ScreenshotReceiptFlag {
+    private(set) var received = false
+    func mark() { received = true }
+}
+
+struct ScreenshotTrialRequest {
+    let config: ProviderConfig
+    let session: URLSession
+    let applySettlement: @Sendable (TrialSettlement) async -> Void
+
+    func translate(_ items: [ScreenshotStyledText], to target: TargetLanguage,
+                   context: SelectionFetcher.TextContext?) async throws -> ScreenshotTrialResult {
+        let receipt = ScreenshotReceiptFlag()
+        let source = items.map(\.text).joined(separator: "\n")
+        let inner = OpenAICompatibleTranslator(
+            config: config, session: session, extraHTTPHeaders: TrialHeaders.source(source),
+            onTrialSettlement: { value in
+                await receipt.mark()
+                await applySettlement(value)
+            }
+        )
+        do {
+            let result = try await inner.translateStyledTrial(items, to: target, context: context)
+            return ScreenshotTrialResult(items: result, didSettle: await receipt.received)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard await receipt.received else { throw error }
+            throw TranslationError.service("本次体验翻译用量已结算，但未能生成可用结果。请核对额度后再重试。")
+        }
+    }
 }
 
 enum TrialActor {

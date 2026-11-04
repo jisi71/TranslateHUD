@@ -3,6 +3,60 @@ import XCTest
 
 @MainActor
 final class TranslationReliabilityTests: XCTestCase {
+    func testTrialHeaderReceiptIsAppliedEvenWhenResponseIsNotJSON() async throws {
+        TranslationURLProtocol.reset([.init(status: 200, body: "bad response", headers: [
+            "X-Trial-Cost-Micro-Yuan": "10", "X-Trial-Charged-Micro-Yuan": "10",
+            "X-Trial-Balance-Micro-Yuan": "100"
+        ])])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let collector = SettlementCollector()
+        let request = ScreenshotTrialRequest(
+            config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+            session: URLSession(configuration: configuration),
+            applySettlement: { value in await collector.add(value) })
+        do {
+            _ = try await request.translate([.init(text: "Warning", boldRanges: [])], to: .chinese, context: nil)
+            XCTFail("An invalid response must fail")
+        } catch { XCTAssertTrue(error.localizedDescription.contains("已结算")) }
+        let settlements = await collector.values
+        XCTAssertEqual(settlements.count, 1)
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+    }
+
+    func testTrialResponseFailuresReportOnlyReceiptsActuallyReceived() async throws {
+        let item = ScreenshotStyledText(text: "A warning", boldRanges: [.init(start: 2, end: 9)])
+        let receipt: [String: Int] = ["costMicroYuan": 10, "chargedMicroYuan": 10, "balanceMicroYuan": 100]
+        let responses: [(String, Bool)] = [
+            ("not JSON", true),
+            ("{\"results\":[{\"i\":0,\"t\":\"危险\",\"boldRanges\":[[0,100]]}]}", true),
+            ("{\"results\":[{\"i\":0,\"t\":\"A warning\",\"boldRanges\":[[2,9]]}]}", true),
+            ("not JSON", false)
+        ]
+        for (content, hasReceipt) in responses {
+            var json: [String: Any] = ["choices": [["message": ["content": content]]]]
+            if hasReceipt { json["translatehud_trial"] = receipt }
+            let body = String(decoding: try JSONSerialization.data(withJSONObject: json), as: UTF8.self)
+            TranslationURLProtocol.reset([.init(status: 200, body: body)])
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [TranslationURLProtocol.self]
+            let collector = SettlementCollector()
+            let request = ScreenshotTrialRequest(
+                config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+                session: URLSession(configuration: configuration),
+                applySettlement: { value in await collector.add(value) })
+            do {
+                _ = try await request.translate([item], to: .chinese, context: nil)
+                XCTFail("Invalid results must fail")
+            } catch {
+                XCTAssertEqual(error.localizedDescription.contains("已结算"), hasReceipt, error.localizedDescription)
+            }
+            XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+            let settlements = await collector.values
+            XCTAssertEqual(settlements.count, hasReceipt ? 1 : 0)
+        }
+    }
+
     func testSettledTrialHTTPResponseThatCannotRenderWarnsWithoutRetry() async throws {
         let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [
             .init(text: "A ", isStrong: false), .init(text: "warning", isStrong: true)
@@ -27,7 +81,7 @@ final class TranslationReliabilityTests: XCTestCase {
             _ = try await translator.translate([plan.originalMarkdown], to: .chinese, context: nil)
             XCTFail("An unrenderable result must fail")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("可能已结算"), error.localizedDescription)
+            XCTAssertTrue(error.localizedDescription.contains("已结算"), error.localizedDescription)
         }
         XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
         let settlements = await received.values
@@ -615,6 +669,12 @@ final class TranslationReliabilityTests: XCTestCase {
 private struct ScreenshotTrialHTTPClient: ScreenshotStyledTranslator, ScreenshotTrialBillingRoute {
     let client: OpenAICompatibleTranslator
 
+    func translateScreenshot(_ items: [ScreenshotStyledText], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> ScreenshotTrialResult {
+        try await ScreenshotTrialRequest(config: client.config, session: client.session,
+                                         applySettlement: client.onTrialSettlement ?? { _ in })
+            .translate(items, to: target, context: context)
+    }
+
     func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] {
         try await client.translate(texts, to: target, context: context)
     }
@@ -661,6 +721,7 @@ private final class TranslationURLProtocol: URLProtocol, @unchecked Sendable {
         var status = 200
         let body: String
         var error: NSError? = nil
+        var headers: [String: String]? = nil
         static func batch(_ content: String) -> Response {
             let data = try! JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": content]]]])
             return Response(body: String(data: data, encoding: .utf8)!)
@@ -709,7 +770,7 @@ private final class TranslationURLProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: error)
             return
         }
-        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: response.status, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: response.status, httpVersion: nil, headerFields: response.headers)!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(response.body.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }

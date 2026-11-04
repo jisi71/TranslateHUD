@@ -38,8 +38,15 @@ protocol ScreenshotStyledTranslator: Translator {
                          context: SelectionFetcher.TextContext?) async throws -> [ScreenshotStyledText]
 }
 
-/// Successful calls on this route can consume the user's trial balance or quota.
-protocol ScreenshotTrialBillingRoute: Sendable {}
+struct ScreenshotTrialResult: Sendable {
+    let items: [ScreenshotStyledText]
+    let didSettle: Bool
+}
+
+protocol ScreenshotTrialBillingRoute: Translator {
+    func translateScreenshot(_ items: [ScreenshotStyledText], to target: TargetLanguage,
+                             context: SelectionFetcher.TextContext?) async throws -> ScreenshotTrialResult
+}
 
 struct ScreenshotTranslationPlan: Sendable {
     enum Block: Sendable {
@@ -301,7 +308,12 @@ struct ScreenshotPlanTranslator: Translator {
         }
         let items = plan.sourceItems
         let translated: [ScreenshotStyledText]
-        if items.contains(where: { !$0.boldRanges.isEmpty }) {
+        var didSettle = false
+        if let trial = base as? any ScreenshotTrialBillingRoute {
+            let result = try await trial.translateScreenshot(items, to: target, context: context)
+            translated = result.items
+            didSettle = result.didSettle
+        } else if items.contains(where: { !$0.boldRanges.isEmpty }) {
             guard let styled = base as? any ScreenshotStyledTranslator else {
                 throw TranslationError.service("当前翻译服务暂不支持保留截图中的粗体。")
             }
@@ -313,8 +325,8 @@ struct ScreenshotPlanTranslator: Translator {
         do {
             return [try plan.render(translated)]
         } catch {
-            if base is any ScreenshotTrialBillingRoute {
-                throw TranslationError.service("截图译文无法在浮窗中可靠显示；本次翻译的体验额度或余额可能已结算。请核对后再重试。")
+            if didSettle {
+                throw TranslationError.service("本次体验翻译用量已结算，但未能生成可用结果。请核对额度后再重试。")
             }
             throw error
         }

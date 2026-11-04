@@ -134,17 +134,18 @@ final class ScreenshotStructureTests: XCTestCase {
         let counter = ScreenshotTranslatorCounter()
         for (translator, expectsSettlement) in [
             (ScreenshotPlanTranslator(base: ScreenshotFakeTrial(response: response, counter: counter), plan: plan), true),
+            (ScreenshotPlanTranslator(base: ScreenshotFakeTrial(response: response, counter: counter, didSettle: false), plan: plan), false),
             (ScreenshotPlanTranslator(base: ScreenshotFakeOwnKey(response: response, counter: counter), plan: plan), false)
         ] {
             do {
                 _ = try await translator.translate([plan.originalMarkdown], to: .chinese, context: nil)
                 XCTFail("The invalid rendered span must fail")
             } catch {
-                XCTAssertEqual(error.localizedDescription.contains("可能已结算"), expectsSettlement)
+                XCTAssertEqual(error.localizedDescription.contains("已结算"), expectsSettlement)
             }
         }
         let callsAfterResponses = await counter.calls
-        XCTAssertEqual(callsAfterResponses, 2)
+        XCTAssertEqual(callsAfterResponses, 3)
 
         let invalidSource = ScreenshotTranslationPlan(blocks: [.text(runs: [
             .init(text: "a", isStrong: false), .init(text: "!", isStrong: true), .init(text: "b", isStrong: false)
@@ -153,9 +154,9 @@ final class ScreenshotStructureTests: XCTestCase {
         do {
             _ = try await preflight.translate([invalidSource.originalMarkdown], to: .chinese, context: nil)
             XCTFail("Invalid input must fail before the call")
-        } catch { XCTAssertFalse(error.localizedDescription.contains("可能已结算")) }
+        } catch { XCTAssertFalse(error.localizedDescription.contains("已结算")) }
         let callsAfterPreflight = await counter.calls
-        XCTAssertEqual(callsAfterPreflight, 2)
+        XCTAssertEqual(callsAfterPreflight, 3)
     }
 
     func testMarkdownBoldBoundaryThatCannotRenderIsRejectedWithoutLosingText() {
@@ -285,6 +286,12 @@ private struct ScreenshotFakeOwnKey: ScreenshotStyledTranslator {
 private struct ScreenshotFakeTrial: ScreenshotStyledTranslator, ScreenshotTrialBillingRoute {
     let response: ScreenshotStyledText
     let counter: ScreenshotTranslatorCounter
+    var didSettle = true
+
+    func translateScreenshot(_ items: [ScreenshotStyledText], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> ScreenshotTrialResult {
+        await counter.record()
+        return .init(items: [response], didSettle: didSettle)
+    }
 
     func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] {
         await counter.record()

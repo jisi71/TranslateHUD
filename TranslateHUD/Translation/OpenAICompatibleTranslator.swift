@@ -204,14 +204,17 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            if let http, let settlement = TrialSettlement.parse(response: http) {
+                await onTrialSettlement?(settlement)
+            }
             throw TranslationError.parse("服务响应格式无法读取，请确认接口兼容性或更换服务后重试。")
         }
-        if let error = json["error"], !(error is NSNull) { throw TranslationError.service(ServiceErrorMessage.stream(error)) }
         if let settlement = TrialSettlement.parse(json: json) {
             await onTrialSettlement?(settlement)
         } else if let http, let settlement = TrialSettlement.parse(response: http) {
             await onTrialSettlement?(settlement)
         }
+        if let error = json["error"], !(error is NSNull) { throw TranslationError.service(ServiceErrorMessage.stream(error)) }
         guard
             let choices = json["choices"] as? [[String: Any]],
             let first = choices.first,

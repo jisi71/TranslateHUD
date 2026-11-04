@@ -158,13 +158,24 @@ struct ScreenshotTrialRequest {
             }
         )
         do {
-            let result = try await inner.translateStyledTrial(items, to: target, context: context)
+            let result = try await inner.translateStyledTrial(items, to: target, context: context, screenshotDiagnostics: true)
             return ScreenshotTrialResult(items: result, didSettle: await receipt.received)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            guard await receipt.received else { throw error }
-            throw TranslationError.service("本次体验翻译用量已结算，但未能生成可用结果。请核对额度后再重试。")
+            if !(await receipt.received) {
+                if let stage = error as? ScreenshotFailureStage { throw screenshotUnconfirmedFailure(stage) }
+                throw error
+            }
+            let stage: ScreenshotFailureStage
+            if let issue = error as? ScreenshotFailureStage {
+                stage = issue
+            } else if let failure = error as? TranslationError, case .http = failure {
+                stage = .serverResponse
+            } else {
+                stage = .unknown
+            }
+            throw screenshotSettledFailure(stage)
         }
     }
 }

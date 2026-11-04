@@ -3,6 +3,162 @@ import XCTest
 
 @MainActor
 final class TranslationReliabilityTests: XCTestCase {
+    func testCompleteSyntheticScreenshotRestoresServerResponseAndRetainsLabel() async throws {
+        let plan = syntheticScreenshotPlan()
+        XCTAssertTrue(plan.sourceIsRepresentable)
+        XCTAssertEqual(plan.sourceItems.count, 15)
+        XCTAssertTrue(plan.sourceItems[7].mayKeepTableLabel)
+        XCTAssertTrue(TranslationValidator.validate(input: "A B", output: "A B", target: .chinese).contains(.missingTargetLanguageContent))
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/ScreenshotTables/synthetic-structured-response.json")
+        let body = try String(contentsOf: fixture, encoding: .utf8)
+        TranslationURLProtocol.reset([.init(status: 200, body: body)])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let received = SettlementCollector()
+        let client = OpenAICompatibleTranslator(config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+                                                session: URLSession(configuration: configuration),
+                                                onTrialSettlement: { value in await received.add(value) })
+        let output = try await ScreenshotPlanTranslator(base: ScreenshotTrialHTTPClient(client: client), plan: plan)
+            .translate([plan.originalMarkdown], to: .chinese, context: nil)
+        let markdown = try XCTUnwrap(output.first)
+        XCTAssertTrue(markdown.contains("# **产品状态报告**"))
+        let pieces = MarkdownDisplay.segments(from: markdown).flatMap { MarkdownDisplay.prosePieces(from: $0.markdown) }
+        let tables = pieces.compactMap { piece -> [[String]]? in
+            if case .table(let rows) = piece { return rows }; return nil
+        }
+        let rows = try XCTUnwrap(tables.first)
+        XCTAssertEqual(rows.count, 4)
+        XCTAssertTrue(rows.allSatisfy { $0.count == 3 })
+        XCTAssertEqual(String(MarkdownDisplay.parse(rows[1][0]).characters), "A B")
+        XCTAssertEqual(String(MarkdownDisplay.parse(rows[2][2]).characters), "")
+        XCTAssertTrue(MarkdownDisplay.parse(rows[1][0]).runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+        let settlements = await received.values
+        XCTAssertEqual(settlements.count, 1)
+        let request = try XCTUnwrap(TranslationURLProtocol.requests().first)
+        let requestBody = try XCTUnwrap(request.httpBody)
+        XCTAssertFalse(String(decoding: requestBody, as: UTF8.self).contains("isTableCell"))
+    }
+
+    func testOnlyTableCellsCanKeepShortLabelsUnchanged() {
+        let plan = ScreenshotTranslationPlan(blocks: [
+            .text(runs: [.init(text: "A B", isStrong: false)], heading: nil),
+            .table(rows: [["A", "A B", "A1", "ABC123", "Beta", "a", "ABCD1"]])
+        ])
+        XCTAssertEqual(plan.sourceItems.map(\.mayKeepTableLabel), [false, true, true, true, true, false, false, false])
+    }
+
+    func testOwnKeyUnboldedTableLabelsUseOneRequestAndKeepQualityChecks() async throws {
+        let plan = ScreenshotTranslationPlan(blocks: [.table(rows: [["Name", "ID"], ["Alpha", "A B"]])])
+        let good = "{\"results\":[{\"i\":0,\"t\":\"名称\"},{\"i\":1,\"t\":\"编号\"},{\"i\":2,\"t\":\"阿尔法\"},{\"i\":3,\"t\":\"A B\"}]}"
+        let client = mockTranslator(responses: [.batch(good)])
+        let result = try await ScreenshotPlanTranslator(base: client, plan: plan)
+            .translate([plan.originalMarkdown], to: .chinese, context: nil)
+        XCTAssertTrue(try XCTUnwrap(result.first).contains("| 阿尔法 | A B |"))
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+
+        let bad = "{\"results\":[{\"i\":0,\"t\":\"名称\"},{\"i\":1,\"t\":\"编号\"},{\"i\":2,\"t\":\"Alpha\"},{\"i\":3,\"t\":\"A B\"}]}"
+        let failing = mockTranslator(responses: [.batch(bad), .batch(good)])
+        do {
+            _ = try await ScreenshotPlanTranslator(base: failing, plan: plan).translate([plan.originalMarkdown], to: .chinese, context: nil)
+            XCTFail("An untranslated ordinary word must fail")
+        } catch {}
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+    }
+
+    func testOwnKeyUnboldedTextKeepsExistingRetryPolicy() async throws {
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: "Hello", isStrong: false)], heading: nil)])
+        let client = mockTranslator(responses: [.batch("{\"results\":[{\"i\":0,\"t\":\"Hello\"}]}"),
+                                                .batch("{\"results\":[{\"i\":0,\"t\":\"你好\"}]}")])
+        let output = try await ScreenshotPlanTranslator(base: client, plan: plan)
+            .translate([plan.originalMarkdown], to: .chinese, context: nil)
+        XCTAssertEqual(output, ["你好"])
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+    }
+
+    func testSyntheticScreenshotRejectsUntranslatedWordEmptyOrDuplicateCell() async throws {
+        let plan = syntheticScreenshotPlan()
+        for (index, field, value, expected) in [(10, "t", "Beta", ScreenshotFailureStage.quality),
+                                                (7, "t", "", .itemMapping),
+                                                (7, "i", 8, .itemMapping)] as [(Int, String, Any, ScreenshotFailureStage)] {
+            let body = try syntheticResponse { results in results[index][field] = value }
+            TranslationURLProtocol.reset([.init(status: 200, body: body), .init(status: 200, body: body)])
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [TranslationURLProtocol.self]
+            let client = OpenAICompatibleTranslator(config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+                                                    session: URLSession(configuration: configuration))
+            do {
+                _ = try await ScreenshotPlanTranslator(base: ScreenshotTrialHTTPClient(client: client), plan: plan)
+                    .translate([plan.originalMarkdown], to: .chinese, context: nil)
+                XCTFail("Invalid result must fail")
+            } catch let failure as ScreenshotSettledFailure {
+                XCTAssertEqual(failure.stage, expected)
+            } catch { XCTFail("Unexpected error type") }
+            XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+        }
+    }
+
+    func testSettledScreenshotFailuresHaveFixedStagesWithoutProviderTextOrRetry() async throws {
+        let secret = "SYNTHETIC_PRIVATE_PROVIDER_MESSAGE"
+        let item = ScreenshotStyledText(text: "A B", boldRanges: [.init(start: 2, end: 3)], isTableCell: true)
+        let receipt: [String: Int] = ["costMicroYuan": 10, "chargedMicroYuan": 10, "balanceMicroYuan": 100]
+        func response(content: String, reason: String = "stop") throws -> String {
+            let value: [String: Any] = ["choices": [["message": ["content": content], "finish_reason": reason]], "translatehud_trial": receipt]
+            return String(decoding: try JSONSerialization.data(withJSONObject: value), as: UTF8.self)
+        }
+        let cases: [(TranslationURLProtocol.Response, ScreenshotFailureStage)] = [
+            (.init(status: 200, body: "bad", headers: ["X-Trial-Cost-Micro-Yuan": "10", "X-Trial-Charged-Micro-Yuan": "10", "X-Trial-Balance-Micro-Yuan": "100"]), .responseEnvelope),
+            (.init(status: 200, body: try response(content: "bad JSON \(secret)")), .translationJSON),
+            (.init(status: 200, body: try response(content: "{\"results\":[{\"i\":0,\"t\":\"A B\",\"boldRanges\":[[2,3]]}]}", reason: "length")), .incompleteOutput),
+            (.init(status: 200, body: try response(content: "{\"results\":[{\"i\":1,\"t\":\"A B\",\"boldRanges\":[[2,3]]}]}")), .itemMapping),
+            (.init(status: 200, body: try response(content: "{\"results\":[{\"i\":0,\"t\":\"A B\",\"boldRanges\":[[2,99]]}]}")), .boldRanges),
+            (.init(status: 200, body: try response(content: "{\"results\":[{\"i\":0,\"t\":\"A C\",\"boldRanges\":[[2,3]]}]}")), .quality),
+            (.init(status: 422, body: "{\"error\":{\"code\":\"trial_format_invalid\",\"message\":\"\(secret)\"},\"translatehud_trial\":{\"costMicroYuan\":10,\"chargedMicroYuan\":10,\"balanceMicroYuan\":100}}"), .serverFormat)
+        ]
+        for (stub, stage) in cases {
+            TranslationURLProtocol.reset([stub, stub])
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [TranslationURLProtocol.self]
+            let received = SettlementCollector()
+            let request = ScreenshotTrialRequest(config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+                                                 session: URLSession(configuration: configuration),
+                                                 applySettlement: { value in await received.add(value) })
+            do {
+                _ = try await request.translate([item], to: .chinese, context: nil)
+                XCTFail("Expected a settled screenshot failure")
+            } catch let failure as ScreenshotSettledFailure {
+                XCTAssertEqual(failure.stage, stage)
+                XCTAssertTrue(failure.localizedDescription.contains("已结算"))
+                XCTAssertFalse(failure.localizedDescription.contains(secret))
+            } catch { XCTFail("Unexpected error type") }
+            XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+            let settlements = await received.values
+            XCTAssertEqual(settlements.count, 1)
+        }
+    }
+
+    func testUnconfirmedScreenshotFailureIsClassifiedWithoutRetry() async throws {
+        let item = ScreenshotStyledText(text: "A B", boldRanges: [.init(start: 2, end: 3)], isTableCell: true)
+        TranslationURLProtocol.reset([.batch("not JSON"), .batch("{\"results\":[]}")])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let received = SettlementCollector()
+        let request = ScreenshotTrialRequest(config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+                                             session: URLSession(configuration: configuration),
+                                             applySettlement: { value in await received.add(value) })
+        do {
+            _ = try await request.translate([item], to: .chinese, context: nil)
+            XCTFail("Invalid response must fail")
+        } catch let failure as ScreenshotUnconfirmedFailure {
+            XCTAssertEqual(failure.stage, .translationJSON)
+            XCTAssertTrue(failure.localizedDescription.contains("未收到用量结算确认"))
+        } catch { XCTFail("Unexpected error type") }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+        let settlements = await received.values
+        XCTAssertTrue(settlements.isEmpty)
+    }
+
     func testCorrectedTableBoldFlowsThroughTrialRequestAndPopoverGrid() async throws {
         let initial = ScreenshotTranslationPlan(blocks: [.table(rows: [["City", "Condition"], ["New York", "A B"]])])
         var edit = try ScreenshotProofreadModel(plan: initial)
@@ -121,8 +277,11 @@ final class TranslationReliabilityTests: XCTestCase {
         do {
             _ = try await translator.translate([plan.originalMarkdown], to: .chinese, context: nil)
             XCTFail("An unrenderable result must fail")
+        } catch let failure as ScreenshotSettledFailure {
+            XCTAssertEqual(failure.stage, .rendering)
+            XCTAssertTrue(failure.localizedDescription.contains("已结算"))
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("已结算"), error.localizedDescription)
+            XCTFail("Unexpected error type")
         }
         XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
         let settlements = await received.values
@@ -674,6 +833,41 @@ final class TranslationReliabilityTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(30))
         guard case .success(let pairs) = progress.state else { return XCTFail("Expected empty result") }
         XCTAssertTrue(pairs.isEmpty)
+    }
+
+    private func syntheticResponse(_ edit: (inout [[String: Any]]) -> Void) throws -> String {
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/ScreenshotTables/synthetic-structured-response.json")
+        var body = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any])
+        var choices = try XCTUnwrap(body["choices"] as? [[String: Any]])
+        var message = try XCTUnwrap(choices[0]["message"] as? [String: Any])
+        let content = try XCTUnwrap(message["content"] as? String)
+        var payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(content.utf8)) as? [String: Any])
+        var results = try XCTUnwrap(payload["results"] as? [[String: Any]])
+        edit(&results)
+        payload["results"] = results
+        message["content"] = String(decoding: try JSONSerialization.data(withJSONObject: payload), as: UTF8.self)
+        choices[0]["message"] = message
+        body["choices"] = choices
+        return String(decoding: try JSONSerialization.data(withJSONObject: body), as: UTF8.self)
+    }
+
+    private func syntheticScreenshotPlan() -> ScreenshotTranslationPlan {
+        let rows = [["Name", "Region", "Notes"], ["A B", "New York", "slow response"],
+                    ["Beta", "Los Angeles", ""], ["人工智能系统", "大模型", "处理中"]]
+        var cellRuns = rows.map { $0.map { [ScreenshotTextRun(text: $0, isStrong: false)] } }
+        cellRuns[1][0] = [.init(text: "A ", isStrong: false), .init(text: "B", isStrong: true)]
+        cellRuns[1][1] = [.init(text: "New ", isStrong: false), .init(text: "York", isStrong: true)]
+        cellRuns[1][2] = [.init(text: "slow", isStrong: true), .init(text: " response", isStrong: false)]
+        cellRuns[3][0] = [.init(text: "人工", isStrong: false), .init(text: "智能", isStrong: true), .init(text: "系统", isStrong: false)]
+        return ScreenshotTranslationPlan(blocks: [
+            .text(runs: [.init(text: "Product Status Report", isStrong: true)], heading: 1),
+            .text(runs: [.init(text: "Quarterly Overview", isStrong: true)], heading: 2),
+            .text(runs: [.init(text: "Please check the ", isStrong: false), .init(text: "highlighted details", isStrong: true),
+                         .init(text: " before review.", isStrong: false)], heading: nil),
+            .text(runs: [.init(text: "Empty cells must remain empty.", isStrong: false)], heading: nil),
+            .table(rows: rows, cellRuns: cellRuns)
+        ])
     }
 
     private func collect(_ translator: OpenAICompatibleTranslator, source: String = "Hello") async throws -> String {

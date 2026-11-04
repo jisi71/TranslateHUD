@@ -105,6 +105,76 @@
         "en": { "stringUnit": { "state": "translated", "value": "This trial translation was settled, but no usable result was produced. Please check your quota or credit before retrying." } }
       }
     },
+    "本次翻译用量已结算，未能可靠保留粗体位置。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本次翻译用量已结算，未能可靠保留粗体位置。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "This translation was settled, but its bold formatting could not be preserved reliably." } }
+      }
+    },
+    "截图翻译未能完成，未收到用量结算确认。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "截图翻译未能完成，未收到用量结算确认。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "The screenshot translation could not be completed, and no settlement confirmation was received." } }
+      }
+    },
+    "本次翻译用量已结算，服务返回错误。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本次翻译用量已结算，服务返回错误。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "This translation was settled, but the service returned an error." } }
+      }
+    },
+    "本次翻译用量已结算，服务响应无法读取。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本次翻译用量已结算，服务响应无法读取。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "This translation was settled, but the service response could not be read." } }
+      }
+    },
+    "本次翻译用量已结算，服务返回的译文不完整。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本次翻译用量已结算，服务返回的译文不完整。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "This translation was settled, but the service returned an incomplete translation." } }
+      }
+    },
+    "本次翻译用量已结算，译文格式无法读取。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本次翻译用量已结算，译文格式无法读取。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "This translation was settled, but its format could not be read." } }
+      }
+    },
+    "本次翻译用量已结算，译文无法与截图内容逐项对应。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本次翻译用量已结算，译文无法与截图内容逐项对应。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "This translation was settled, but its items could not be matched to the screenshot." } }
+      }
+    },
+    "本次翻译用量已结算，译文未通过质量检查。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本次翻译用量已结算，译文未通过质量检查。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "This translation was settled, but it did not pass the quality check." } }
+      }
+    },
+    "本次翻译用量已结算，译文无法按截图结构显示。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本次翻译用量已结算，译文无法按截图结构显示。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "This translation was settled, but it cannot be displayed in the screenshot layout." } }
+      }
+    },
+    "本次翻译用量已结算，未能生成可用结果，原因暂未确定。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本次翻译用量已结算，未能生成可用结果，原因暂未确定。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "This translation was settled, but no usable result was produced. The cause is unknown." } }
+      }
+    },
     "表格的行列或文字需要确认。请对照截图逐格核对；选择校对表格后，可在下一步修改内容，确认前不会发送。": {
       "extractionState": "manual",
       "localizations": {

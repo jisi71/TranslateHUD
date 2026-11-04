@@ -53,6 +53,20 @@ final class FailureEventTests: XCTestCase {
         XCTAssertEqual(event["deviceHash"] as? String, deviceHash)
     }
 
+    func testScreenshotFailureUsesOnlyFixedStageAndNeverResponseText() throws {
+        for stage in [ScreenshotFailureStage.responseEnvelope, .translationJSON, .itemMapping, .boldRanges, .rendering, .unknown] {
+            for failure: Error in [ScreenshotSettledFailure(stage: stage), ScreenshotUnconfirmedFailure(stage: stage)] {
+                let event = try encoded(failure)
+                XCTAssertEqual(event["summary"] as? String, "ScreenshotFailure.\(stage.rawValue)")
+                assertNoPlaintext(event)
+            }
+        }
+        let quality = try encoded(ScreenshotSettledFailure(stage: .quality))
+        XCTAssertEqual(quality["category"] as? String, "quality")
+        XCTAssertNil(quality["summary"])
+        assertNoPlaintext(quality)
+    }
+
     func testUnknownExceptionUsesTheTypeNameOnly() throws {
         let event = try encoded(LeakyFailure(detail: secret))
         XCTAssertEqual(event["kind"] as? String, "bug")

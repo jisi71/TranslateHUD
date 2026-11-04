@@ -14,6 +14,23 @@ struct ScreenshotStyledText: Equatable, Sendable {
     let text: String
     /// UTF-8 byte offsets, inclusive start and exclusive end.
     let boldRanges: [ScreenshotTextSpan]
+    /// Local context for validation; this is never sent to the model.
+    let isTableCell: Bool
+
+    init(text: String, boldRanges: [ScreenshotTextSpan], isTableCell: Bool = false) {
+        self.text = text
+        self.boldRanges = boldRanges
+        self.isTableCell = isTableCell
+    }
+
+    /// Small uppercase labels and letter-number codes can be table identifiers.
+    var mayKeepTableLabel: Bool {
+        guard isTableCell, text.utf8.count <= 32 else { return false }
+        return text.range(
+            of: #"\A(?:[A-Z]|[A-Z]{1,3}[0-9]{1,4})(?:[ \t]+(?:[A-Z]|[A-Z]{1,3}[0-9]{1,4})){0,7}\z"#,
+            options: .regularExpression
+        ) != nil
+    }
 
     func ranges() throws -> [Range<String.Index>] {
         var previous = 0
@@ -43,6 +60,45 @@ struct ScreenshotTrialResult: Sendable {
     let didSettle: Bool
 }
 
+/// Fixed diagnostic stages; never attach response text or provider messages.
+enum ScreenshotFailureStage: String, Error, Sendable {
+    case serverFormat, serverResponse, responseEnvelope, incompleteOutput
+    case translationJSON, itemMapping, boldRanges, quality, rendering, unknown
+}
+
+struct ScreenshotSettledFailure: LocalizedError, Sendable {
+    let stage: ScreenshotFailureStage
+
+    var errorDescription: String? {
+        switch stage {
+        case .serverFormat, .boldRanges: return "本次翻译用量已结算，未能可靠保留粗体位置。"
+        case .serverResponse: return "本次翻译用量已结算，服务返回错误。"
+        case .responseEnvelope: return "本次翻译用量已结算，服务响应无法读取。"
+        case .incompleteOutput: return "本次翻译用量已结算，服务返回的译文不完整。"
+        case .translationJSON: return "本次翻译用量已结算，译文格式无法读取。"
+        case .itemMapping: return "本次翻译用量已结算，译文无法与截图内容逐项对应。"
+        case .quality: return "本次翻译用量已结算，译文未通过质量检查。"
+        case .rendering: return "本次翻译用量已结算，译文无法按截图结构显示。"
+        case .unknown: return "本次翻译用量已结算，未能生成可用结果，原因暂未确定。"
+        }
+    }
+}
+
+struct ScreenshotUnconfirmedFailure: LocalizedError, Sendable {
+    let stage: ScreenshotFailureStage
+    var errorDescription: String? { "截图翻译未能完成，未收到用量结算确认。" }
+}
+
+func screenshotSettledFailure(_ stage: ScreenshotFailureStage) -> ScreenshotSettledFailure {
+    AppLog.info("screenshot_translation_failure stage=\(stage.rawValue) settled=true")
+    return ScreenshotSettledFailure(stage: stage)
+}
+
+func screenshotUnconfirmedFailure(_ stage: ScreenshotFailureStage) -> ScreenshotUnconfirmedFailure {
+    AppLog.info("screenshot_translation_failure stage=\(stage.rawValue) settled=false")
+    return ScreenshotUnconfirmedFailure(stage: stage)
+}
+
 protocol ScreenshotTrialBillingRoute: Translator {
     func translateScreenshot(_ items: [ScreenshotStyledText], to target: TargetLanguage,
                              context: SelectionFetcher.TextContext?) async throws -> ScreenshotTrialResult
@@ -69,14 +125,14 @@ struct ScreenshotTranslationPlan: Sendable {
                         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
                         let runs = cellRuns.indices.contains(rowIndex) && cellRuns[rowIndex].indices.contains(columnIndex)
                             ? cellRuns[rowIndex][columnIndex] : []
-                        return Self.styled(runs.isEmpty ? [.init(text: text, isStrong: false)] : runs)
+                        return Self.styled(runs.isEmpty ? [.init(text: text, isStrong: false)] : runs, isTableCell: true)
                     }
                 }
             }
         }
     }
 
-    private static func styled(_ runs: [ScreenshotTextRun]) -> ScreenshotStyledText {
+    private static func styled(_ runs: [ScreenshotTextRun], isTableCell: Bool = false) -> ScreenshotStyledText {
         var text = "", ranges: [ScreenshotTextSpan] = []
         for run in runs {
             let start = text.utf8.count
@@ -87,7 +143,7 @@ struct ScreenshotTranslationPlan: Sendable {
                 } else { ranges.append(.init(start: start, end: text.utf8.count)) }
             }
         }
-        return .init(text: text, boldRanges: ranges)
+        return .init(text: text, boldRanges: ranges, isTableCell: isTableCell)
     }
 
     private var structureIsValid: Bool {
@@ -358,11 +414,14 @@ struct ScreenshotPlanTranslator: Translator {
             let result = try await trial.translateScreenshot(items, to: target, context: context)
             translated = result.items
             didSettle = result.didSettle
-        } else if items.contains(where: { !$0.boldRanges.isEmpty }) {
-            guard let styled = base as? any ScreenshotStyledTranslator else {
-                throw TranslationError.service("当前翻译服务暂不支持保留截图中的粗体。")
-            }
+        } else if let styled = base as? any ScreenshotStyledTranslator,
+                  items.contains(where: { !$0.boldRanges.isEmpty }) || plan.blocks.contains(where: { block in
+                      if case .table = block { return true }
+                      return false
+                  }) {
             translated = try await styled.translateStyled(items, to: target, context: context)
+        } else if items.contains(where: { !$0.boldRanges.isEmpty }) {
+            throw TranslationError.service("当前翻译服务暂不支持保留截图中的粗体。")
         } else {
             translated = try await base.translate(plan.sourceTexts, to: target, context: context)
                 .map { .init(text: $0, boldRanges: []) }
@@ -371,7 +430,7 @@ struct ScreenshotPlanTranslator: Translator {
             return [try plan.render(translated)]
         } catch {
             if didSettle {
-                throw TranslationError.service("本次体验翻译用量已结算，但未能生成可用结果。请核对额度后再重试。")
+                throw screenshotSettledFailure(.rendering)
             }
             throw error
         }

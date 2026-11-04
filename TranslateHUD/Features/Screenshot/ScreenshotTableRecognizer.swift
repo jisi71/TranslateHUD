@@ -135,14 +135,37 @@ enum ScreenshotTableRecognizer {
             })
             let match = ruledMatch ?? (hasRuleEvidence ? nil : borderlessMatch(rows: grid, box: box, image: image, lines: lines))
             guard let match else { rejected.append(.ambiguousGrid); continue }
-            func normalized(_ value: String) -> String {
-                value.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
-            }
-            guard zip(grid.flatMap({ $0 }), match.rows.flatMap({ $0 })).allSatisfy({ normalized($0.0) == normalized($0.1) }) else {
-                rejected.append(.textMismatch); continue
-            }
             let result = ScreenshotTable(rows: grid, normalizedBox: match.normalizedBox, hasMergedCells: false, cellRects: match.cellRects)
-            if ruledMatch == nil { review.append(result) } else { accepted.append(result) }
+            let pairs = Array(zip(grid.flatMap({ $0 }), match.rows.flatMap({ $0 })))
+            if pairs.allSatisfy({ $0.0 == $0.1 }) {
+                if ruledMatch == nil { review.append(result) } else { accepted.append(result) }
+            } else if ruledMatch != nil && pairs.allSatisfy({ withoutWhitespace($0.0) == withoutWhitespace($0.1) }) {
+                // The grid is independently verified, but neither OCR text is
+                // authoritative. Let the user check and edit each cell.
+                review.append(result)
+            } else {
+                rejected.append(.textMismatch)
+            }
+        }
+        return Assessment(tables: accepted, rejected: rejected, reviewRequired: review)
+    }
+
+    private static func withoutWhitespace(_ value: String) -> String {
+        String(value.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) })
+    }
+
+    /// A document response can exist without reporting a table even when the
+    /// independent raster check found a full grid. Offer that grid only once,
+    /// and only if no document reported any table or conflicting result.
+    static func combinedDocumentAssessments(_ assessments: [Assessment], tableCounts: [Int], fallback: Assessment) -> Assessment {
+        let accepted = assessments.flatMap(\.tables)
+        var review = assessments.flatMap(\.reviewRequired)
+        var rejected = assessments.flatMap(\.rejected)
+        if !tableCounts.isEmpty, assessments.count == tableCounts.count, tableCounts.allSatisfy({ $0 == 0 }) {
+            for reason in fallback.rejected where !rejected.contains(reason) { rejected.append(reason) }
+            if accepted.isEmpty, review.isEmpty, rejected.isEmpty {
+                review.append(contentsOf: fallback.tables)
+            }
         }
         return Assessment(tables: accepted, rejected: rejected, reviewRequired: review)
     }

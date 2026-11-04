@@ -181,6 +181,69 @@ final class ScreenshotTableRecognizerTests: XCTestCase {
         XCTAssertFalse(table.hasMergedCells)
     }
 
+    func testWhitespaceOnlyOCRDisagreementRequiresCellReview() async throws {
+        guard #available(macOS 26, *) else { throw XCTSkip("RecognizeDocumentsRequest requires macOS 26") }
+        let image = try fixture("ruled")
+        let lines = try recognizeLines(image)
+        XCTAssertEqual(lines.filter { $0.text == "Product" }.count, 1)
+        let documents = try await RecognizeDocumentsRequest().perform(on: image)
+        let document = try XCTUnwrap(documents.first?.document)
+        for changed in ["Pro duct", "Pro  duct"] {
+            let revised = lines.map { line in
+                line.text == "Product" ? OCRService.Line(text: changed, normalizedBox: line.normalizedBox, confidence: line.confidence) : line
+            }
+            let assessment = ScreenshotTableRecognizer.assess(from: document, image: image, lines: revised)
+            XCTAssertTrue(assessment.tables.isEmpty)
+            XCTAssertTrue(assessment.rejected.isEmpty)
+            let table = try XCTUnwrap(assessment.reviewRequired.first)
+            XCTAssertEqual(assessment.reviewRequired.count, 1)
+            XCTAssertEqual(table.rows, expected)
+            XCTAssertNotNil(table.cellRects[0][0])
+            XCTAssertNotNil(table.cellRects[2][1], "Empty cells keep their grid position")
+        }
+    }
+
+    func testDifferentOCRTextIsNotPromotedToReviewCandidate() async throws {
+        guard #available(macOS 26, *) else { throw XCTSkip("RecognizeDocumentsRequest requires macOS 26") }
+        let image = try fixture("ruled")
+        let lines = try recognizeLines(image)
+        XCTAssertEqual(lines.filter { $0.text == "Product" }.count, 1)
+        let revised = lines.map { line in
+            line.text == "Product" ? OCRService.Line(text: "Proxuct", normalizedBox: line.normalizedBox, confidence: line.confidence) : line
+        }
+        let documents = try await RecognizeDocumentsRequest().perform(on: image)
+        let document = try XCTUnwrap(documents.first?.document)
+        let assessment = ScreenshotTableRecognizer.assess(from: document, image: image, lines: revised)
+        XCTAssertTrue(assessment.tables.isEmpty)
+        XCTAssertTrue(assessment.reviewRequired.isEmpty)
+        XCTAssertEqual(assessment.rejected, [.textMismatch])
+    }
+
+    func testMissingDocumentTablesOfferFallbackOnlyOnceWithoutOverridingOtherResults() {
+        let table = ScreenshotTable(rows: [["A", "B"], ["C", ""]], normalizedBox: CGRect(x: 0, y: 0, width: 1, height: 1), hasMergedCells: false)
+        let empty = ScreenshotTableRecognizer.Assessment(tables: [], rejected: [])
+        let fallback = ScreenshotTableRecognizer.Assessment(tables: [table], rejected: [])
+        let combined = ScreenshotTableRecognizer.combinedDocumentAssessments([empty, empty], tableCounts: [0, 0], fallback: fallback)
+        XCTAssertTrue(combined.tables.isEmpty)
+        XCTAssertEqual(combined.reviewRequired, [table])
+
+        let accepted = ScreenshotTableRecognizer.Assessment(tables: [table], rejected: [])
+        let mixed = ScreenshotTableRecognizer.combinedDocumentAssessments([accepted, empty], tableCounts: [1, 0], fallback: fallback)
+        XCTAssertEqual(mixed.tables, [table])
+        XCTAssertTrue(mixed.reviewRequired.isEmpty)
+
+        let rejected = ScreenshotTableRecognizer.Assessment(tables: [], rejected: [.mergedCells])
+        let unsafe = ScreenshotTableRecognizer.combinedDocumentAssessments([rejected, empty], tableCounts: [1, 0], fallback: fallback)
+        XCTAssertEqual(unsafe.rejected, [.mergedCells])
+        XCTAssertTrue(unsafe.reviewRequired.isEmpty)
+
+        let uncertainFallback = ScreenshotTableRecognizer.Assessment(tables: [table], rejected: [.ambiguousGrid])
+        let uncertain = ScreenshotTableRecognizer.combinedDocumentAssessments([empty], tableCounts: [0], fallback: uncertainFallback)
+        XCTAssertTrue(uncertain.tables.isEmpty)
+        XCTAssertTrue(uncertain.reviewRequired.isEmpty)
+        XCTAssertEqual(uncertain.rejected, [.ambiguousGrid])
+    }
+
     func testMacOS26DeclinesUnruledAndMergedTableCandidates() async throws {
         guard #available(macOS 26, *) else { throw XCTSkip("RecognizeDocumentsRequest requires macOS 26") }
         for name in ["unruled", "merged"] {

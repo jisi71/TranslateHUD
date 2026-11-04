@@ -52,21 +52,22 @@ enum ScreenshotFlow {
                 let recognized = documents.flatMap { OCRService.textBlocks(from: $0.document, lines: lines) }
                 if !recognized.isEmpty { textBlocks = recognized }
                 if let imageData {
-                    let assessments = await Task.detached(priority: .userInitiated) {
-                        documents.map { ScreenshotTableRecognizer.assess(from: $0.document, image: imageData, lines: lines) }
+                    let assessment = await Task.detached(priority: .userInitiated) {
+                        guard !documents.isEmpty else {
+                            return ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
+                        }
+                        let assessments = documents.map {
+                            ScreenshotTableRecognizer.assess(from: $0.document, image: imageData, lines: lines)
+                        }
+                        let counts = documents.map { $0.document.tables.count }
+                        let fallback = counts.allSatisfy({ $0 == 0 })
+                            ? ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
+                            : .init(tables: [], rejected: [])
+                        return ScreenshotTableRecognizer.combinedDocumentAssessments(assessments, tableCounts: counts, fallback: fallback)
                     }.value
-                    for assessment in assessments {
-                        tables.append(contentsOf: assessment.tables)
-                        reviewCandidates.append(contentsOf: assessment.reviewRequired)
-                        tableWasRejected = tableWasRejected || !assessment.rejected.isEmpty
-                    }
-                    if documents.isEmpty {
-                        let assessment = await Task.detached(priority: .userInitiated) {
-                            ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
-                        }.value
-                        tables = assessment.tables
-                        tableWasRejected = !assessment.rejected.isEmpty
-                    }
+                    tables = assessment.tables
+                    reviewCandidates = assessment.reviewRequired
+                    tableWasRejected = !assessment.rejected.isEmpty
                 }
             } catch {
                 AppLog.info("文档结构识别不可用，使用文字行识别结果")

@@ -9,9 +9,9 @@ enum ScreenshotTableReview {
         let language = InterfaceLanguageStore.shared
         let alert = NSAlert()
         alert.messageText = language.text("请核对截图中的表格")
-        alert.informativeText = language.text("无法自动确认行列。请对照截图逐格核对；本预览不能修改单元格，如有错误请选择按文字翻译或取消。")
-        alert.addButton(withTitle: language.text("按此表翻译"))
-        alert.addButton(withTitle: language.text("按文字翻译"))
+        alert.informativeText = language.text("表格的行列或文字需要确认。请对照截图逐格核对；选择校对表格后，可在下一步修改内容，确认前不会发送。")
+        alert.addButton(withTitle: language.text("校对表格"))
+        alert.addButton(withTitle: language.text("按文字校对"))
         alert.addButton(withTitle: language.text("取消"))
         let view = NSHostingView(rootView: Preview(image: image, rows: table.rows))
         view.frame = NSRect(x: 0, y: 0, width: 600, height: 400)

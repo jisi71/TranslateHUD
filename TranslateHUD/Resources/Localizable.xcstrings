@@ -105,19 +105,19 @@
         "en": { "stringUnit": { "state": "translated", "value": "This trial translation was settled, but no usable result was produced. Please check your quota or credit before retrying." } }
       }
     },
-    "无法自动确认行列。请对照截图逐格核对；本预览不能修改单元格，如有错误请选择按文字翻译或取消。": {
+    "表格的行列或文字需要确认。请对照截图逐格核对；选择校对表格后，可在下一步修改内容，确认前不会发送。": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法自动确认行列。请对照截图逐格核对；本预览不能修改单元格，如有错误请选择按文字翻译或取消。"
+            "value": "表格的行列或文字需要确认。请对照截图逐格核对；选择校对表格后，可在下一步修改内容，确认前不会发送。"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rows and columns could not be confirmed automatically. Check each cell against the screenshot. This preview cannot edit cells; if anything is wrong, choose text translation or cancel."
+            "value": "The table's layout or text needs confirmation. Check each cell against the screenshot. Choose Review table to edit it in the next step; nothing is sent before you confirm."
           }
         }
       }
@@ -173,36 +173,36 @@
         }
       }
     },
-    "按此表翻译": {
+    "校对表格": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "按此表翻译"
+            "value": "校对表格"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Translate as table"
+            "value": "Review table"
           }
         }
       }
     },
-    "按文字翻译": {
+    "按文字校对": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "按文字翻译"
+            "value": "按文字校对"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Translate as text"
+            "value": "Review as text"
           }
         }
       }

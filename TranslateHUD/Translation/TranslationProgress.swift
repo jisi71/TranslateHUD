@@ -31,6 +31,8 @@ final class TranslationProgress: ObservableObject {
 
     /// 选区保格式等场景：retry 时仍包一层同一翻译器。
     var mapTranslator: (@Sendable (any Translator) -> any Translator)?
+    /// The displayed source can contain formatting that is never sent to the model.
+    var retrySourceText: String?
 
     private var task: Task<Void, Never>?
     private var elapsedTimer: Timer?
@@ -212,7 +214,7 @@ final class TranslationProgress: ObservableObject {
     /// 重跑：上次走流式则重跑流式，否则重跑批量。
     func retry(target: TargetLanguage? = nil) {
         guard !lastOriginals.isEmpty else { return }
-        let source = lastOriginals.joined(separator: "\n")
+        let source = retrySourceText ?? lastOriginals.joined(separator: "\n")
         let target = target ?? targetLanguage ?? TargetLanguage.resolved(
             for: lastOriginals, configured: SettingsStore.shared.targetLanguage
         )

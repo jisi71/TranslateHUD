@@ -3,6 +3,72 @@ import XCTest
 @testable import TranslateHUD
 
 final class MarkdownDisplayTests: XCTestCase {
+    func testBoldInsideHeadingsHasVisibleWeightInChineseAndEnglish() throws {
+        func font(_ markdown: String, containing word: String) throws -> NSFont {
+            let attributed = NSAttributedString(MarkdownDisplay.styled(markdown, role: .translation, colors: .dark))
+            let range = (attributed.string as NSString).range(of: word)
+            let index = try XCTUnwrap(range.location == NSNotFound ? nil : range.location)
+            return try XCTUnwrap(attributed.attribute(.font, at: index, effectiveRange: nil) as? NSFont)
+        }
+        for (markdown, plain, bold) in [
+            ("# 普通**强调**标题", "普通", "强调"),
+            ("# Normal **bold** title", "Normal", "bold")
+        ] {
+            let ordinary = try font(markdown, containing: plain)
+            let emphasized = try font(markdown, containing: bold)
+            let manager = NSFontManager.shared
+            XCTAssertEqual(ordinary.pointSize, emphasized.pointSize)
+            XCTAssertEqual(manager.weight(of: ordinary), manager.weight(of: .systemFont(ofSize: ordinary.pointSize, weight: .semibold)))
+            XCTAssertEqual(manager.weight(of: emphasized), manager.weight(of: .systemFont(ofSize: emphasized.pointSize, weight: .bold)))
+            XCTAssertGreaterThan(manager.weight(of: emphasized), manager.weight(of: ordinary))
+        }
+        let plainTitle = try font("# Normal title", containing: "Normal")
+        XCTAssertEqual(NSFontManager.shared.weight(of: plainTitle), NSFontManager.shared.weight(of: .systemFont(ofSize: plainTitle.pointSize, weight: .semibold)))
+        let body = try font("Normal **bold** text", containing: "Normal")
+        let bodyBold = try font("Normal **bold** text", containing: "bold")
+        XCTAssertGreaterThan(NSFontManager.shared.weight(of: bodyBold), NSFontManager.shared.weight(of: body))
+    }
+
+    func testBlockBreaksFollowSourcePositionsForEscapesAndRepeatedText() {
+        let examples = [
+            ("# Heading\n\nA first line\\.\n\nAnother line\\.", "Heading\n\nA first line.\n\nAnother line."),
+            ("# Same\nSame\n\n# Same\nSame", "Same\nSame\n\nSame\nSame"),
+            ("# A\\#B\n\nA \\*literal\\* and &#124; &amp; end\\.\n## **Bold**", "A#B\n\nA *literal* and | & end.\nBold"),
+            ("# 标题👨‍👩‍👧‍👦\r\n\r\n组合 e\u{301}\\.\r\n\r\n下一段\\!", "标题👨‍👩‍👧‍👦\n\n组合 e\u{301}.\n\n下一段!"),
+            ("# 标题👨‍👩‍👧‍👦\r\n组合 e\u{301}\\.\r\n# 下一段", "标题👨‍👩‍👧‍👦\n组合 e\u{301}.\n下一段")
+        ]
+        for (markdown, expected) in examples {
+            let parsed = MarkdownDisplay.parse(markdown)
+            XCTAssertEqual(String(parsed.characters), expected, markdown)
+            let displayed = NSAttributedString(MarkdownDisplay.styled(markdown, role: .translation, colors: .dark))
+            XCTAssertEqual(displayed.string, expected, markdown)
+        }
+    }
+
+    func testSourcePositionsDoNotReachTextKit() {
+        let input = "# **标题**\n\n第一段\\.\n\n第二段\\!"
+        let parsed = MarkdownDisplay.parse(input)
+        XCTAssertEqual(String(parsed.characters), "标题\n\n第一段.\n\n第二段!")
+        XCTAssertTrue(parsed.runs.allSatisfy { $0.markdownSourcePosition == nil })
+        XCTAssertTrue(parsed.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+        XCTAssertTrue(parsed.runs.contains { run in
+            (run.presentationIntent?.components ?? []).contains { component in
+                if case .header(let level) = component.kind { return level == 1 }
+                return false
+            }
+        })
+        let styled = MarkdownDisplay.styled(input, role: .source, colors: .dark)
+        let text = NSAttributedString(styled)
+        var foundSourcePosition = false
+        text.enumerateAttributes(in: NSRange(location: 0, length: text.length)) { attributes, _, _ in
+            if attributes[NSAttributedString.Key("NSMarkdownSourcePosition")] != nil { foundSourcePosition = true }
+        }
+        XCTAssertFalse(foundSourcePosition)
+        let full = MarkdownDisplay.height(input, role: .source, colors: .dark, width: 432, maxLines: nil)
+        let capped = MarkdownDisplay.height(input, role: .source, colors: .dark, width: 432, maxLines: 6)
+        XCTAssertTrue(full.isFinite && full > 0 && capped.isFinite && capped > 0)
+    }
+
     func testPlainTextStripsHeadingMarkers() {
         let plain = MarkdownDisplay.plainText(from: "# Hello\n\nWorld")
         XCTAssertFalse(plain.contains("#"))
@@ -717,6 +783,22 @@ final class MarkdownDisplayTests: XCTestCase {
         let h2 = MarkdownDisplay.height(two, role: .translation, colors: colors, width: width, maxLines: nil)
         let h3 = MarkdownDisplay.height(three, role: .translation, colors: colors, width: width, maxLines: nil)
         XCTAssertGreaterThan(h3, h2 + 16)
+    }
+
+    func testWideTableUsesReadableColumnsWithoutChangingSmallTables() {
+        let width = PopoverContent.translationTextWidth
+        XCTAssertFalse(MarkdownDisplay.tableNeedsHorizontalScroll(columns: 3, viewportWidth: width))
+        XCTAssertFalse(MarkdownDisplay.tableNeedsHorizontalScroll(columns: 4, viewportWidth: PopoverContent.sourceTextWidth))
+        XCTAssertEqual(MarkdownDisplay.tableColumnWidth(columns: 3, viewportWidth: width), width / 3, accuracy: 0.01)
+        XCTAssertTrue(MarkdownDisplay.tableNeedsHorizontalScroll(columns: 7, viewportWidth: width))
+        XCTAssertGreaterThanOrEqual(MarkdownDisplay.tableColumnWidth(columns: 7, viewportWidth: width), 105)
+
+        let rows = [["Project name", "Project progress", "Enrollment method", "Planned enrollment", "Actual enrollment", "Completion status", "Improvement method"],
+                    ["Animation production", "60%", "Online livestream", "326 people", "398 people", "Not completed", "Continue next year"]]
+        let narrow = MarkdownDisplay.tableHeight(rows: rows, role: .translation, colors: .dark, width: width)
+        let fullyVisible = MarkdownDisplay.tableHeight(rows: rows, role: .translation, colors: .dark, width: 7 * 105)
+        let scrollSpace = 16 + ceil(NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy))
+        XCTAssertEqual(narrow, fullyVisible + scrollSpace, accuracy: 1, "The scroll hint and bar need space")
     }
 
 

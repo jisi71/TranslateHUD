@@ -26,7 +26,7 @@ struct FailingTermExplainer: TermExplainer {
     }
 }
 
-struct TrialProxyTranslator: Translator {
+struct TrialProxyTranslator: ScreenshotStyledTranslator, ScreenshotTrialBillingRoute {
     let proxyBaseURL: String
     let session: URLSession
 
@@ -51,6 +51,46 @@ struct TrialProxyTranslator: Translator {
         )
         do {
             let result = try await inner.translate(texts, to: target, context: context)
+            await TrialActor.refreshBalance(generation: credential.generation)
+            return result
+        } catch {
+            await TrialActor.refreshBalance(generation: credential.generation, unless: error)
+            throw error
+        }
+    }
+
+    func translateStyled(_ items: [ScreenshotStyledText], to target: TargetLanguage,
+                         context: SelectionFetcher.TextContext?) async throws -> [ScreenshotStyledText] {
+        let credential = try await TrialActor.accessToken()
+        let source = items.map(\.text).joined(separator: "\n")
+        let inner = OpenAICompatibleTranslator(
+            config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: credential.token),
+            session: session,
+            extraHTTPHeaders: TrialHeaders.source(source),
+            onTrialSettlement: { settlement in
+                await TrialActor.apply(settlement, generation: credential.generation)
+            }
+        )
+        do {
+            let result = try await inner.translateStyledTrial(items, to: target, context: context)
+            await TrialActor.refreshBalance(generation: credential.generation)
+            return result
+        } catch {
+            await TrialActor.refreshBalance(generation: credential.generation, unless: error)
+            throw error
+        }
+    }
+
+    func translateScreenshot(_ items: [ScreenshotStyledText], to target: TargetLanguage,
+                             context: SelectionFetcher.TextContext?) async throws -> ScreenshotTrialResult {
+        let credential = try await TrialActor.accessToken()
+        let request = ScreenshotTrialRequest(
+            config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: credential.token),
+            session: session,
+            applySettlement: { value in await TrialActor.apply(value, generation: credential.generation) }
+        )
+        do {
+            let result = try await request.translate(items, to: target, context: context)
             await TrialActor.refreshBalance(generation: credential.generation)
             return result
         } catch {
@@ -94,6 +134,50 @@ struct TrialProxyTranslator: Translator {
         }
     }
 
+}
+
+private actor ScreenshotReceiptFlag {
+    private(set) var received = false
+    func mark() { received = true }
+}
+
+struct ScreenshotTrialRequest {
+    let config: ProviderConfig
+    let session: URLSession
+    let applySettlement: @Sendable (TrialSettlement) async -> Void
+
+    func translate(_ items: [ScreenshotStyledText], to target: TargetLanguage,
+                   context: SelectionFetcher.TextContext?) async throws -> ScreenshotTrialResult {
+        let receipt = ScreenshotReceiptFlag()
+        let source = items.map(\.text).joined(separator: "\n")
+        let inner = OpenAICompatibleTranslator(
+            config: config, session: session, extraHTTPHeaders: TrialHeaders.source(source),
+            onTrialSettlement: { value in
+                await receipt.mark()
+                await applySettlement(value)
+            }
+        )
+        do {
+            let result = try await inner.translateStyledTrial(items, to: target, context: context, screenshotDiagnostics: true)
+            return ScreenshotTrialResult(items: result, didSettle: await receipt.received)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            if !(await receipt.received) {
+                if let stage = error as? ScreenshotFailureStage { throw screenshotUnconfirmedFailure(stage) }
+                throw error
+            }
+            let stage: ScreenshotFailureStage
+            if let issue = error as? ScreenshotFailureStage {
+                stage = issue
+            } else if let failure = error as? TranslationError, case .http = failure {
+                stage = .serverResponse
+            } else {
+                stage = .unknown
+            }
+            throw screenshotSettledFailure(stage)
+        }
+    }
 }
 
 enum TrialActor {

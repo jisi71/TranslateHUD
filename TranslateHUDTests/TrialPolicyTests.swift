@@ -87,6 +87,18 @@ final class TrialPolicyTests: XCTestCase {
         XCTAssertEqual(PhoneNumberCN.mask("+86 13800138000"), "138****8000")
     }
 
+    func testUnifiedLoginIdentifierAcceptsCommonEmailsAndMasksThem() {
+        for address in ["user@qq.com", "user@163.com", "user+tag@gmail.com", "User.Name@outlook.com", "user@icloud.com"] {
+            XCTAssertEqual(TrialLoginIdentifier.parse(address), .email(address))
+        }
+        XCTAssertEqual(TrialLoginIdentifier.parse("  User@EXAMPLE.COM  "), .email("User@example.com"))
+        XCTAssertEqual(TrialLoginIdentifier.parse("+86 138 0013 8000"), .phone("+86 13800138000"))
+        XCTAssertEqual(TrialLoginIdentifier.parse("person@example.com")?.masked, "p***@example.com")
+        for value in ["bad@", "a@b", ".a@example.com", "a..b@example.com", "a@-bad.com", "abc13800138000", "user@example..com"] {
+            XCTAssertNil(TrialLoginIdentifier.parse(value), value)
+        }
+    }
+
     func testOwnKeySkipsTheTrialLimitAndTheGiftPath() {
         let input = TranslationRouteInput(
             hasOwnAPIKey: true,
@@ -221,7 +233,7 @@ final class TrialPolicyTests: XCTestCase {
         guard case .block(_, let message) = TranslationRoute.gate(input) else {
             return XCTFail("expected a block")
         }
-        XCTAssertEqual(message, "请先用手机号登录，或在设置里填写你自己的 API Key。")
+        XCTAssertEqual(message, "请先用手机号或邮箱登录，或在设置里填写你自己的 API Key。")
     }
 
     func testATokenFromAnotherEnvironmentDisagreesWithThisApp() {
@@ -341,11 +353,11 @@ final class CloudBaseLoginTests: XCTestCase {
                 return (500, [:])
             }
         }
-        let ticket = try await api.sendCode(phoneE164: "+86 13800138000")
+        let ticket = try await api.sendCode(identifier: .phone("+86 13800138000"))
         XCTAssertEqual(ticket.verificationId, "vid-1")
         XCTAssertFalse(ticket.isExistingUser)
         let session = try await api.completeLogin(
-            phoneE164: "+86 13800138000",
+            identifier: .phone("+86 13800138000"),
             code: "123456",
             verificationId: ticket.verificationId,
             isExistingUser: false
@@ -355,6 +367,80 @@ final class CloudBaseLoginTests: XCTestCase {
         XCTAssertEqual(session.refreshToken, "refresh-1")
         XCTAssertGreaterThan(session.expiresAt, Date())
         XCTAssertFalse(CloudBaseHTTPStub.requests.contains { $0.url?.path == "/auth/v1/signin" })
+    }
+
+    func testNewEmailRequestsEmailVerificationAndRegisters() async throws {
+        let api = makeAPI()
+        CloudBaseHTTPStub.responder = { request in
+            switch request.url?.path {
+            case "/auth/v1/verification":
+                let body = Self.json(request)
+                XCTAssertEqual(body["email"] as? String, "user+tag@example.com")
+                XCTAssertNil(body["phone_number"])
+                XCTAssertEqual(body["target"] as? String, "ANY")
+                return (200, ["verification_id": "email-vid", "is_user": false])
+            case "/auth/v1/verification/verify":
+                return (200, ["verification_token": "email-token"])
+            case "/auth/v1/signup":
+                let body = Self.json(request)
+                XCTAssertEqual(body["email"] as? String, "user+tag@example.com")
+                XCTAssertNil(body["phone_number"])
+                XCTAssertEqual(body["verification_token"] as? String, "email-token")
+                return (200, ["access_token": "access", "refresh_token": "refresh", "sub": "email-user"])
+            default:
+                XCTFail("unexpected \(request.url?.path ?? "")")
+                return (500, [:])
+            }
+        }
+        let identifier = TrialLoginIdentifier.email("user+tag@example.com")
+        let ticket = try await api.sendCode(identifier: identifier)
+        let session = try await api.completeLogin(identifier: identifier, code: "123456", verificationId: ticket.verificationId, isExistingUser: ticket.isExistingUser)
+        XCTAssertEqual(session.userId, "email-user")
+        XCTAssertFalse(CloudBaseHTTPStub.requests.contains { $0.url?.path == "/auth/v1/signin" })
+    }
+
+    func testExistingEmailSignsInWithoutSignup() async throws {
+        let api = makeAPI()
+        CloudBaseHTTPStub.responder = { request in
+            switch request.url?.path {
+            case "/auth/v1/verification/verify": return (200, ["verification_token": "token"])
+            case "/auth/v1/signin": return (200, ["access_token": "access", "refresh_token": "refresh", "sub": "email-user"])
+            default: XCTFail("unexpected path"); return (500, [:])
+            }
+        }
+        let session = try await api.completeLogin(identifier: .email("user@example.com"), code: "123456", verificationId: "email-vid", isExistingUser: true)
+        XCTAssertEqual(session.userId, "email-user")
+        XCTAssertFalse(CloudBaseHTTPStub.requests.contains { $0.url?.path == "/auth/v1/signup" })
+    }
+
+    func testInviteEligibilityDecodesOnlyActualBooleans() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CloudBaseHTTPStub.self]
+        let urlSession = URLSession(configuration: configuration)
+        defer { urlSession.invalidateAndCancel() }
+        let cases: [(Any?, Bool?)] = [(true, true), (false, false), (nil, nil), ("true", nil), (1, nil)]
+        for (value, expected) in cases {
+            CloudBaseHTTPStub.responder = { _ in
+                var body: [String: Any] = ["userId": "user", "balanceMicroYuan": 0]
+                if let value { body["canRedeemInvite"] = value }
+                return (200, body)
+            }
+            let snapshot = try await TrialProxyClient.syncAccount(proxyBase: "https://proxy.example/v1", accessToken: "access", session: urlSession)
+            XCTAssertEqual(snapshot.canRedeemInvite, expected)
+        }
+        CloudBaseHTTPStub.responder = { _ in
+            (200, ["userId": "user", "balanceMicroYuan": 2000000, "giftedNow": true,
+                   "inviteRedeemed": true, "canRedeemInvite": true])
+        }
+        let redeemed = try await TrialProxyClient.redeem(proxyBase: "https://proxy.example/v1", accessToken: "access", code: "code", session: urlSession)
+        XCTAssertEqual(redeemed.canRedeemInvite, true)
+        XCTAssertTrue(redeemed.inviteRedeemed)
+        CloudBaseHTTPStub.responder = { _ in
+            (200, ["userId": "legacy", "balanceMicroYuan": 100, "inviteRedeemed": true])
+        }
+        let legacy = try await TrialProxyClient.syncAccount(proxyBase: "https://proxy.example/v1", accessToken: "access", session: urlSession)
+        XCTAssertTrue(legacy.inviteRedeemed)
+        XCTAssertNil(legacy.canRedeemInvite)
     }
 
     func testExistingUserSignsInWithoutSignup() async throws {
@@ -376,7 +462,7 @@ final class CloudBaseLoginTests: XCTestCase {
             }
         }
         let session = try await api.completeLogin(
-            phoneE164: "+86 13800138000",
+            identifier: .phone("+86 13800138000"),
             code: "654321",
             verificationId: "vid-2",
             isExistingUser: true
@@ -392,7 +478,7 @@ final class CloudBaseLoginTests: XCTestCase {
         }
         do {
             _ = try await api.completeLogin(
-                phoneE164: "+86 13800138000",
+                identifier: .phone("+86 13800138000"),
                 code: "000000",
                 verificationId: "vid",
                 isExistingUser: true

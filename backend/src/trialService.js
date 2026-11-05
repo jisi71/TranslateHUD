@@ -4,6 +4,7 @@ const { GIFT_FEN, GIFT_MICRO_YUAN, MESSAGES, decodeSourceHeader, formatDisplayId
 const { prepareUpstreamPayload, readUpstreamConfig } = require('./upstream')
 const { costMicroYuanFromUsage, parseUsage, readTrialPrices, settlementFields } = require('./usageBilling')
 const { createSettlingStream, formatSSE } = require('./usageStream')
+const { restoreBoldResult, formatFailureReason } = require('./structuredBold')
 
 const MAX_BODY_BYTES = 48 * 1024
 
@@ -61,7 +62,11 @@ async function defaultVerifyUser({ gateway, token, fetchImpl }) {
     error.code = 'trial_auth'
     throw error
   }
-  return { uid }
+  // Do not accept a client-supplied phone or persist profile contact data.
+  // Whether CloudBase verifies this profile field must be checked before deployment.
+  const phone = typeof body.phone_number === 'string' ? body.phone_number.replace(/[\s()-]/g, '') : ''
+  const hasEligiblePhone = /^(?:\+?86)?1[3-9][0-9]{9}$/.test(phone)
+  return { uid, hasEligiblePhone }
 }
 
 async function identify(ctx) {
@@ -70,7 +75,7 @@ async function identify(ctx) {
   try {
     const user = await ctx.verifyUser({ gateway: ctx.env.gateway, token })
     if (!user || !user.uid) return errorResult(401, 'trial_auth', MESSAGES.auth)
-    return { uid: String(user.uid) }
+    return { uid: String(user.uid), hasEligiblePhone: user.hasEligiblePhone === true }
   } catch {
     return errorResult(401, 'trial_auth', MESSAGES.auth)
   }
@@ -89,7 +94,7 @@ async function handleAccount(ctx) {
     return {
       status: 200,
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
-      body: JSON.stringify(accountPayload(identified.uid, opened.record, false))
+      body: JSON.stringify(accountPayload(identified.uid, opened.record, false, identified.hasEligiblePhone))
     }
   } catch (error) {
     return storeFailure(error)
@@ -159,7 +164,7 @@ async function recordUsageEvent(ctx, { uid, usage, settled, startedAt }) {
   }
 }
 
-function accountPayload(uid, record, giftedNow) {
+function accountPayload(uid, record, giftedNow, canRedeemInvite) {
   return {
     userId: uid,
     displayNo: record.displayNo || 0,
@@ -169,7 +174,8 @@ function accountPayload(uid, record, giftedNow) {
     giftedNow: Boolean(giftedNow),
     giftMicroYuan: giftedNow ? GIFT_MICRO_YUAN : 0,
     giftFen: giftedNow ? GIFT_FEN : 0,
-    inviteRedeemed: record.giftGranted === true
+    inviteRedeemed: record.giftGranted === true,
+    canRedeemInvite: canRedeemInvite === true
   }
 }
 
@@ -207,6 +213,9 @@ async function handleInviteStatus(ctx) {
 async function handleRedeem(ctx) {
   const identified = await identify(ctx)
   if (identified.status) return identified
+  if (!identified.hasEligiblePhone) {
+    return errorResult(403, 'trial_invite_phone_required', '该账号当前无法兑换体验余额，可使用每日免费额度。')
+  }
   let body = {}
   if (ctx.rawBody && String(ctx.rawBody).trim()) {
     try {
@@ -229,7 +238,7 @@ async function handleRedeem(ctx) {
     return {
       status: 200,
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
-      body: JSON.stringify(accountPayload(identified.uid, result.record, true))
+      body: JSON.stringify(accountPayload(identified.uid, result.record, true, identified.hasEligiblePhone))
     }
   } catch (error) {
     return storeFailure(error)
@@ -270,10 +279,12 @@ async function handleTranslate(ctx) {
 
   let payload
   let stream
+  let format
   try {
     const prepared = prepareUpstreamPayload(rawBody, config, decoded.text)
     payload = prepared.payload
     stream = prepared.stream
+    format = prepared.format
   } catch (error) {
     return errorResult(error.status || 400, error.code || 'trial_body', error.publicMessage || MESSAGES.body)
   }
@@ -374,6 +385,18 @@ async function handleTranslate(ctx) {
       return errorResult(502, 'trial_usage_missing', MESSAGES.usageMissing)
     }
     await recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt })
+    if (format) {
+      try {
+        parsed = restoreBoldResult(parsed, format)
+      } catch (error) {
+        console.error(`trial format invalid reason=${formatFailureReason(error)}`)
+        return {
+          status: 422,
+          headers: { ...billingHeaders(settled, usage), 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ error: { code: 'trial_format_invalid', message: '译文格式校验失败；本次请求已按实际用量结算。' }, translatehud_trial: settlementFields(settled, usage) })
+        }
+      }
+    }
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       parsed.translatehud_trial = settlementFields(settled, usage)
     }

@@ -102,7 +102,7 @@ final class SettingsHostingController: NSHostingController<SettingsView> {
 /// 打开设置时不自动进入任何一个输入框。
 ///
 /// macOS 会在窗口变成 key 时，把界面里第一个文本框设成第一响应者，并选中里面的文字。
-/// 已登录且没有邀请码输入框时，这个文本框就是 Base URL；没登录时则是手机号。
+/// 已登录且没有邀请码输入框时，这个文本框就是 Base URL；没登录时则是登录账号。
 /// 只拒绝这种自动聚焦。用户点击某个输入框，或按 Tab，仍然可以输入。
 final class SettingsWindow: NSWindow, NSWindowDelegate {
     private static let tabKeyCode: UInt16 = 48

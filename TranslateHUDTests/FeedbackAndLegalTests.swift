@@ -165,7 +165,7 @@ final class FeedbackAndLegalTests: XCTestCase {
         ] {
             let text = try source(relative)
             XCTAssertFalse(text.lowercased().contains("mailto:"))
-            XCTAssertFalse(text.contains("邮箱"))
+            if !relative.hasSuffix("SettingsView.swift") { XCTAssertFalse(text.contains("邮箱")) }
         }
     }
 

@@ -180,6 +180,12 @@ private struct FailureDraft: Equatable {
 private enum FailureClassification {
     static func classify(_ error: Error) -> FailureDraft? {
         if error is CancellationError { return nil }
+        if let failure = error as? ScreenshotSettledFailure {
+            return classifyScreenshot(failure.stage)
+        }
+        if let failure = error as? ScreenshotUnconfirmedFailure {
+            return classifyScreenshot(failure.stage)
+        }
         if let timeout = error as? TranslationTimeoutError {
             _ = timeout
             return .business("timeout")
@@ -192,7 +198,7 @@ private enum FailureClassification {
         }
         if let auth = error as? CloudBaseAuthError {
             switch auth {
-            case .invalidPhone, .userMissing, .userExists:
+            case .invalidPhone, .invalidIdentifier, .userMissing, .userExists:
                 return .business("auth")
             case .message(let text):
                 return classifyService(text)
@@ -242,6 +248,17 @@ private enum FailureClassification {
             return .bug("unknown", summary: tagged)
         }
         return .bug("unknown", summary: FailureEvent.sanitizeSummary(typeName) ?? "Error")
+    }
+
+    private static func classifyScreenshot(_ stage: ScreenshotFailureStage) -> FailureDraft {
+        switch stage {
+        case .quality, .serverFormat, .incompleteOutput:
+            return .business("quality")
+        case .unknown:
+            return .bug("unknown", summary: "ScreenshotFailure.unknown")
+        default:
+            return .bug("parse", summary: "ScreenshotFailure.\(stage.rawValue)")
+        }
     }
 
     static func classifySelection(_ result: SelectionFetchResult) -> FailureDraft? {

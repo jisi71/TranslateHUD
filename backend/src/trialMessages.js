@@ -13,6 +13,7 @@
 // The server owns this copy so the client cannot replace it.
 
 const { MESSAGES, graphemeLength } = require('./trialPolicy')
+const { makeBoldFormat, INSTRUCTIONS: BOLD_INSTRUCTIONS } = require('./structuredBold')
 
 // The Mac system prompt (strict retry, a short example, and a context note)
 // is a few thousand characters. Room above that still rejects a pasted document.
@@ -139,11 +140,13 @@ function parseFrame(content) {
 function batchTexts(value, source) {
   if (!Array.isArray(value) || value.length === 0 || value.length > 600) fail()
   const texts = new Array(value.length)
+  const ranges = new Array(value.length)
+  let hasRanges = false
   const seen = new Set()
   for (const item of value) {
     if (!isPlainObject(item)) fail()
     for (const key of ownKeys(item)) {
-      if (key !== 'i' && key !== 'text') fail()
+      if (key !== 'i' && key !== 'text' && key !== 'boldRanges') fail()
     }
     if (!Object.prototype.hasOwnProperty.call(item, 'i')) fail()
     if (!Object.prototype.hasOwnProperty.call(item, 'text')) fail()
@@ -151,9 +154,15 @@ function batchTexts(value, source) {
     if (item.i < 0 || item.i >= value.length || seen.has(item.i)) fail()
     seen.add(item.i)
     texts[item.i] = item.text
+    if (Object.prototype.hasOwnProperty.call(item, 'boldRanges')) {
+      hasRanges = true
+      ranges[item.i] = item.boldRanges
+    } else {
+      ranges[item.i] = []
+    }
   }
   if (texts.join('\n') !== source) fail()
-  return texts
+  return { texts, ranges: hasRanges ? ranges : null }
 }
 
 function tryParseBatch(content, source) {
@@ -210,16 +219,16 @@ function parseUser(content, source) {
     assertPassage(framed.passage, source)
     if (framed.inner === source) return { kind: 'plain', passage: framed.passage, texts: null }
     if (framed.inner.trim().startsWith('[')) {
-      const texts = tryParseBatch(framed.inner, source)
-      if (!texts) fail()
-      return { kind: 'batch', passage: framed.passage, texts }
+      const batch = tryParseBatch(framed.inner, source)
+      if (!batch) fail()
+      return { kind: 'batch', passage: framed.passage, ...batch }
     }
     fail()
   }
   if (content.trim().startsWith('[')) {
-    const texts = tryParseBatch(content, source)
-    if (!texts) fail()
-    return { kind: 'batch', passage: null, texts }
+    const batch = tryParseBatch(content, source)
+    if (!batch) fail()
+    return { kind: 'batch', passage: null, ...batch }
   }
   if (content.trim().startsWith('{')) {
     const terms = tryParseTerms(content, source)
@@ -400,20 +409,24 @@ function bindUpstreamMessages(body, sourceText) {
     mode = 'batch'
     if (parsed.kind === 'plain') parsed.texts = [sourceText]
   }
+  const format = parsed.kind === 'batch' && parsed.ranges
+    ? makeBoldFormat(parsed.texts, parsed.ranges, parsed.passage || '') : null
   const messages = buildMessages({
     mode,
     language: detectLanguage(system),
     strict: isStrict(system),
     source: sourceText,
-    texts: parsed.texts,
+    texts: format ? format.marked : parsed.texts,
     passage: parsed.passage,
     explanationLanguage: ['Simplified Chinese', ...LANGUAGES].find(
       (language) => system.includes(`Every "explanation" must be concise ${language},`)
     ) || 'Simplified Chinese'
   })
+  if (format && format.expected.some(markers => markers.length > 0)) messages[0].content += '\n\n' + BOLD_INSTRUCTIONS
   return {
     messages,
     stream,
+    format,
     temperature: temperatureFor(body, mode)
   }
 }

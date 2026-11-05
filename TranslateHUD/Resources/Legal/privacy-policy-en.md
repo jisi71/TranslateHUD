@@ -11,7 +11,7 @@ Agreeing to this policy does not mean we process all information listed here. We
 
 ## 1. Information we collect
 
-1. **Phone number and session:** If you choose SMS sign-in, we collect your phone number to send verification codes, register or sign you in, recover your account and send necessary account notices. After sign-in, we store session credentials to keep you signed in. Without a phone number you can still use features that do not require an account, but cannot use sign-in, trial credit, invitation codes or other account features.
+1. **Phone number, email and session:** If you choose SMS or email verification sign-in, we collect the phone number or email address you provide to send verification codes, register or sign you in, recover your account and send necessary account notices. After sign-in, we store session credentials to keep you signed in. Without either identifier you can still use features that do not require an account. Accounts with only an email can use the daily free allowance; redeeming invitation trial credit requires a linked phone number.
 2. **Trial ledger:** When you redeem trial credit or use the official trial translation service, we record accounting information such as balance changes, token usage and time for billing, reconciliation and fraud prevention.
 3. **Translation content in the official trial service:** To translate your source text and text recognized from screenshots, we send it to cloud services including Tencent CloudBase (Shanghai) personal edition and deduct trial credit accordingly. We do not sell this content or use it for purposes unrelated to providing translation.
 4. **Your own API key:** A key you provide is stored only on your device and is not uploaded to our servers. Your input is sent directly to your selected third-party provider, which processes it independently and returns the result. We do not relay the body of your content in this process.
@@ -28,7 +28,7 @@ We do not use your source text to train our own general-purpose language models.
 
 ## 3. Entrusted processing, sharing, transfer and disclosure
 
-1. **Entrusted processing:** To provide SMS sign-in, cloud storage, translation relay and accounting, we entrust necessary processing to providers including Tencent Cloud. We require them to protect data under contract and process it only within the entrusted scope. These services primarily include Tencent CloudBase (Shanghai) personal edition for SMS, cloud functions and databases, depending on the services actually enabled.
+1. **Entrusted processing:** To provide SMS and email verification, cloud storage, translation relay and accounting, we entrust necessary processing to providers including Tencent Cloud. We require them to protect data under contract and process it only within the entrusted scope. These services primarily include Tencent CloudBase (Shanghai) personal edition for SMS, email, cloud functions and databases, depending on the services actually enabled.
 2. **Sharing:** We do not sell personal information to third parties or share it without authorization, except for entrusted processing described here or as otherwise required by law.
 3. **Transfer:** In a merger, acquisition or asset transfer, we may transfer personal information and will require the new holder to remain bound by this policy or obtain your consent again.
 4. **Public disclosure:** We will not publicly disclose personal information unless you separately consent or the law requires it.
@@ -36,7 +36,7 @@ We do not use your source text to train our own general-purpose language models.
 
 ## 4. Storage location and retention
 
-Personal information collected or generated in mainland China is stored there. We retain it for the shortest time necessary for the purpose. For example, phone numbers and ledger records are retained while an account exists; after account deletion, we delete or anonymize relevant information unless law requires retention. Feedback is deleted or anonymized within a reasonable period after it is handled, according to internal rules.
+Personal information collected or generated in mainland China is stored there. We retain it for the shortest time necessary for the purpose. For example, phone numbers or email addresses and ledger records are retained while an account exists; after account deletion, we delete or anonymize relevant information unless law requires retention. Feedback is deleted or anonymized within a reasonable period after it is handled, according to internal rules.
 
 ## 5. Security
 

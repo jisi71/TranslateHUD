@@ -1,0 +1,29 @@
+--- a/src/trialService.js
++++ b/src/trialService.js
+@@ -67 +67,5 @@
+-  return { uid }
++  // Do not accept a client-supplied phone or persist profile contact data.
++  // Whether CloudBase verifies this profile field must be checked before deployment.
++  const phone = typeof body.phone_number === 'string' ? body.phone_number.replace(/[\s()-]/g, '') : ''
++  const hasEligiblePhone = /^(?:\+?86)?1[3-9][0-9]{9}$/.test(phone)
++  return { uid, hasEligiblePhone }
+@@ -76 +80 @@
+-    return { uid: String(user.uid) }
++    return { uid: String(user.uid), hasEligiblePhone: user.hasEligiblePhone === true }
+@@ -95 +99 @@
+-      body: JSON.stringify(accountPayload(identified.uid, opened.record, false, ctx.now()))
++      body: JSON.stringify(accountPayload(identified.uid, opened.record, false, ctx.now(), identified.hasEligiblePhone))
+@@ -170 +174 @@
+-function accountPayload(uid, record, giftedNow, now) {
++function accountPayload(uid, record, giftedNow, now, canRedeemInvite) {
+@@ -181 +185,2 @@
+-    inviteRedeemed: record.giftGranted === true
++    inviteRedeemed: record.giftGranted === true,
++    canRedeemInvite: canRedeemInvite === true
+@@ -218,0 +224,3 @@
++  if (!identified.hasEligiblePhone) {
++    return errorResult(403, 'trial_invite_phone_required', '该账号当前无法兑换体验余额，可使用每日免费额度。')
++  }
+@@ -241 +249 @@
+-      body: JSON.stringify(accountPayload(identified.uid, result.record, true, ctx.now()))
++      body: JSON.stringify(accountPayload(identified.uid, result.record, true, ctx.now(), identified.hasEligiblePhone))

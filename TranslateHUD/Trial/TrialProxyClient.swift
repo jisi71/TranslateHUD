@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 struct TrialAccountSnapshot: Equatable, Sendable {
     var userId: String
@@ -10,6 +11,7 @@ struct TrialAccountSnapshot: Equatable, Sendable {
     /// Micro-yuan credited by this redeem. Zero when the call did not grant.
     var giftMicroYuan: Int
     var dailyQuota: DailyTranslationQuota? = nil
+    var canRedeemInvite: Bool? = nil
 
     var balanceFen: Int { TrialPricing.displayFen(microYuan: balanceMicroYuan) }
 }
@@ -98,7 +100,8 @@ enum TrialProxyClient {
             giftedNow: giftedNow,
             inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow),
             giftMicroYuan: giftAmount(json),
-            dailyQuota: DailyTranslationQuota.parse(json)
+            dailyQuota: DailyTranslationQuota.parse(json),
+            canRedeemInvite: strictBool(json["canRedeemInvite"])
         )
     }
 
@@ -143,9 +146,15 @@ enum TrialProxyClient {
             giftedNow: giftedNow,
             inviteRedeemed: inviteRedeemed(json, giftedNow: giftedNow),
             giftMicroYuan: giftAmount(json),
-            dailyQuota: DailyTranslationQuota.parse(json)
+            dailyQuota: DailyTranslationQuota.parse(json),
+            canRedeemInvite: strictBool(json["canRedeemInvite"])
         )
     }
+}
+
+private func strictBool(_ value: Any?) -> Bool? {
+    guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
+    return number.boolValue
 }
 
 private func inviteRedeemed(_ json: [String: Any], giftedNow: Bool) -> Bool {

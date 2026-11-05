@@ -63,7 +63,7 @@ private struct MenuBarMenu: View {
         case .ownKey:
             return "正在使用自己的 API"
         case .unavailable:
-            return "手机号登录后可试用"
+            return "手机号或邮箱登录后可试用"
         }
     }
 }

@@ -345,6 +345,64 @@ final class PopoverContentSizingTests: XCTestCase {
         XCTAssertLessThanOrEqual(fitted, PopoverContent.maxHeight)
     }
 
+    func testWideAndNarrowTablesFitTheSamePanel() async throws {
+        let translated = """
+        Before revision
+
+        | Project name | Project progress | Enrollment method | Planned enrollment | Actual enrollment | Completion status | Improvement method |
+        | --- | --- | --- | --- | --- | --- | --- |
+        | Animation production | 60% | Online livestream | 326 people | 398 people | Not completed | Continue next year |
+
+        After revision
+
+        | Project | Method | Enrollment | Improvement |
+        | --- | --- | --- | --- |
+        | Photography | Online | 210 people | Continue |
+        """
+        let progress = TranslationProgress()
+        progress.start(translator: PanelTranslator(text: translated), originals: ["测试"], target: .english)
+        for _ in 0..<50 {
+            if case .success = progress.state { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard case .success = progress.state else { return XCTFail("Fixture translation did not complete") }
+        let host = NSHostingController(rootView: PopoverContent(
+            original: "测试", progress: progress,
+            termProgress: TermExplanationProgress(explainer: EmptyTermExplainer(), texts: ["测试"]),
+            speech: SpeechController(), onCancel: {}, onRetry: {}
+        ))
+        let size = host.sizeThatFits(in: NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.maxHeight))
+        XCTAssertEqual(size.width, PopoverContent.fixedWidth)
+        XCTAssertTrue(size.height.isFinite)
+        XCTAssertLessThanOrEqual(size.height, PopoverContent.maxHeight)
+        try attachPreview(host: host, size: size, name: "Wide and narrow tables")
+        func scrollViews(in view: NSView) -> [NSScrollView] {
+            ((view as? NSScrollView).map { [$0] } ?? []) + view.subviews.flatMap { scrollViews(in: $0) }
+        }
+        let wide = scrollViews(in: host.view).filter {
+            guard let document = $0.documentView else { return false }
+            return document.frame.width > $0.contentView.bounds.width + 1
+        }
+        XCTAssertEqual(wide.count, 1, "Only the seven-column table should need horizontal scrolling")
+        if let scroll = wide.first, let document = scroll.documentView {
+            let end = max(document.frame.width - scroll.contentView.bounds.width, 0)
+            scroll.contentView.scroll(to: NSPoint(x: end, y: 0))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            XCTAssertEqual(scroll.contentView.bounds.minX, end, accuracy: 1, "The last column must be reachable")
+            scroll.scrollerStyle = .legacy
+            scroll.autohidesScrollers = false
+            scroll.hasHorizontalScroller = true
+            scroll.tile()
+            let reserve = ceil(NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy))
+            XCTAssertGreaterThanOrEqual(scroll.contentView.bounds.height + reserve + 1, document.frame.height,
+                                        "A persistent scroll bar must not cover the last row")
+            let legacyEnd = max(document.frame.width - scroll.contentView.bounds.width, 0)
+            scroll.contentView.scroll(to: NSPoint(x: legacyEnd, y: 0))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            XCTAssertEqual(scroll.contentView.bounds.minX, legacyEnd, accuracy: 1, "The last column must remain reachable")
+        }
+    }
+
     private func attachPreview<V: View>(host: NSHostingController<V>, size: NSSize, name: String) throws {
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = host.view

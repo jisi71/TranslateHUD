@@ -785,5 +785,21 @@ final class MarkdownDisplayTests: XCTestCase {
         XCTAssertGreaterThan(h3, h2 + 16)
     }
 
+    func testWideTableUsesReadableColumnsWithoutChangingSmallTables() {
+        let width = PopoverContent.translationTextWidth
+        XCTAssertFalse(MarkdownDisplay.tableNeedsHorizontalScroll(columns: 3, viewportWidth: width))
+        XCTAssertFalse(MarkdownDisplay.tableNeedsHorizontalScroll(columns: 4, viewportWidth: PopoverContent.sourceTextWidth))
+        XCTAssertEqual(MarkdownDisplay.tableColumnWidth(columns: 3, viewportWidth: width), width / 3, accuracy: 0.01)
+        XCTAssertTrue(MarkdownDisplay.tableNeedsHorizontalScroll(columns: 7, viewportWidth: width))
+        XCTAssertGreaterThanOrEqual(MarkdownDisplay.tableColumnWidth(columns: 7, viewportWidth: width), 105)
+
+        let rows = [["Project name", "Project progress", "Enrollment method", "Planned enrollment", "Actual enrollment", "Completion status", "Improvement method"],
+                    ["Animation production", "60%", "Online livestream", "326 people", "398 people", "Not completed", "Continue next year"]]
+        let narrow = MarkdownDisplay.tableHeight(rows: rows, role: .translation, colors: .dark, width: width)
+        let fullyVisible = MarkdownDisplay.tableHeight(rows: rows, role: .translation, colors: .dark, width: 7 * 105)
+        let scrollSpace = 16 + ceil(NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy))
+        XCTAssertEqual(narrow, fullyVisible + scrollSpace, accuracy: 1, "The scroll hint and bar need space")
+    }
+
 
 }

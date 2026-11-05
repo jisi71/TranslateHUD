@@ -1,6 +1,13 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "左右滚动查看表格": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "左右滚动查看表格" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Scroll horizontally to view the table" } }
+      }
+    },
     "内容正在更新，请再次输入。": {
       "extractionState": "manual",
       "localizations": {

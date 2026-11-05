@@ -183,7 +183,8 @@ struct TranslationPanel: View {
     /// while the full text scrolls inside it. Buttons stay outside that scroller.
     @ViewBuilder
     private func sourceText(_ layout: (textHeight: CGFloat, showsExpand: Bool)) -> some View {
-        let label = MarkdownDisplay.BlocksView(markdown: sourceBody, role: .source, colors: colors)
+        let label = MarkdownDisplay.BlocksView(markdown: sourceBody, role: .source, colors: colors,
+                                               width: sourceTextWidth(showsExpand: layout.showsExpand))
 
         if layout.showsExpand && !isOriginalExpanded {
             // Propose the six-line cap so HeightFitting scrolls, instead of
@@ -215,7 +216,7 @@ struct TranslationPanel: View {
         )
         // Stay on the first line while text streams in. Do not follow the tail.
         return HeightFitting {
-            MarkdownDisplay.BlocksView(markdown: translated, role: .translation, colors: colors)
+            MarkdownDisplay.BlocksView(markdown: translated, role: .translation, colors: colors, width: width)
         }
         .frame(maxHeight: textHeight, alignment: .topLeading)
         .panelSectionRole(.translation)

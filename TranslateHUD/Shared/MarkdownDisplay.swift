@@ -748,13 +748,25 @@ enum MarkdownDisplay {
             .map { $0.trimmingCharacters(in: .whitespaces) }
     }
 
+    private static let minimumTableColumnWidth: CGFloat = 105
+    private static let tableScrollHintHeight: CGFloat = 16
+    private static let tableScrollbarReserve: CGFloat = ceil(NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy))
+
+    static func tableColumnWidth(columns: Int, viewportWidth: CGFloat) -> CGFloat {
+        max(max(viewportWidth, 1) / CGFloat(max(columns, 1)), minimumTableColumnWidth)
+    }
+
+    static func tableNeedsHorizontalScroll(columns: Int, viewportWidth: CGFloat) -> Bool {
+        tableColumnWidth(columns: columns, viewportWidth: viewportWidth) * CGFloat(max(columns, 1)) > viewportWidth + 0.5
+    }
+
     /// Estimated height for a rendered pipe table — must match `BlocksView.tableView`.
     /// Borders are overlays (no layout height). Cell pad is 6×2 horizontal / 5×2 vertical;
     /// the grid also has `.padding(.vertical, 4)` outside the stroke.
     static func tableHeight(rows: [[String]], role: Role, colors: PanelColors, width: CGFloat) -> CGFloat {
         guard !rows.isEmpty else { return 0 }
         let cols = max(rows[0].count, 1)
-        let cellWidth = max(width / CGFloat(cols), 40)
+        let cellWidth = tableColumnWidth(columns: cols, viewportWidth: width)
         let horizontalPad: CGFloat = 12
         let verticalPad: CGFloat = 10
         let outerVerticalPad: CGFloat = 8
@@ -773,7 +785,9 @@ enum MarkdownDisplay {
             }
             total += rowHeight
         }
-        return total + outerVerticalPad
+        let scrollSpace = tableNeedsHorizontalScroll(columns: cols, viewportWidth: width)
+            ? tableScrollHintHeight + tableScrollbarReserve : 0
+        return total + outerVerticalPad + scrollSpace
     }
 
     /// Contiguous quote segments share one cluster (0 spacing) so outer/inner rails abut.
@@ -807,6 +821,7 @@ enum MarkdownDisplay {
         let markdown: String
         let role: Role
         let colors: PanelColors
+        let width: CGFloat
 
         var body: some View {
             let segs = MarkdownDisplay.segments(from: markdown)
@@ -861,22 +876,44 @@ enum MarkdownDisplay {
         @ViewBuilder
         private func tableView(_ rows: [[String]]) -> some View {
             let cols = max(rows.first?.count ?? 0, 1)
+            let cellWidth = MarkdownDisplay.tableColumnWidth(columns: cols, viewportWidth: width)
+            let gridWidth = cellWidth * CGFloat(cols)
+            if MarkdownDisplay.tableNeedsHorizontalScroll(columns: cols, viewportWidth: width) {
+                VStack(alignment: .leading, spacing: 2) {
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        tableGrid(rows, columns: cols, cellWidth: cellWidth)
+                            .frame(width: gridWidth, alignment: .leading)
+                            .padding(.bottom, MarkdownDisplay.tableScrollbarReserve)
+                    }
+                    .frame(width: width, alignment: .leading)
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.left.and.right").accessibilityHidden(true)
+                        Text(InterfaceLanguageStore.shared.text("左右滚动查看表格"))
+                    }
+                    .font(.system(size: 10))
+                    .foregroundStyle(colors.muted)
+                    .frame(height: MarkdownDisplay.tableScrollHintHeight - 2, alignment: .center)
+                }
+                .padding(.vertical, 4)
+            } else {
+                tableGrid(rows, columns: cols, cellWidth: cellWidth)
+                    .frame(width: gridWidth, alignment: .leading)
+                    .padding(.vertical, 4)
+            }
+        }
+
+        private func tableGrid(_ rows: [[String]], columns: Int, cellWidth: CGFloat) -> some View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, row in
                     HStack(alignment: .top, spacing: 0) {
-                        ForEach(0..<cols, id: \.self) { col in
+                        ForEach(0..<columns, id: \.self) { col in
                             let cell = col < row.count ? row[col] : ""
                             Text(MarkdownDisplay.styled(cell.isEmpty ? " " : cell, role: role, colors: colors))
                                 .lineSpacing(role.lineSpacing)
                                 .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                                .frame(width: cellWidth - 12, alignment: .topLeading)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 5)
-                                .overlay(alignment: .trailing) {
-                                    if col < cols - 1 {
-                                        Rectangle().fill(colors.border).frame(width: 1)
-                                    }
-                                }
                         }
                     }
                     .overlay(alignment: .bottom) {
@@ -885,13 +922,24 @@ enum MarkdownDisplay {
                     .background(rowIndex == 0 ? colors.border.opacity(0.12) : Color.clear)
                 }
             }
+            .overlay {
+                GeometryReader { geometry in
+                    Path { path in
+                        for column in 1..<columns {
+                            let x = CGFloat(column) * cellWidth
+                            path.move(to: CGPoint(x: x, y: 0))
+                            path.addLine(to: CGPoint(x: x, y: geometry.size.height))
+                        }
+                    }
+                    .stroke(colors.border, lineWidth: 1)
+                }
+                .allowsHitTesting(false)
+            }
             .overlay(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .stroke(colors.border, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(.vertical, 4)
         }
 
         @ViewBuilder

@@ -32,10 +32,15 @@ enum OCRService {
     @available(macOS 26.0, *)
     static func recognizeDocuments(image: NSImage) async throws -> [DocumentObservation] {
         guard let cg = cgImage(from: image) else { throw OCRError.noCGImage }
+        return try await recognizeDocuments(cgImage: cg)
+    }
+
+    @available(macOS 26.0, *)
+    static func recognizeDocuments(cgImage: CGImage) async throws -> [DocumentObservation] {
         var request = RecognizeDocumentsRequest()
         request.textRecognitionOptions.automaticallyDetectLanguage = true
         request.textRecognitionOptions.useLanguageCorrection = true
-        return try await request.perform(on: cg)
+        return try await request.perform(on: cgImage)
     }
 
     @available(macOS 26.0, *)

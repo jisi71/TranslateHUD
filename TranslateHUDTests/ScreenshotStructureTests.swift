@@ -377,6 +377,166 @@ final class ScreenshotStructureTests: XCTestCase {
         XCTAssertFalse(plan.originalMarkdown.contains("| A | B |"))
     }
 
+    func testCrossingLineOnlyRejectsTheAffectedTable() {
+        let first = ScreenshotTable(rows: [["First", "Count"], ["Alpha", "1"]],
+                                    normalizedBox: CGRect(x: 0.1, y: 0.6, width: 0.4, height: 0.3), hasMergedCells: false)
+        let second = ScreenshotTable(rows: [["Second", "Count"], ["Beta", "2"]],
+                                     normalizedBox: CGRect(x: 0.1, y: 0.1, width: 0.4, height: 0.3), hasMergedCells: false)
+        let line = OCRService.Line(text: "Crossing first table", normalizedBox: CGRect(x: 0.08, y: 0.7, width: 0.2, height: 0.04), confidence: 1)
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: [line], tables: [first, second])
+        XCTAssertTrue(plan.originalMarkdown.contains("Crossing first table"))
+        XCTAssertFalse(plan.originalMarkdown.contains("| Alpha | 1 |"))
+        XCTAssertTrue(plan.originalMarkdown.contains("| Beta | 2 |"))
+    }
+
+    func testReviewedTablePreservesUnmatchedAndCrossingOCRLines() {
+        let rects: [[CGRect?]] = [
+            [CGRect(x: 0.1, y: 0.7, width: 0.4, height: 0.1), CGRect(x: 0.5, y: 0.7, width: 0.4, height: 0.1)],
+            [CGRect(x: 0.1, y: 0.6, width: 0.4, height: 0.1), CGRect(x: 0.5, y: 0.6, width: 0.4, height: 0.1)],
+            [CGRect(x: 0.1, y: 0.5, width: 0.4, height: 0.1), CGRect(x: 0.5, y: 0.5, width: 0.4, height: 0.1)]
+        ]
+        let table = ScreenshotTable(rows: [["Product", "Amount"], ["One", "5"], ["Two", "5"]],
+                                    normalizedBox: CGRect(x: 0.1, y: 0.5, width: 0.8, height: 0.3), hasMergedCells: false, cellRects: rects)
+        let lines = [
+            OCRService.Line(text: "Product", normalizedBox: CGRect(x: 0.15, y: 0.73, width: 0.2, height: 0.03), confidence: 1),
+            OCRService.Line(text: "Amount", normalizedBox: CGRect(x: 0.55, y: 0.73, width: 0.2, height: 0.03), confidence: 1),
+            OCRService.Line(text: "One", normalizedBox: CGRect(x: 0.15, y: 0.63, width: 0.2, height: 0.03), confidence: 1),
+            OCRService.Line(text: "5", normalizedBox: CGRect(x: 0.55, y: 0.63, width: 0.05, height: 0.03), confidence: 1),
+            OCRService.Line(text: "Two", normalizedBox: CGRect(x: 0.15, y: 0.53, width: 0.2, height: 0.03), confidence: 1),
+            OCRService.Line(text: "6", normalizedBox: CGRect(x: 0.55, y: 0.53, width: 0.05, height: 0.03), confidence: 1),
+            OCRService.Line(text: "Across boundary", normalizedBox: CGRect(x: 0.08, y: 0.48, width: 0.2, height: 0.05), confidence: 1)
+        ]
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: lines, tables: [table], reviewedTables: [table])
+        XCTAssertTrue(plan.originalMarkdown.contains("| One | 5 |"))
+        XCTAssertTrue(plan.originalMarkdown.contains("| Two | 5 |"))
+        XCTAssertTrue(plan.originalMarkdown.contains("6"))
+        XCTAssertTrue(plan.originalMarkdown.contains("Across boundary"))
+        XCTAssertEqual(plan.sourceTexts.filter { $0 == "Product" }.count, 1)
+        XCTAssertEqual(plan.sourceTexts.filter { $0 == "5" }.count, 2)
+    }
+
+    func testSeparatedTableTitleIsPreservedWithoutDuplicatingOCR() {
+        let title = ScreenshotTableTitle(text: "Comparison", normalizedBox: CGRect(x: 0.2, y: 0.8, width: 0.4, height: 0.05))
+        let table = ScreenshotTable(rows: [["Name", "Count"], ["One", "1"]],
+                                    normalizedBox: CGRect(x: 0.1, y: 0.4, width: 0.8, height: 0.3), hasMergedCells: false,
+                                    leadingTitle: title)
+        let withoutOCR = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: [], tables: [table], reviewedTables: [table])
+        XCTAssertTrue(withoutOCR.originalMarkdown.contains("Comparison"))
+        XCTAssertTrue(withoutOCR.originalMarkdown.contains("| One | 1 |"))
+        let line = OCRService.Line(text: "Comparison", normalizedBox: title.normalizedBox, confidence: 1)
+        let withOCR = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: [line], tables: [table], reviewedTables: [table])
+        XCTAssertEqual(withOCR.sourceTexts.filter { $0 == "Comparison" }.count, 1)
+    }
+
+    func testReviewedTablePreservesDocumentOnlyTitleAndWhitespaceDifferences() {
+        let title = ScreenshotTextBlock(text: "Document-only title", box: CGRect(x: 0.1, y: 0.9, width: 0.5, height: 0.04), style: .heading(1))
+        let rects: [[CGRect?]] = [
+            [CGRect(x: 0.1, y: 0.7, width: 0.4, height: 0.1), CGRect(x: 0.5, y: 0.7, width: 0.4, height: 0.1)],
+            [CGRect(x: 0.1, y: 0.6, width: 0.4, height: 0.1), CGRect(x: 0.5, y: 0.6, width: 0.4, height: 0.1)]
+        ]
+        let table = ScreenshotTable(rows: [["Role", "Amount"], ["therapist", "1000"]],
+                                    normalizedBox: CGRect(x: 0.1, y: 0.6, width: 0.8, height: 0.2), hasMergedCells: false, cellRects: rects)
+        let lines = [
+            OCRService.Line(text: "the rapist", normalizedBox: CGRect(x: 0.15, y: 0.63, width: 0.2, height: 0.03), confidence: 1),
+            OCRService.Line(text: "1 000", normalizedBox: CGRect(x: 0.55, y: 0.63, width: 0.2, height: 0.03), confidence: 1)
+        ]
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [title], lines: lines, tables: [table], reviewedTables: [table])
+        XCTAssertTrue(plan.originalMarkdown.contains("# Document\\-only title"))
+        XCTAssertTrue(plan.originalMarkdown.contains("the rapist"))
+        XCTAssertTrue(plan.originalMarkdown.contains("1 000"))
+        XCTAssertTrue(plan.originalMarkdown.contains("| therapist | 1000 |"))
+    }
+
+    func testTextFallbackKeepsDocumentOnlyTitleAndRepeatedOCRValues() {
+        let title = ScreenshotTextBlock(text: "Document-only title", box: CGRect(x: 0.1, y: 0.9, width: 0.6, height: 0.04), style: .heading(1))
+        let block = ScreenshotTextBlock(text: "5", box: CGRect(x: 0.1, y: 0.6, width: 0.3, height: 0.2))
+        let lines = [
+            OCRService.Line(text: "5", normalizedBox: CGRect(x: 0.12, y: 0.74, width: 0.05, height: 0.03), confidence: 1),
+            OCRService.Line(text: "5", normalizedBox: CGRect(x: 0.12, y: 0.64, width: 0.05, height: 0.03), confidence: 1),
+            OCRService.Line(text: "Other", normalizedBox: CGRect(x: 0.5, y: 0.4, width: 0.2, height: 0.03), confidence: 1)
+        ]
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [title, block], lines: lines, tables: [], hasRejectedTable: true)
+        XCTAssertTrue(plan.originalMarkdown.contains("# Document\\-only title"))
+        XCTAssertTrue(plan.originalMarkdown.contains("Other"))
+        XCTAssertGreaterThanOrEqual(plan.originalMarkdown.components(separatedBy: "5").count - 1, 2)
+        let ordinary = ScreenshotDocumentAssembler.makePlan(textBlocks: [block], lines: Array(lines.prefix(2)), tables: [])
+        XCTAssertGreaterThanOrEqual(ordinary.originalMarkdown.components(separatedBy: "5").count - 1, 2)
+    }
+
+    func testDocumentBlockConsumesOnlyAnExactlyMatchedLineGroup() {
+        let block = ScreenshotTextBlock(text: "Alpha Beta", box: CGRect(x: 0.1, y: 0.6, width: 0.4, height: 0.2))
+        let lines = [
+            OCRService.Line(text: "Alpha", normalizedBox: CGRect(x: 0.12, y: 0.74, width: 0.15, height: 0.03), confidence: 1),
+            OCRService.Line(text: "Beta", normalizedBox: CGRect(x: 0.12, y: 0.64, width: 0.15, height: 0.03), confidence: 1)
+        ]
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [block], lines: lines, tables: [], hasRejectedTable: true)
+        XCTAssertEqual(plan.sourceTexts, ["Alpha Beta"])
+    }
+
+    func testShortNumberDoesNotMatchPartOfADifferentNumber() {
+        let block = ScreenshotTextBlock(text: "15", box: CGRect(x: 0.1, y: 0.6, width: 0.4, height: 0.2))
+        let line = OCRService.Line(text: "5", normalizedBox: CGRect(x: 0.12, y: 0.7, width: 0.05, height: 0.03), confidence: 1)
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [block], lines: [line], tables: [])
+        XCTAssertTrue(plan.sourceTexts.contains("15"))
+        XCTAssertTrue(plan.sourceTexts.contains("5"))
+    }
+
+    func testOCRDisagreementInOrderAndNumericPunctuationIsPreserved() {
+        let box = CGRect(x: 0.1, y: 0.6, width: 0.5, height: 0.2)
+        let reversed = ScreenshotTextBlock(text: "拒绝 批准", box: box)
+        let lines = [
+            OCRService.Line(text: "批准", normalizedBox: CGRect(x: 0.12, y: 0.74, width: 0.15, height: 0.03), confidence: 1),
+            OCRService.Line(text: "拒绝", normalizedBox: CGRect(x: 0.12, y: 0.64, width: 0.15, height: 0.03), confidence: 1)
+        ]
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [reversed], lines: lines, tables: [])
+        XCTAssertTrue(plan.sourceTexts.contains("批准"))
+        XCTAssertTrue(plan.sourceTexts.contains("拒绝"))
+
+        for (document, ocr) in [("5.9", "5"), ("−5", "5"), ("− 5", "5"), ("1,000", "000")] {
+            let block = ScreenshotTextBlock(text: document, box: box)
+            let line = OCRService.Line(text: ocr, normalizedBox: CGRect(x: 0.12, y: 0.7, width: 0.1, height: 0.03), confidence: 1)
+            let candidate = ScreenshotDocumentAssembler.makePlan(textBlocks: [block], lines: [line], tables: [])
+            XCTAssertTrue(candidate.sourceTexts.contains(ocr), "OCR difference must remain visible for \(document)")
+        }
+    }
+
+    func testConsumingPunctuationCannotCreateANewTextMatch() {
+        let block = ScreenshotTextBlock(text: "A,B", box: CGRect(x: 0.1, y: 0.6, width: 0.4, height: 0.2))
+        let lines = [
+            OCRService.Line(text: ",", normalizedBox: CGRect(x: 0.12, y: 0.74, width: 0.05, height: 0.03), confidence: 1),
+            OCRService.Line(text: "A B", normalizedBox: CGRect(x: 0.12, y: 0.64, width: 0.15, height: 0.03), confidence: 1)
+        ]
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [block], lines: lines, tables: [])
+        XCTAssertTrue(plan.sourceTexts.contains(","))
+        XCTAssertTrue(plan.sourceTexts.contains("A B"))
+    }
+
+    @available(macOS 26.0, *)
+    func testRegionRecoveryTargetsUncoveredHalfAndMapsCoordinates() {
+        let upperTable = CGRect(x: 0.1, y: 0.65, width: 0.8, height: 0.25)
+        let lowerLines = (0..<8).map { index in
+            OCRService.Line(text: "Line \(index)", normalizedBox: CGRect(x: 0.2, y: 0.1 + CGFloat(index) * 0.03, width: 0.3, height: 0.02), confidence: 1)
+        }
+        let insideUpper = OCRService.Line(text: "Inside", normalizedBox: CGRect(x: 0.2, y: 0.7, width: 0.3, height: 0.02), confidence: 1)
+        let regions = ScreenshotRegionRecovery.candidateRegions(lines: lowerLines + [insideUpper], rawRegions: [upperTable])
+        XCTAssertEqual(regions, [CGRect(x: 0, y: 0, width: 1, height: 0.5)])
+        XCTAssertTrue(ScreenshotRegionRecovery.candidateRegions(lines: lowerLines, rawRegions: []).isEmpty)
+
+        let local = CGRect(x: 0.1, y: 0.2, width: 0.3, height: 0.4)
+        let mapped = ScreenshotRegionRecovery.map(local, into: regions[0])
+        XCTAssertEqual(mapped.minY, 0.1, accuracy: 0.0001)
+        XCTAssertEqual(mapped.height, 0.2, accuracy: 0.0001)
+        let roundTrip = ScreenshotRegionRecovery.unmap(mapped, from: regions[0])
+        XCTAssertEqual(roundTrip.minY, local.minY, accuracy: 0.0001)
+        XCTAssertEqual(roundTrip.height, local.height, accuracy: 0.0001)
+        XCTAssertTrue(ScreenshotRegionRecovery.overlaps(mapped, mapped))
+        XCTAssertFalse(ScreenshotRegionRecovery.overlaps(mapped, upperTable))
+        XCTAssertTrue(ScreenshotRegionRecovery.isSeparateCandidate(local, region: regions[0], rawRegions: [upperTable], existing: []))
+        XCTAssertFalse(ScreenshotRegionRecovery.isSeparateCandidate(local, region: regions[0], rawRegions: [mapped], existing: []))
+        XCTAssertFalse(ScreenshotRegionRecovery.isSeparateCandidate(CGRect(x: 0.1, y: 0.8, width: 0.3, height: 0.2),
+                                                                     region: regions[0], rawRegions: [], existing: []))
+    }
+
     func testTallTableSortsByTopEdgeInsteadOfMidpoint() {
         let table = ScreenshotTable(rows: [["Header", "Value"], ["A", "1"]],
                                     normalizedBox: CGRect(x: 0.1, y: 0.1, width: 0.3, height: 0.8), hasMergedCells: false)

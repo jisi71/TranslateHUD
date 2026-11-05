@@ -1,4 +1,5 @@
 import AppKit
+import Vision
 
 /// 截图 → 本机 OCR → 用户校对 → 打开浮窗并翻译。
 enum ScreenshotFlow {
@@ -44,6 +45,7 @@ enum ScreenshotFlow {
         var textBlocks = ScreenshotTextLayout.fromLines(lines)
         var tables: [ScreenshotTable] = []
         var reviewCandidates: [ScreenshotTable] = []
+        var reviewedTables: [ScreenshotTable] = []
         var tableWasRejected = false
         let imageData = OCRService.cgImage(from: image)
         if #available(macOS 26.0, *) {
@@ -68,6 +70,13 @@ enum ScreenshotFlow {
                     tables = assessment.tables
                     reviewCandidates = assessment.reviewRequired
                     tableWasRejected = !assessment.rejected.isEmpty
+                    let rawRegions = documents.flatMap { $0.document.tables.map { $0.boundingRegion.boundingBox.cgRect } }
+                    if !rawRegions.isEmpty {
+                        let recovered = await ScreenshotRegionRecovery.findCandidates(
+                            image: imageData, lines: lines, rawRegions: rawRegions, existing: tables + reviewCandidates
+                        )
+                        reviewCandidates.append(contentsOf: recovered)
+                    }
                 }
             } catch {
                 AppLog.info("文档结构识别不可用，使用文字行识别结果")
@@ -92,9 +101,10 @@ enum ScreenshotFlow {
             }.value
             if let candidate { reviewCandidates.append(candidate.table) }
         }
-        for candidate in reviewCandidates.sorted(by: { $0.normalizedBox.maxY > $1.normalizedBox.maxY }) {
-            switch ScreenshotTableReview.ask(image: image, table: candidate) {
-            case .useTable: tables.append(candidate)
+        let orderedCandidates = reviewCandidates.sorted(by: { $0.normalizedBox.maxY > $1.normalizedBox.maxY })
+        for (index, candidate) in orderedCandidates.enumerated() {
+            switch ScreenshotTableReview.ask(image: image, table: candidate, index: index + 1, total: orderedCandidates.count) {
+            case .useTable: tables.append(candidate); reviewedTables.append(candidate)
             case .useText: tableWasRejected = true
             case .cancel: return
             }
@@ -102,9 +112,9 @@ enum ScreenshotFlow {
 
         tableWasRejected = tableWasRejected || ScreenshotDocumentAssembler.hasCrossingLine(lines, tables: tables)
         let initialPlan = ScreenshotDocumentAssembler.makePlan(textBlocks: textBlocks, lines: lines, tables: tables,
-                                                                hasRejectedTable: tableWasRejected)
+                                                                hasRejectedTable: tableWasRejected, reviewedTables: reviewedTables)
         guard let plan = ScreenshotProofreadWindow.ask(image: image, plan: initialPlan, styleUnavailable: styleUnavailable,
-                                                        tableWasRejected: tableWasRejected) else { return }
+                                                        tableWasRejected: tableWasRejected || !reviewedTables.isEmpty) else { return }
         let originals = [plan.originalMarkdown]
         let source = plan.sourceForQuota
         let target = TargetLanguage.resolved(

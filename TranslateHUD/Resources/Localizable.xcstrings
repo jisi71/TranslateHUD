@@ -199,6 +199,27 @@
         }
       }
     },
+    "候选表格 %d/%d": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "候选表格 %d/%d" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Table candidate %d of %d" } }
+      }
+    },
+    "当前候选区域": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前候选区域" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Current candidate area" } }
+      }
+    },
+    "无法匹配到表格的文字会单独保留，请检查是否重复。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法匹配到表格的文字会单独保留，请检查是否重复。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Text that cannot be matched to a table cell is kept separately. Check for duplicates." } }
+      }
+    },
     "缩小截图": {
       "extractionState": "manual",
       "localizations": {

@@ -2,6 +2,11 @@ import CoreGraphics
 import Foundation
 import Vision
 
+struct ScreenshotTableTitle: Equatable, Sendable {
+    let text: String
+    let normalizedBox: CGRect
+}
+
 /// A rectangular grid in screenshot coordinates. Empty strings are real empty cells.
 struct ScreenshotTable: Equatable, Sendable {
     let rows: [[String]]
@@ -10,12 +15,15 @@ struct ScreenshotTable: Equatable, Sendable {
     /// A nil entry means its position could not be established (e.g. an empty unruled cell).
     let cellRects: [[CGRect?]]
     let hasMergedCells: Bool
+    let leadingTitle: ScreenshotTableTitle?
 
-    init(rows: [[String]], normalizedBox: CGRect, hasMergedCells: Bool, cellRects: [[CGRect?]]? = nil) {
+    init(rows: [[String]], normalizedBox: CGRect, hasMergedCells: Bool, cellRects: [[CGRect?]]? = nil,
+         leadingTitle: ScreenshotTableTitle? = nil) {
         self.rows = rows
         self.normalizedBox = normalizedBox
         self.hasMergedCells = hasMergedCells
         self.cellRects = cellRects ?? rows.map { Array(repeating: nil, count: $0.count) }
+        self.leadingTitle = leadingTitle
     }
 
     var nonEmptyCells: [String] {
@@ -31,7 +39,8 @@ struct ScreenshotTable: Equatable, Sendable {
             defer { i += 1 }
             return translated[i]
         } }
-        return ScreenshotTable(rows: result, normalizedBox: normalizedBox, hasMergedCells: hasMergedCells, cellRects: cellRects)
+        return ScreenshotTable(rows: result, normalizedBox: normalizedBox, hasMergedCells: hasMergedCells,
+                               cellRects: cellRects, leadingTitle: leadingTitle)
     }
 
     /// A GFM separator is required by the existing table renderer. Encode pipes as an
@@ -74,11 +83,13 @@ enum ScreenshotTableRecognizer {
         let rejected: [RejectionReason]
         /// Borderless layouts may be aligned prose. A user must confirm each candidate.
         let reviewRequired: [ScreenshotTable]
+        let blockedRegions: [CGRect]
 
-        init(tables: [ScreenshotTable], rejected: [RejectionReason], reviewRequired: [ScreenshotTable] = []) {
+        init(tables: [ScreenshotTable], rejected: [RejectionReason], reviewRequired: [ScreenshotTable] = [], blockedRegions: [CGRect] = []) {
             self.tables = tables
             self.rejected = rejected
             self.reviewRequired = reviewRequired
+            self.blockedRegions = blockedRegions
         }
     }
 
@@ -93,39 +104,81 @@ enum ScreenshotTableRecognizer {
     /// Visible borders must be complete; borderless layouts need repeated row and column anchors.
     @available(macOS 26.0, *)
     static func assess(from document: DocumentObservation.Container, image: CGImage, lines: [OCRService.Line]) -> Assessment {
-        let fallback = assessFallback(from: image, lines: lines)
-        let ruled = fallback.tables
         let raster = Raster(image: image)
+        let fallback = raster.map { assessFallback(from: $0, lines: lines) } ?? Assessment(tables: [], rejected: [])
+        let ruled = fallback.tables
         var accepted: [ScreenshotTable] = []
         var review: [ScreenshotTable] = []
         var rejected: [RejectionReason] = document.tables.isEmpty ? fallback.rejected : []
+        var blockedRegions: [CGRect] = []
         for table in document.tables {
-            let height = table.rows.count
+            let rawBox = table.boundingRegion.boundingBox.cgRect.standardized
+            func reject(_ reason: RejectionReason) {
+                rejected.append(reason)
+                if rawBox.minX.isFinite, rawBox.minY.isFinite, rawBox.maxX.isFinite, rawBox.maxY.isFinite,
+                   rawBox.width > 0, rawBox.height > 0 { blockedRegions.append(rawBox) }
+            }
+            let originalHeight = table.rows.count
             let width = table.columns.count
+            guard originalHeight > 0, width >= 2, originalHeight <= 100, width <= 40,
+                  originalHeight * width <= 1_000, table.rows.allSatisfy({ $0.count <= width }) else {
+                reject(.unsupportedDimensions); continue
+            }
+            let cells = Array(Set(table.rows.flatMap { $0 }))
+            let spanning = cells.filter { $0.rowRange.count > 1 || $0.columnRange.count > 1 }
+            // Vision sometimes includes a standalone title as a merged first
+            // row. Separate only that narrow case; body spans stay unsupported.
+            let splitTitle = spanning.count == 1 && spanning[0].rowRange == (0...0) &&
+                spanning[0].columnRange.count > 1 &&
+                !spanning[0].content.text.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                cells.filter { $0.rowRange.contains(0) && !$0.content.text.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count == 1
+            let rowOffset = splitTitle ? 1 : 0
+            let height = table.rows.count - rowOffset
             guard height > 0, width >= 2, height <= 100, width <= 40, height * width <= 1_000 else {
-                rejected.append(.unsupportedDimensions); continue
+                reject(.unsupportedDimensions); continue
             }
             var grid = Array(repeating: Array(repeating: "", count: width), count: height)
             var occupied = Array(repeating: Array(repeating: false, count: width), count: height)
+            var visionRects = Array(repeating: Array<CGRect?>(repeating: nil, count: width), count: height)
             var issue: RejectionReason?
             // Vision may repeat a merged cell in several rows/columns.
-            for cell in Set(table.rows.flatMap { $0 }) {
+            for cell in cells {
                 let rs = cell.rowRange
                 let cs = cell.columnRange
-                guard rs.lowerBound >= 0, cs.lowerBound >= 0, rs.upperBound < height, cs.upperBound < width else {
+                if splitTitle && rs == (0...0) { continue }
+                guard rs.lowerBound >= rowOffset, cs.lowerBound >= 0,
+                      rs.upperBound < table.rows.count, cs.upperBound < width else {
                     issue = .invalidCellRanges; break
                 }
                 guard rs.count == 1, cs.count == 1 else { issue = .mergedCells; break }
-                for r in rs { for c in cs {
-                    if occupied[r][c] { issue = .overlappingCells }
-                    occupied[r][c] = true
-                } }
+                let row = rs.lowerBound - rowOffset
+                if occupied[row][cs.lowerBound] { issue = .overlappingCells }
+                occupied[row][cs.lowerBound] = true
                 if issue != nil { break }
-                grid[rs.lowerBound][cs.lowerBound] = cell.content.text.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                grid[row][cs.lowerBound] = cell.content.text.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                let rect = cell.content.boundingRegion.boundingBox.cgRect.standardized
+                if rect.width > 0, rect.height > 0,
+                   rect.minX.isFinite, rect.minY.isFinite, rect.maxX.isFinite, rect.maxY.isFinite {
+                    visionRects[row][cs.lowerBound] = rect
+                }
             }
-            if let issue { rejected.append(issue); continue }
-            let box = table.boundingRegion.boundingBox.cgRect
+            if let issue { reject(issue); continue }
+            let originalBox = rawBox
+            let bodyBox = visionRects.flatMap { $0 }.compactMap { $0 }.reduce(CGRect.null) { $0.union($1) }
+            let box = splitTitle && !bodyBox.isNull ? bodyBox : originalBox
+            guard box.minX.isFinite, box.minY.isFinite, box.maxX.isFinite, box.maxY.isFinite,
+                  box.width > 0, box.height > 0, box.minX >= 0, box.minY >= 0,
+                  box.maxX <= 1, box.maxY <= 1 else {
+                reject(.invalidCellRanges); continue
+            }
+            let leadingTitle: ScreenshotTableTitle? = splitTitle ? .init(
+                text: spanning[0].content.text.transcript.trimmingCharacters(in: .whitespacesAndNewlines),
+                normalizedBox: spanning[0].content.boundingRegion.boundingBox.cgRect
+            ) : nil
             let hasRuleEvidence = raster?.hasRuleEvidence(in: box) ?? true
+            if splitTitle && !hasRuleEvidence {
+                reject(.mergedCells); continue
+            }
             let ruledMatch = ruled.first(where: { candidate in
                 guard candidate.rows.count == height, candidate.rows.first?.count == width else { return false }
                 let intersection = candidate.normalizedBox.intersection(box)
@@ -133,8 +186,27 @@ enum ScreenshotTableRecognizer {
                 let area = candidate.normalizedBox.width * candidate.normalizedBox.height
                 return area > 0 && intersection.width * intersection.height / area > 0.75
             })
-            let match = ruledMatch ?? (hasRuleEvidence ? nil : borderlessMatch(rows: grid, box: box, image: image, lines: lines))
-            guard let match else { rejected.append(.ambiguousGrid); continue }
+            // A reconstructed title must always go through explicit review.
+            let match = splitTitle ? nil : (ruledMatch ?? (hasRuleEvidence ? nil : borderlessMatch(rows: grid, box: box, image: image, lines: lines)))
+            guard let match else {
+                // A colored header or sparse layout can defeat the independent
+                // grid check. Offer a structurally plausible Vision result only
+                // as an explicit, editable review candidate; never promote it
+                // to an automatically accepted table.
+                let nonemptyRows = grid.filter { $0.contains { !$0.isEmpty } }.count
+                let nonemptyColumns = (0..<width).filter { column in grid.contains { !$0[column].isEmpty } }.count
+                let hasOCR = lines.contains { box.contains(CGPoint(x: $0.normalizedBox.midX, y: $0.normalizedBox.midY)) }
+                let hasPartialGrid = raster?.hasPartialGridEvidence(in: box) ?? true
+                if fallback.rejected.isEmpty, !hasPartialGrid, height >= 2, width >= 2,
+                   box.width > 0, box.height > 0, box.minX.isFinite, box.minY.isFinite,
+                   nonemptyRows >= 2, nonemptyColumns >= 2, hasOCR {
+                    review.append(ScreenshotTable(rows: grid, normalizedBox: box, hasMergedCells: false,
+                                                  cellRects: visionRects, leadingTitle: leadingTitle))
+                } else {
+                    reject(.ambiguousGrid)
+                }
+                continue
+            }
             let result = ScreenshotTable(rows: grid, normalizedBox: match.normalizedBox, hasMergedCells: false, cellRects: match.cellRects)
             let pairs = Array(zip(grid.flatMap({ $0 }), match.rows.flatMap({ $0 })))
             if pairs.allSatisfy({ $0.0 == $0.1 }) {
@@ -144,10 +216,44 @@ enum ScreenshotTableRecognizer {
                 // authoritative. Let the user check and edit each cell.
                 review.append(result)
             } else {
-                rejected.append(.textMismatch)
+                reject(.textMismatch)
             }
         }
-        return Assessment(tables: accepted, rejected: rejected, reviewRequired: review)
+        return consolidate(accepted: accepted, review: review, rejected: rejected, blockedRegions: blockedRegions)
+    }
+
+    /// Duplicate document observations can describe the same screen region.
+    /// Conflicting overlapping candidates are kept as text instead of being
+    /// shown or translated twice.
+    static func consolidate(accepted: [ScreenshotTable], review: [ScreenshotTable], rejected: [RejectionReason],
+                            blockedRegions: [CGRect] = []) -> Assessment {
+        var entries: [(table: ScreenshotTable, verified: Bool)] = []
+        var blocked = blockedRegions
+        var reasons = rejected
+        func overlapping(_ a: CGRect, _ b: CGRect) -> Bool {
+            let intersection = a.intersection(b)
+            let smaller = min(a.width * a.height, b.width * b.height)
+            return !intersection.isNull && smaller > 0 && intersection.width * intersection.height / smaller >= 0.8
+        }
+        for entry in accepted.map({ ($0, true) }) + review.map({ ($0, false) }) {
+            let table = entry.0
+            if blocked.contains(where: { overlapping($0, table.normalizedBox) }) { continue }
+            let matches = entries.indices.filter { overlapping(entries[$0].table.normalizedBox, table.normalizedBox) }
+            if matches.isEmpty {
+                entries.append((table, entry.1))
+            } else if matches.count == 1, let index = matches.first,
+                      entries[index].table.rows == table.rows,
+                      entries[index].table.leadingTitle?.text == table.leadingTitle?.text {
+                if entry.1 && !entries[index].verified { entries[index] = (table, true) }
+            } else {
+                let conflict = matches.reduce(table.normalizedBox) { $0.union(entries[$1].table.normalizedBox) }
+                blocked.append(conflict)
+                for index in matches.reversed() { entries.remove(at: index) }
+                if !reasons.contains(.ambiguousGrid) { reasons.append(.ambiguousGrid) }
+            }
+        }
+        return Assessment(tables: entries.filter { $0.verified }.map { $0.table }, rejected: reasons,
+                          reviewRequired: entries.filter { !$0.verified }.map { $0.table }, blockedRegions: blocked)
     }
 
     private static func withoutWhitespace(_ value: String) -> String {
@@ -161,13 +267,14 @@ enum ScreenshotTableRecognizer {
         let accepted = assessments.flatMap(\.tables)
         var review = assessments.flatMap(\.reviewRequired)
         var rejected = assessments.flatMap(\.rejected)
+        let blockedRegions = assessments.flatMap(\.blockedRegions)
         if !tableCounts.isEmpty, assessments.count == tableCounts.count, tableCounts.allSatisfy({ $0 == 0 }) {
             for reason in fallback.rejected where !rejected.contains(reason) { rejected.append(reason) }
             if accepted.isEmpty, review.isEmpty, rejected.isEmpty {
                 review.append(contentsOf: fallback.tables)
             }
         }
-        return Assessment(tables: accepted, rejected: rejected, reviewRequired: review)
+        return consolidate(accepted: accepted, review: review, rejected: rejected, blockedRegions: blockedRegions)
     }
 
     /// Borderless tables are inherently ambiguous. Only accept a dense, regular
@@ -249,6 +356,10 @@ enum ScreenshotTableRecognizer {
 
     static func assessFallback(from image: CGImage, lines: [OCRService.Line]) -> Assessment {
         guard let raster = Raster(image: image) else { return Assessment(tables: [], rejected: []) }
+        return assessFallback(from: raster, lines: lines)
+    }
+
+    private static func assessFallback(from raster: Raster, lines: [OCRService.Line]) -> Assessment {
         let grids = raster.grids()
         // Two visual grids can also be one grid with a full-width cell whose
         // vertical border is missing. Never invent a separation or drop a row.
@@ -337,13 +448,24 @@ private struct Raster {
 
     func grids() -> [(xs: [Int], ys: [Int])] {
         // Long runs avoid classifying ordinary aligned paragraphs as a table.
-        func longest(_ values: [Bool]) -> Int {
-            var best = 0, n = 0
-            for v in values { n = v ? n + 1 : 0; best = max(best, n) }
-            return best
+        func hasHorizontalRun(_ y: Int, minimum: Int) -> Bool {
+            var run = 0
+            for x in 0..<width {
+                run = dark(x, y) ? run + 1 : 0
+                if run >= minimum { return true }
+            }
+            return false
         }
-        let h = (0..<height).filter { y in longest((0..<width).map { dark($0, y) }) >= max(80, width / 5) }
-        let v = (0..<width).filter { x in longest((0..<height).map { dark(x, $0) }) >= max(60, height / 8) }
+        func hasVerticalRun(_ x: Int, minimum: Int) -> Bool {
+            var run = 0
+            for y in 0..<height {
+                run = dark(x, y) ? run + 1 : 0
+                if run >= minimum { return true }
+            }
+            return false
+        }
+        let h = (0..<height).filter { hasHorizontalRun($0, minimum: max(80, width / 5)) }
+        let v = (0..<width).filter { hasVerticalRun($0, minimum: max(60, height / 8)) }
         let ys = runs(h), xs = runs(v)
         guard xs.count >= 3, ys.count >= 3, xs.count <= 41, ys.count <= 201 else { return [] }
         guard let x0 = xs.first, let x1 = xs.last, let y0 = ys.first, let y1 = ys.last,
@@ -395,5 +517,54 @@ private struct Raster {
             if horizontal >= 2 { return true }
         }
         return false
+    }
+
+    /// Thin, long horizontal and vertical strokes can indicate a ruled grid
+    /// whose missing segment represents a merged cell. Broad colored bands do
+    /// not count as thin rules. Such grids remain rejected when incomplete.
+    func hasPartialGridEvidence(in region: CGRect) -> Bool {
+        let x0 = max(0, min(width - 1, Int(region.minX * CGFloat(width))))
+        let x1 = max(0, min(width, Int(ceil(region.maxX * CGFloat(width)))))
+        let y0 = max(0, min(height - 1, Int((1 - region.maxY) * CGFloat(height))))
+        let y1 = max(0, min(height, Int(ceil((1 - region.minY) * CGFloat(height)))))
+        guard x1 - x0 >= 30, y1 - y0 >= 30 else { return true }
+        let yStep = max(1, (y1 - y0) / 256), xStep = max(1, (x1 - x0) / 256)
+        let vertical = (x0..<x1).filter { x in
+            var count = 0, samples = 0, y = y0
+            while y < y1 {
+                if dark(x, y) { count += 1 }
+                samples += 1
+                y += yStep
+            }
+            return samples > 0 && CGFloat(count) / CGFloat(samples) >= 0.6
+        }
+        let horizontal = (y0..<y1).filter { y in
+            var count = 0, samples = 0, x = x0
+            while x < x1 {
+                if dark(x, y) { count += 1 }
+                samples += 1
+                x += xStep
+            }
+            return samples > 0 && CGFloat(count) / CGFloat(samples) >= 0.6
+        }
+        func thinGroups(_ values: [Int], maximumWidth: Int) -> [Int] {
+            guard let first = values.first else { return [] }
+            var start = first, previous = first, centers: [Int] = []
+            for value in values.dropFirst() {
+                if value > previous + 2 {
+                    if previous - start + 1 <= maximumWidth { centers.append((start + previous) / 2) }
+                    start = value
+                }
+                previous = value
+            }
+            if previous - start + 1 <= maximumWidth { centers.append((start + previous) / 2) }
+            return centers
+        }
+        let verticalRules = thinGroups(vertical, maximumWidth: max(3, (x1 - x0) / 100))
+        let horizontalRules = thinGroups(horizontal, maximumWidth: max(3, (y1 - y0) / 100))
+        guard let left = verticalRules.first, let right = verticalRules.last,
+              let top = horizontalRules.first, let bottom = horizontalRules.last else { return false }
+        return verticalRules.count >= 2 && horizontalRules.count >= 2 &&
+            right - left >= (x1 - x0) / 2 && bottom - top >= (y1 - y0) / 2
     }
 }

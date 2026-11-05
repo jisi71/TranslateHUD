@@ -244,6 +244,33 @@ final class ScreenshotTableRecognizerTests: XCTestCase {
         XCTAssertEqual(uncertain.rejected, [.ambiguousGrid])
     }
 
+    func testDuplicateObservationsAreDeduplicatedButSeparateTablesArePreserved() {
+        let top = ScreenshotTable(rows: [["Name", "Value"], ["One", "1"]],
+                                  normalizedBox: CGRect(x: 0.1, y: 0.6, width: 0.8, height: 0.3), hasMergedCells: false)
+        let bottom = ScreenshotTable(rows: top.rows, normalizedBox: CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.3), hasMergedCells: false)
+        let duplicate = ScreenshotTable(rows: top.rows, normalizedBox: CGRect(x: 0.1, y: 0.6, width: 0.8, height: 0.3), hasMergedCells: false)
+        let result = ScreenshotTableRecognizer.consolidate(accepted: [top], review: [duplicate, bottom], rejected: [])
+        XCTAssertEqual(result.tables, [top])
+        XCTAssertEqual(result.reviewRequired, [bottom])
+        XCTAssertTrue(result.rejected.isEmpty)
+    }
+
+    func testConflictingOverlappingObservationsFallBackToText() {
+        let box = CGRect(x: 0.1, y: 0.5, width: 0.8, height: 0.3)
+        let first = ScreenshotTable(rows: [["Name", "Value"], ["One", "1"]], normalizedBox: box, hasMergedCells: false)
+        let conflicting = ScreenshotTable(rows: [["Name", "Value"], ["One", "2"]], normalizedBox: box, hasMergedCells: false)
+        let result = ScreenshotTableRecognizer.consolidate(accepted: [], review: [first, conflicting], rejected: [])
+        XCTAssertTrue(result.tables.isEmpty)
+        XCTAssertTrue(result.reviewRequired.isEmpty)
+        XCTAssertEqual(result.rejected, [.ambiguousGrid])
+        let secondDocument = ScreenshotTableRecognizer.Assessment(tables: [], rejected: [], reviewRequired: [first])
+        let combined = ScreenshotTableRecognizer.combinedDocumentAssessments([result, secondDocument], tableCounts: [2, 1],
+                                                                            fallback: .init(tables: [], rejected: []))
+        XCTAssertTrue(combined.tables.isEmpty)
+        XCTAssertTrue(combined.reviewRequired.isEmpty)
+        XCTAssertEqual(combined.rejected, [.ambiguousGrid])
+    }
+
     func testMacOS26DeclinesUnruledAndMergedTableCandidates() async throws {
         guard #available(macOS 26, *) else { throw XCTSkip("RecognizeDocumentsRequest requires macOS 26") }
         for name in ["unruled", "merged"] {

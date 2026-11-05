@@ -4,7 +4,7 @@ const { GIFT_FEN, GIFT_MICRO_YUAN, MESSAGES, decodeSourceHeader, formatDisplayId
 const { prepareUpstreamPayload, readUpstreamConfig } = require('./upstream')
 const { costMicroYuanFromUsage, parseUsage, readTrialPrices, settlementFields } = require('./usageBilling')
 const { createSettlingStream, formatSSE } = require('./usageStream')
-const { restoreBoldResult } = require('./structuredBold')
+const { restoreBoldResult, formatFailureReason } = require('./structuredBold')
 
 const MAX_BODY_BYTES = 48 * 1024
 
@@ -388,7 +388,8 @@ async function handleTranslate(ctx) {
     if (format) {
       try {
         parsed = restoreBoldResult(parsed, format)
-      } catch {
+      } catch (error) {
+        console.error(`trial format invalid reason=${formatFailureReason(error)}`)
         return {
           status: 422,
           headers: { ...billingHeaders(settled, usage), 'Content-Type': 'application/json; charset=utf-8' },

@@ -29,10 +29,10 @@ function markedOutput(value, index) {
   const marks = [...value.matchAll(/⟦THB[0-9a-f]{24}:\d+:\d+:[SE]⟧/gu)].map(match => match[0])
   if (!marks.length) return text
   assert.equal(marks.length, 2)
-  if ([0, 1, 8].includes(index)) return `${marks[0]}${text}${marks[1]}`
+  if (index === 8) return `${marks[0]}${text}${marks[1]}`
   if (index === 2) return `请在审核前检查${marks[0]}突出显示的详细信息${marks[1]}。`
   if (index === 7) return `A ${marks[0]}B${marks[1]}`
-  if (index === 9) return `${marks[0]}响应缓慢${marks[1]}`
+  if (index === 9) return `响应${marks[0]}缓慢${marks[1]}`
   if (index === 12) return `人工${marks[0]}智能${marks[1]}系统`
   throw new Error('missing synthetic marker mapping')
 }
@@ -59,6 +59,8 @@ test('synthetic screenshot keeps label cells and bold spans through the trial ba
     forward: async ({ payload }) => {
       calls++
       const marked = JSON.parse(payload.messages[1].content)
+      assert.equal(marked[0].text, values[0].text)
+      assert.equal(marked[1].text, values[1].text)
       const results = marked.map(({ i, text }) => ({ i, t: markedOutput(text, i) }))
       return {
         status: 200,
@@ -75,7 +77,9 @@ test('synthetic screenshot keeps label cells and bold spans through the trial ba
   const body = JSON.parse(result.body)
   const restored = JSON.parse(body.choices[0].message.content).results
   assert.equal(restored.length, values.length)
+  assert.deepEqual(restored[0], { i: 0, t: '产品状态报告', boldRanges: [[0, 18]] })
   assert.deepEqual(restored[7], { i: 7, t: 'A B', boldRanges: [[2, 3]] })
+  assert.deepEqual(restored[9], { i: 9, t: '响应缓慢', boldRanges: [[6, 12]] })
   assert.deepEqual(restored[12], { i: 12, t: '人工智能系统', boldRanges: [[6, 12]] })
   assert.ok(body.translatehud_trial)
   const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, '../../TranslateHUDTests/Fixtures/ScreenshotTables/synthetic-structured-response.json'), 'utf8'))

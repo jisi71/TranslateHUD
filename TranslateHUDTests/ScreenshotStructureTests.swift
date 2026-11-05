@@ -95,6 +95,29 @@ final class ScreenshotStructureTests: XCTestCase {
         XCTAssertThrowsError(try plan.render([.init(text: "too few", boldRanges: [])]))
     }
 
+    func testBoldWordsSeparatedOnlyBySpacesFormOneVisibleSpan() throws {
+        let plan = ScreenshotTranslationPlan(blocks: [
+            .text(runs: [.init(text: "Product", isStrong: true), .init(text: " ", isStrong: false),
+                         .init(text: "Status", isStrong: true), .init(text: " ", isStrong: false),
+                         .init(text: "Report", isStrong: true)], heading: 1),
+            .text(runs: [.init(text: "Please ", isStrong: false), .init(text: "highlighted", isStrong: true),
+                         .init(text: " ", isStrong: false), .init(text: "details", isStrong: true),
+                         .init(text: ".", isStrong: false)], heading: nil),
+            .text(runs: [.init(text: "A", isStrong: true), .init(text: ", ", isStrong: false),
+                         .init(text: "B", isStrong: true)], heading: nil),
+            .text(runs: [.init(text: "C", isStrong: true), .init(text: "\n", isStrong: false),
+                         .init(text: "D", isStrong: true)], heading: nil)
+        ])
+        XCTAssertEqual(plan.sourceItems.map(\.boldRanges), [
+            [.init(start: 0, end: 21)], [.init(start: 7, end: 26)],
+            [.init(start: 0, end: 1), .init(start: 3, end: 4)],
+            [.init(start: 0, end: 1), .init(start: 2, end: 3)]
+        ])
+        let visible = ScreenshotTranslationPlan(blocks: Array(plan.blocks.prefix(2)))
+        XCTAssertTrue(visible.originalMarkdown.contains("# **Product Status Report**"))
+        XCTAssertTrue(visible.originalMarkdown.contains("Please **highlighted details**\\."))
+    }
+
     func testCorrectedTableKeepsCellPositionsAndBoldRanges() throws {
         let plan = ScreenshotTranslationPlan(blocks: [.table(rows: [["Product", "Amount"], ["New York", "3"]], cellRuns: [
             [[.init(text: "Product", isStrong: false)], [.init(text: "Amount", isStrong: false)]],

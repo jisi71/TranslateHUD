@@ -422,7 +422,7 @@ function bindUpstreamMessages(body, sourceText) {
       (language) => system.includes(`Every "explanation" must be concise ${language},`)
     ) || 'Simplified Chinese'
   })
-  if (format) messages[0].content += '\n\n' + BOLD_INSTRUCTIONS
+  if (format && format.expected.some(markers => markers.length > 0)) messages[0].content += '\n\n' + BOLD_INSTRUCTIONS
   return {
     messages,
     stream,

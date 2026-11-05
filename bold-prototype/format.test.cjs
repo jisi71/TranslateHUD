@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const path = require('node:path')
 const root = process.env.TRIAL_CANDIDATE_ROOT
 if (!root || !path.isAbsolute(root)) throw new Error('TRIAL_CANDIDATE_ROOT must be an absolute path')
-const { makeBoldFormat, restoreBoldResult } = require(path.join(root, 'src/structuredBold'))
+const { makeBoldFormat, restoreBoldResult, formatFailureReason } = require(path.join(root, 'src/structuredBold'))
 const { prepareUpstreamPayload } = require(path.join(root, 'src/upstream'))
 const { handleTranslate } = require(path.join(root, 'src/trialService'))
 const { MemoryAccountStore } = require(path.join(root, 'src/accountStore'))
@@ -64,6 +64,76 @@ test('translated marker pairs may reorder while ranges follow UTF-8 output', () 
   const output = provider([{ i: 1, t: '普通' }, { i: 0, t: `${blue.open}蓝色${blue.close}和${red.open}红色${red.close}` }])
   const decoded = JSON.parse(restoreBoldResult(output, format).choices[0].message.content)
   assert.deepEqual(decoded.results, [{ i: 0, t: '蓝色和红色', boldRanges: [[0, 6], [9, 15]] }, { i: 1, t: '普通', boldRanges: [] }])
+})
+
+test('whole-item bold needs no markers and is restored over the complete translation', () => {
+  const format = makeBoldFormat(['Product Status Report', 'A B'], [[[0, 21]], [[2, 3]]], '', nonce)
+  assert.equal(format.marked[0], 'Product Status Report')
+  assert.deepEqual(format.expected[0], [])
+  const pair = format.expected[1][0]
+  const output = provider([{ i: 0, t: '产品状态报告' }, { i: 1, t: `A ${pair.open}B${pair.close}` }])
+  const results = JSON.parse(restoreBoldResult(output, format).choices[0].message.content).results
+  assert.deepEqual(results[0], { i: 0, t: '产品状态报告', boldRanges: [[0, 18]] })
+  assert.deepEqual(results[1], { i: 1, t: 'A B', boldRanges: [[2, 3]] })
+  for (const text of ['', ' ', '产品\n报告', '⟦THB:S⟧产品状态报告⟦THB:E⟧']) {
+    const bad = provider([{ i: 0, t: text }, { i: 1, t: `A ${pair.open}B${pair.close}` }])
+    assert.throws(() => restoreBoldResult(bad, format))
+  }
+})
+
+test('literal marker-like source text remains valid but invented markers fail', () => {
+  const text = 'Keep ⟦THB:S⟧ example'
+  const start = Buffer.byteLength('Keep ⟦T')
+  const format = makeBoldFormat([text], [[[start, start + 1]]], '', nonce)
+  const result = JSON.parse(restoreBoldResult(provider([{i:0,t:format.marked[0]}]), format).choices[0].message.content).results[0]
+  assert.deepEqual(result, { i:0, t:text, boldRanges:[[start, start + 1]] })
+  const pair = format.expected[0][0]
+  for (const added of ['⟦THB:BAD', `⟦THB:${'x'.repeat(150)}⟧`]) {
+    assert.throws(() => restoreBoldResult(provider([{i:0,t:`${pair.open}H${pair.close} ${added}`}]), format),
+      error => formatFailureReason(error) === 'marker_token')
+  }
+  assert.equal(formatFailureReason(new Error('private provider text')), 'internal')
+})
+
+test('upstream formatting instructions distinguish whole and partial bold items', () => {
+  const full = prepareUpstreamPayload(body([{i:0,text:'Title',boldRanges:[[0,5]]}]), config, 'Title')
+  assert.equal(full.payload.messages[0].content.includes('Formatting markers in text'), false)
+  assert.equal(JSON.parse(full.payload.messages[1].content)[0].text, 'Title')
+  const mixed = prepareUpstreamPayload(body([{i:0,text:'Title',boldRanges:[[0,5]]},{i:1,text:'A B',boldRanges:[[2,3]]}]), config, 'Title\nA B')
+  assert.match(mixed.payload.messages[0].content, /Do not add markers to an item that has none/)
+  const entries = JSON.parse(mixed.payload.messages[1].content)
+  assert.equal(entries[0].text, 'Title')
+  assert.match(entries[1].text, /⟦THB/)
+})
+
+test('mixed whole and partial bold survives the function path with one settlement', async () => {
+  const items = [{i:0,text:'Title',boldRanges:[[0,5]]},{i:1,text:'A B',boldRanges:[[2,3]]}]
+  const source = items.map(item => item.text).join('\n')
+  const store = new MemoryAccountStore()
+  let calls = 0
+  const now = Date.parse('2026-11-04T03:00:00Z')
+  const ctx = {
+    now: () => now,
+    env: { gateway:'https://test.invalid', apiKey:'test', baseURL:'https://api.deepseek.com/v1', model:'test' },
+    headers: { authorization:'Bearer test', 'x-translatehud-source':Buffer.from(source).toString('base64') },
+    verifyUser: async () => ({uid:'test-user'}), store, rawBody:body(items),
+    forward: async ({payload}) => {
+      calls++
+      const marked = JSON.parse(payload.messages[1].content)
+      assert.equal(marked[0].text, 'Title')
+      const pair = [...marked[1].text.matchAll(/⟦THB[0-9a-f]{24}:1:0:[SE]⟧/gu)].map(match => match[0])
+      assert.equal(pair.length, 2)
+      return {status:200,text:JSON.stringify(provider([{i:0,t:'标题'},{i:1,t:`A ${pair[0]}B${pair[1]}`}]))}
+    }
+  }
+  const response = await handleTranslate(ctx)
+  assert.equal(calls, 1)
+  assert.equal(response.status, 200)
+  const result = JSON.parse(response.body)
+  assert.deepEqual(JSON.parse(result.choices[0].message.content).results, [
+    {i:0,t:'标题',boldRanges:[[0,6]]},{i:1,t:'A B',boldRanges:[[2,3]]}
+  ])
+  assert.equal(result.translatehud_trial.dailyTokens, countSourceTokens(source))
 })
 
 test('missing, duplicate, crossing, nested, forged and cross-item markers fail', () => {

@@ -298,7 +298,7 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         let parsed = MarkdownDisplay.parse(prose.trimmingCharacters(in: .newlines))
         let boldRuns = parsed.runs.filter { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true }
             .map { String(parsed[$0.range].characters).trimmingCharacters(in: .newlines) }
-        XCTAssertEqual(boldRuns, ["Product", "Status", "Report", "Quarterly", "Overview", "highlighted", "details"])
+        XCTAssertEqual(boldRuns, ["Product Status Report", "Quarterly Overview", "highlighted details"])
         XCTAssertEqual(cells.count, 4)
         XCTAssertTrue(cells.allSatisfy { $0.count == 3 })
         XCTAssertEqual(cells[0][2], "**Notes**")

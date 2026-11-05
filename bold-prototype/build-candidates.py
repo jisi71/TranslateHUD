@@ -17,30 +17,30 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 TESTS = {
-    "format": ("bold-prototype/format.test.cjs", "75ba93bcfe4d75074d726e1c2036aa5fb67910bd1bb26703ba3aa7f24a13c057"),
+    "format": ("bold-prototype/format.test.cjs", "83342e5ace7dcf0160bad0fc681c8fa4c50b8ad4f7c648074260b61b45a86593"),
     "email": ("backend/deployment-tests/email-compatibility.js", "c08c30a19d04745397b612b105b8ce5f83f909b03c02e937b521b73559d4e9fa"),
 }
 COMMON_RESULTS = {
     "src/upstream.js": "eabe9e9012c40ef59837dc8d7455145b72aab7d5d9ba7bd5dbc2acbf54f08e1c",
-    "src/structuredBold.js": "4a0a14bc940ae14c1fe6d2fa98372168ff96d7735989c8b36b425fc7324f38ee",
+    "src/structuredBold.js": "5b764227ee968348f0ad2825f1d66e26385a9e13c0dbd443b06252b64b007265",
 }
 BASELINES = {
     "trial": {
         "archive": "2bb77996abe62e71d8690c388592bfecedbb6dece753f162af76c072a382fb11",
-        "patch": "e23bd977aa1e2e3d21f54232fa754bc5db1ee8f4bd2c4ad1be265904a624aeca",
+        "patch": "46714777bf4a854144e247ee17874c83db80a12ad0774f6a3027819b133e9c6d",
         "results": {
             **COMMON_RESULTS,
-            "src/trialMessages.js": "d7a627b1efa049321a92baba4892eeeea62c0e38e34ce427345ba1dd09eebf1d",
-            "src/trialService.js": "5e8d58415f86b7ae8d5c53dac4e4e2351832c6909116cb83a3a25928b1576157",
+            "src/trialMessages.js": "cfb31f24369512e924d97114984f283016092ccf7bc6653ad472f4a287778f4c",
+            "src/trialService.js": "c40b230d5553cadefd45a4f5a0e75c96421c21703e2807c53abe1f3f5b0a2d03",
         },
     },
     "trial-stream": {
         "archive": "e01e25f377fb40065a9f9e8dd7eca5b93fbcf0143fe53d24b65f1513dc405353",
-        "patch": "8626c54364fac6bb03b4b698ac606e7093806823726d4c23e49fa13c0b15796a",
+        "patch": "ff2ac571af5738880a91a4409139f61e402405731622976633bdd07f2b910d6f",
         "results": {
             **COMMON_RESULTS,
-            "src/trialMessages.js": "04ab96500511eafd4c38cb58fc73378c4afa37cf4cab6462360f28898f804f44",
-            "src/trialService.js": "3befd818da94a337741bd9bfa33a0beb93806cd15116b78ba9f0cb7a6b32311d",
+            "src/trialMessages.js": "79c73ccc6779999e02f3a645a03d5421d8481a9a3cc69de914a9a1492f657c2a",
+            "src/trialService.js": "42879ab8c6432b1b7a50dea5a3516ccc9e0efddade87cd737763bcd775de740d",
         },
     },
 }

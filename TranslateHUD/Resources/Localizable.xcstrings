@@ -112,6 +112,13 @@
         "en": { "stringUnit": { "state": "translated", "value": "This translation was settled, but its bold formatting could not be preserved reliably." } }
       }
     },
+    "本次翻译用量已结算，译文格式无法可靠还原。": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本次翻译用量已结算，译文格式无法可靠还原。" } },
+        "en": { "stringUnit": { "state": "translated", "value": "This translation was settled, but its format could not be restored reliably." } }
+      }
+    },
     "截图翻译未能完成，未收到用量结算确认。": {
       "extractionState": "manual",
       "localizations": {

@@ -71,7 +71,8 @@ struct ScreenshotSettledFailure: LocalizedError, Sendable {
 
     var errorDescription: String? {
         switch stage {
-        case .serverFormat, .boldRanges: return "本次翻译用量已结算，未能可靠保留粗体位置。"
+        case .serverFormat: return "本次翻译用量已结算，译文格式无法可靠还原。"
+        case .boldRanges: return "本次翻译用量已结算，未能可靠保留粗体位置。"
         case .serverResponse: return "本次翻译用量已结算，服务返回错误。"
         case .responseEnvelope: return "本次翻译用量已结算，服务响应无法读取。"
         case .incompleteOutput: return "本次翻译用量已结算，服务返回的译文不完整。"
@@ -138,7 +139,8 @@ struct ScreenshotTranslationPlan: Sendable {
             let start = text.utf8.count
             text += run.text
             if run.isStrong && !run.text.isEmpty {
-                if let last = ranges.last, last.end == start {
+                if let last = ranges.last,
+                   text.utf8.dropFirst(last.end).prefix(start - last.end).allSatisfy({ $0 == 0x20 || $0 == 0x09 }) {
                     ranges[ranges.count - 1] = .init(start: last.start, end: text.utf8.count)
                 } else { ranges.append(.init(start: start, end: text.utf8.count)) }
             }

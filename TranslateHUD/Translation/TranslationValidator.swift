@@ -124,6 +124,43 @@ enum TranslationValidator {
         return isUnderTranslated(input: allInput, output: allOutput, target: target)
     }
 
+    private static let englishTableBrands: Set<String> = ["icloud", "onedrive"]
+
+    static func isKnownEnglishTableBrand(_ text: String) -> Bool {
+        englishTableBrands.contains(text.lowercased())
+    }
+
+    /// Short Chinese table cells need a check even when the generic echo threshold is not met.
+    static func isUntranslatedHanTableCell(input: String, output: String) -> Bool {
+        guard !isProtectedLiteral(input) else { return false }
+        let original = maskingLexicalProtection(input)
+        let translated = maskingLexicalProtection(output)
+        guard containsHan(original), containsHan(translated) else { return false }
+
+        // A changed number or unit alone does not translate the surrounding words.
+        func withoutNumbers(_ text: String) -> String {
+            text.replacingOccurrences(
+                of: #"\d+(?:[.,]\d+)?[ \t]*[a-zA-Z]{0,5}"#,
+                with: " ", options: .regularExpression
+            )
+        }
+        func comparable(_ text: String) -> String {
+            String(String.UnicodeScalarView(text.unicodeScalars.filter(CharacterSet.alphanumerics.contains))).lowercased()
+        }
+        let source = withoutNumbers(original)
+        let result = withoutNumbers(translated)
+        let units: Set<String> = ["kb", "mb", "gb", "tb", "pb", "hz", "khz", "mhz", "ghz",
+                                  "mm", "cm", "km", "kg", "mg", "ms", "kbps", "mbps", "gbps"]
+        let hasEnglishWord = source.split { character in
+            !character.unicodeScalars.allSatisfy { (65...90).contains($0.value) || (97...122).contains($0.value) }
+        }.contains { word in
+            let name = word.lowercased()
+            return !englishTableBrands.contains(name) && !units.contains(name)
+        }
+        if !hasEnglishWord, comparable(source) == comparable(result) { return true }
+        return !translated.unicodeScalars.contains { (65...90).contains($0.value) || (97...122).contains($0.value) }
+    }
+
     /// 抽取输入里的「英文 identifier 候选」：长度 ≥4 的连续 [a-zA-Z_] 串。
     /// 去重，只看 unique tokens。围栏/行内代码、MD 占位符与 protectedSpans 内的内容先抹掉。
     private static func extractIdentifierTokens(from text: String) -> Set<String> {

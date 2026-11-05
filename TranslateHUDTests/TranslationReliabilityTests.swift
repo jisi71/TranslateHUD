@@ -49,6 +49,75 @@ final class TranslationReliabilityTests: XCTestCase {
         XCTAssertEqual(plan.sourceItems.map(\.mayKeepTableLabel), [false, true, true, true, true, false, false, false])
     }
 
+    func testEnglishTablePreservesKnownBrandsWithoutAcceptingUntranslatedCells() async throws {
+        enum Outcome { case pass, quality, parse }
+        let scenarios: [(String, [String], [String], TargetLanguage, Bool, Outcome)] = [
+            ("translated header", ["云盘", "百度网盘", "腾讯微云", "115网盘", "icloud", "onedrive"],
+             ["Cloud drive", "Baidu Netdisk", "Tencent Weiyun", "115 Drive", "icloud", "onedrive"], .english, true, .pass),
+            ("brand and numbers", ["iCloud", "OneDrive", "123"], ["iCloud", "OneDrive", "123"], .english, true, .pass),
+            ("links and paths", ["https://example.com/文档", "/Users/资料/a.txt"],
+             ["https://example.com/文档", "/Users/资料/a.txt"], .english, true, .pass),
+            ("path with spaces", ["/Users/共享 资料/a.txt"], ["/Users/共享 资料/a.txt"], .english, true, .pass),
+            ("translated text and link", ["资料 https://example.com/文档"], ["Files https://example.com/文档"], .english, true, .pass),
+            ("translated text and path", ["资料 /Users/共享 资料/a.txt"], ["Files /Users/共享 资料/a.txt"], .english, true, .pass),
+            ("translated text and unit", ["容量 3T"], ["Capacity 3 TB"], .english, true, .pass),
+            ("translated text with gloss", ["iCloud 价格"], ["iCloud price（价格）"], .english, true, .pass),
+            ("existing English gloss", ["价格（Price）"], ["Price（价格）"], .english, true, .pass),
+            ("name in translated label", ["负责人 / Owner：张伟"], ["Owner: 张伟"], .english, true, .pass),
+            ("existing English label and name", ["Owner：张伟"], ["Owner: 张伟"], .english, true, .pass),
+            ("single-letter group and name", ["A：张伟"], ["A: 张伟"], .english, true, .pass),
+            ("all unchanged", ["云盘", "百度网盘", "腾讯微云", "115网盘", "icloud", "onedrive"],
+             ["云盘", "百度网盘", "腾讯微云", "115网盘", "icloud", "onedrive"], .english, true, .quality),
+            ("only punctuation changed", ["云盘", "百度网盘", "icloud"], ["云盘。", "百度网盘。", "icloud"], .english, true, .quality),
+            ("only Chinese changed", ["产品"], ["商品"], .english, true, .quality),
+            ("only unit changed", ["容量 3T", "icloud"], ["容量 3TB", "icloud"], .english, true, .quality),
+            ("unit separated by space", ["容量 3T"], ["容量 3 TB"], .english, true, .quality),
+            ("short heading unchanged", ["云盘", "icloud"], ["云盘", "icloud"], .english, true, .quality),
+            ("one character unchanged", ["表"], ["表"], .english, true, .quality),
+            ("foreign word", ["bonjour"], ["bonjour"], .english, true, .quality),
+            ("brand with unchanged Chinese", ["icloud 价格"], ["icloud 价格"], .english, true, .quality),
+            ("brand with untranslated Chinese", ["icloud 价格"], ["iCloud 价格。"], .english, true, .quality),
+            ("outside table", ["icloud"], ["icloud"], .english, false, .quality),
+            ("different target", ["icloud"], ["icloud"], .chinese, true, .quality),
+            ("empty output", ["icloud"], [""], .english, true, .parse)
+        ]
+        for (name, source, output, target, isTableCell, expected) in scenarios {
+            for trial in [false, true] {
+                let payload: [String: Any] = ["results": output.enumerated().reversed().map { ["i": $0.offset, "t": $0.element] }]
+                let content = String(decoding: try JSONSerialization.data(withJSONObject: payload), as: UTF8.self)
+                let translator = mockTranslator(responses: [.batch(content)])
+                let items = source.map { ScreenshotStyledText(text: $0, boldRanges: [], isTableCell: isTableCell) }
+                do {
+                    let result = try await (trial
+                        ? translator.translateStyledTrial(items, to: target, context: nil)
+                        : translator.translateStyled(items, to: target, context: nil))
+                    XCTAssertEqual(expected, .pass, "\(name), trial=\(trial)")
+                    XCTAssertEqual(result.map(\.text), output, "\(name), trial=\(trial)")
+                } catch TranslationError.quality { XCTAssertEqual(expected, .quality, "\(name), trial=\(trial)") }
+                catch TranslationError.parse { XCTAssertEqual(expected, .parse, "\(name), trial=\(trial)") }
+                catch { XCTFail("\(name), trial=\(trial): \(error)") }
+                XCTAssertEqual(TranslationURLProtocol.requests().count, 1, "\(name), trial=\(trial)")
+            }
+        }
+    }
+
+    func testEnglishTableBrandsDoNotHideMissingOrDuplicatedResults() async throws {
+        let items = ["云盘", "icloud"].map { ScreenshotStyledText(text: $0, boldRanges: [], isTableCell: true) }
+        for content in [#"{"results":[{"i":0,"t":"Cloud"}]}"#,
+                        #"{"results":[{"i":0,"t":"Cloud"},{"i":0,"t":"icloud"}]}"#] {
+            for trial in [false, true] {
+                let translator = mockTranslator(responses: [.batch(content)])
+                do {
+                    _ = try await (trial
+                        ? translator.translateStyledTrial(items, to: .english, context: nil)
+                        : translator.translateStyled(items, to: .english, context: nil))
+                    XCTFail("Missing or duplicate indices must fail")
+                } catch TranslationError.parse {} catch { XCTFail("Unexpected error: \(error)") }
+                XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+            }
+        }
+    }
+
     func testOwnKeyUnboldedTableLabelsUseOneRequestAndKeepQualityChecks() async throws {
         let plan = ScreenshotTranslationPlan(blocks: [.table(rows: [["Name", "ID"], ["Alpha", "A B"]])])
         let good = "{\"results\":[{\"i\":0,\"t\":\"名称\"},{\"i\":1,\"t\":\"编号\"},{\"i\":2,\"t\":\"阿尔法\"},{\"i\":3,\"t\":\"A B\"}]}"

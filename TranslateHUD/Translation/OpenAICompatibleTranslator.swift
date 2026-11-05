@@ -295,7 +295,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                                              context: context, using: session,
                                              boldRanges: items.map(\.boldRanges), screenshotDiagnostics: screenshotDiagnostics)
         let failures = batchValidate(originals: items.map(\.text), translations: results.map(\.text), target: target,
-                                     tableLabels: items.map(\.mayKeepTableLabel))
+                                     screenshotItems: items)
         if !failures.isEmpty || TranslationValidator.isBatchUnderTranslated(originals: items.map(\.text), translations: results.map(\.text), target: target) {
             if screenshotDiagnostics { throw ScreenshotFailureStage.quality }
             throw TranslationError.quality("译文未通过质量检查，请重试。")
@@ -314,7 +314,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                                               context: context, using: session, markerRules: rules)
         let results = try markers.restore(response.map(\.text))
         let failures = batchValidate(originals: items.map(\.text), translations: results.map(\.text), target: target,
-                                     tableLabels: items.map(\.mayKeepTableLabel))
+                                     screenshotItems: items)
         if !failures.isEmpty || TranslationValidator.isBatchUnderTranslated(originals: items.map(\.text), translations: results.map(\.text), target: target) {
             throw TranslationError.quality("译文未通过质量检查，请重试。")
         }
@@ -322,12 +322,24 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
     }
 
     private func batchValidate(originals: [String], translations: [String], target: TargetLanguage,
-                               tableLabels: [Bool] = []) -> [Int] {
+                               screenshotItems: [ScreenshotStyledText] = []) -> [Int] {
         var failed: [Int] = []
         for (i, (o, t)) in zip(originals, translations).enumerated() {
             var r = TranslationValidator.validate(input: o, output: t, target: target)
-            if tableLabels.indices.contains(i), tableLabels[i], o.utf8.elementsEqual(t.utf8) {
-                r.removeAll { $0 == .echoedInput || $0 == .missingTargetLanguageContent }
+            if screenshotItems.indices.contains(i), screenshotItems[i].isTableCell {
+                if screenshotItems[i].mayKeepTableLabel, o.utf8.elementsEqual(t.utf8) {
+                    r.removeAll { $0 == .echoedInput || $0 == .missingTargetLanguageContent }
+                }
+                if target == .english {
+                    // Short brand names are too ambiguous for language detection; keep only known full-cell names.
+                    if TranslationValidator.isKnownEnglishTableBrand(o), o.utf8.elementsEqual(t.utf8) {
+                        r.removeAll { $0 == .echoedInput }
+                    }
+                    if TranslationValidator.isUntranslatedHanTableCell(input: o, output: t),
+                       !r.contains(.echoedInput) {
+                        r.append(.echoedInput)
+                    }
+                }
             }
             if !r.isEmpty {
                 AppLog.info("批量第 \(i) 条校验失败：\(r)")

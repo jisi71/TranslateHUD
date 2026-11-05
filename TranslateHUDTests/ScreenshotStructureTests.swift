@@ -447,6 +447,121 @@ final class ScreenshotStructureTests: XCTestCase {
         XCTAssertTrue(plan.originalMarkdown.contains("| therapist | 1000 |"))
     }
 
+    func testReviewedTableConsumesMatchingMultilineCellGroupsFromBothOCRSources() {
+        let rects: [[CGRect?]] = [
+            [CGRect(x: 0.1, y: 0.7, width: 0.4, height: 0.15), CGRect(x: 0.5, y: 0.7, width: 0.4, height: 0.15)],
+            [CGRect(x: 0.1, y: 0.55, width: 0.4, height: 0.15), CGRect(x: 0.5, y: 0.55, width: 0.4, height: 0.15)],
+            [CGRect(x: 0.1, y: 0.4, width: 0.4, height: 0.15), CGRect(x: 0.5, y: 0.4, width: 0.4, height: 0.15)]
+        ]
+        let table = ScreenshotTable(rows: [["日期", "时间"],
+                                           ["7月8日-8月28日", "周一-周五 (8:00-11:30)"],
+                                           ["7月8日-8月28日", "周一-周五 (8:00-11:30)"]],
+                                    normalizedBox: CGRect(x: 0.1, y: 0.4, width: 0.8, height: 0.45),
+                                    hasMergedCells: false, cellRects: rects)
+        var lines: [OCRService.Line] = []
+        var blocks: [ScreenshotTextBlock] = []
+        for y in [0.55, 0.4] {
+            for (text, x, offset) in [("7月8日-", 0.15, 0.09), ("8月28日", 0.15, 0.04),
+                                      ("周一-周五", 0.55, 0.09), ("（8:00-11:30）", 0.55, 0.04)] {
+                let box = CGRect(x: x, y: y + offset, width: 0.2, height: 0.02)
+                lines.append(.init(text: text, normalizedBox: box, confidence: 1))
+                blocks.append(.init(text: text, box: box))
+            }
+        }
+        blocks.append(.init(text: "表外说明", box: CGRect(x: 0.1, y: 0.2, width: 0.3, height: 0.03)))
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        XCTAssertEqual(plan.sourceTexts.filter { $0 == "7月8日-8月28日" }.count, 2)
+        XCTAssertEqual(plan.sourceTexts.filter { $0 == "周一-周五 (8:00-11:30)" }.count, 2)
+        XCTAssertEqual(plan.sourceTexts.count, 7)
+        XCTAssertTrue(plan.sourceTexts.contains("表外说明"))
+    }
+
+    func testReviewedTableKeepsAmbiguousCellFragmentsAndCrossingText() {
+        let rects: [[CGRect?]] = [[CGRect(x: 0.1, y: 0.5, width: 0.4, height: 0.3),
+                                   CGRect(x: 0.5, y: 0.5, width: 0.4, height: 0.3)]]
+        let table = ScreenshotTable(rows: [["7月8日-8月28日", "−5"]],
+                                    normalizedBox: CGRect(x: 0.1, y: 0.5, width: 0.8, height: 0.3),
+                                    hasMergedCells: false, cellRects: rects)
+        let lines = [
+            OCRService.Line(text: "8月28日", normalizedBox: CGRect(x: 0.15, y: 0.7, width: 0.2, height: 0.02), confidence: 1),
+            OCRService.Line(text: "7月8日-", normalizedBox: CGRect(x: 0.15, y: 0.6, width: 0.2, height: 0.02), confidence: 1),
+            OCRService.Line(text: "5", normalizedBox: CGRect(x: 0.6, y: 0.7, width: 0.05, height: 0.02), confidence: 1),
+            OCRService.Line(text: "跨格说明", normalizedBox: CGRect(x: 0.48, y: 0.55, width: 0.1, height: 0.02), confidence: 1)
+        ]
+        let blocks = lines.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) }
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        for text in ["8月28日", "7月8日-", "5", "跨格说明"] {
+            XCTAssertTrue(plan.sourceTexts.contains(text), "Unmatched text must remain: \(text)")
+        }
+        XCTAssertTrue(plan.sourceTexts.contains("−5"))
+    }
+
+    func testReviewedTableKeepsCloseButVerticallySeparatedLinesInReadingOrder() {
+        let rect = CGRect(x: 0.1, y: 0.5, width: 0.4, height: 0.2)
+        let table = ScreenshotTable(rows: [["7月8日-8月28日"]], normalizedBox: rect,
+                                    hasMergedCells: false, cellRects: [[rect]])
+        let lines = [
+            OCRService.Line(text: "8月28日", normalizedBox: CGRect(x: 0.23, y: 0.604, width: 0.1, height: 0.002), confidence: 1),
+            OCRService.Line(text: "7月8日-", normalizedBox: CGRect(x: 0.2, y: 0.6, width: 0.1, height: 0.002), confidence: 1)
+        ]
+        let blocks = lines.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) }
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        XCTAssertTrue(plan.sourceTexts.contains("8月28日"))
+        XCTAssertTrue(plan.sourceTexts.contains("7月8日-"))
+    }
+
+    func testReviewedTableKeepsFragmentsWhenReadingOrderIsAmbiguous() {
+        let rect = CGRect(x: 0.1, y: 0.5, width: 0.4, height: 0.2)
+        let table = ScreenshotTable(rows: [["Alpha Beta"]], normalizedBox: rect,
+                                    hasMergedCells: false, cellRects: [[rect]])
+        let lines = [
+            OCRService.Line(text: "Alpha", normalizedBox: CGRect(x: 0.15, y: 0.6, width: 0.12, height: 0.04), confidence: 1),
+            OCRService.Line(text: "Beta", normalizedBox: CGRect(x: 0.29, y: 0.625, width: 0.1, height: 0.04), confidence: 1)
+        ]
+        let blocks = lines.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) }
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        XCTAssertTrue(plan.sourceTexts.contains("Alpha"))
+        XCTAssertTrue(plan.sourceTexts.contains("Beta"))
+        XCTAssertTrue(plan.sourceTexts.contains("Alpha Beta"))
+    }
+
+    func testReviewedTableKeepsSideBySideRightToLeftFragments() {
+        let rect = CGRect(x: 0.1, y: 0.5, width: 0.6, height: 0.2)
+        let table = ScreenshotTable(rows: [["الثاني الأول"]], normalizedBox: rect,
+                                    hasMergedCells: false, cellRects: [[rect]])
+        let lines = [
+            OCRService.Line(text: "الأول", normalizedBox: CGRect(x: 0.45, y: 0.6, width: 0.1, height: 0.03), confidence: 1),
+            OCRService.Line(text: "الثاني", normalizedBox: CGRect(x: 0.2, y: 0.6, width: 0.1, height: 0.03), confidence: 1)
+        ]
+        let blocks = lines.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) }
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        XCTAssertTrue(plan.sourceTexts.contains("الأول"))
+        XCTAssertTrue(plan.sourceTexts.contains("الثاني"))
+        XCTAssertTrue(plan.sourceTexts.contains("الثاني الأول"))
+    }
+
+    func testReviewedTableGroupsOnlyCompleteGradesAndPreservesOtherWordSpacing() {
+        let rects: [[CGRect?]] = [[CGRect(x: 0.1, y: 0.5, width: 0.4, height: 0.3),
+                                   CGRect(x: 0.5, y: 0.5, width: 0.4, height: 0.3)]]
+        let table = ScreenshotTable(rows: [["一/二年级", "therapist"]],
+                                    normalizedBox: CGRect(x: 0.1, y: 0.5, width: 0.8, height: 0.3),
+                                    hasMergedCells: false, cellRects: rects)
+        let lines = [
+            OCRService.Line(text: "一/二", normalizedBox: CGRect(x: 0.15, y: 0.7, width: 0.2, height: 0.02), confidence: 1),
+            OCRService.Line(text: "年级", normalizedBox: CGRect(x: 0.15, y: 0.6, width: 0.2, height: 0.02), confidence: 1),
+            OCRService.Line(text: "the", normalizedBox: CGRect(x: 0.55, y: 0.7, width: 0.2, height: 0.02), confidence: 1),
+            OCRService.Line(text: "rapist", normalizedBox: CGRect(x: 0.55, y: 0.6, width: 0.2, height: 0.02), confidence: 1)
+        ]
+        let blocks = lines.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) }
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        XCTAssertEqual(plan.sourceTexts.filter { $0 == "一/二年级" }.count, 1)
+        XCTAssertFalse(plan.sourceTexts.contains("一/二"))
+        XCTAssertFalse(plan.sourceTexts.contains("年级"))
+        XCTAssertTrue(plan.sourceTexts.contains("the"))
+        XCTAssertTrue(plan.sourceTexts.contains("rapist"))
+        XCTAssertTrue(plan.sourceTexts.contains("therapist"))
+    }
+
     func testTextFallbackKeepsDocumentOnlyTitleAndRepeatedOCRValues() {
         let title = ScreenshotTextBlock(text: "Document-only title", box: CGRect(x: 0.1, y: 0.9, width: 0.6, height: 0.04), style: .heading(1))
         let block = ScreenshotTextBlock(text: "5", box: CGRect(x: 0.1, y: 0.6, width: 0.3, height: 0.2))

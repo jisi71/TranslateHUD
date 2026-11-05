@@ -37,22 +37,10 @@ enum ScreenshotDocumentAssembler {
         if !reviewedTables.isEmpty || hasRejectedTable || missingLine || !rejectedTables.isEmpty {
             let represented = representedLineIndices(lines, in: reviewedTables)
             let strictTables = tables.filter { !reviewedTables.contains($0) }
-            // Keep document-only text unless a single cell demonstrably
-            // contains the same complete block. This can show duplicates when
-            // the two OCR paths disagree, but cannot silently discard text.
-            let retainedBlocks = documentBlocks.filter { block in
-                var matches = 0
-                for table in tables {
-                    for row in table.cellRects.indices {
-                        for column in table.cellRects[row].indices {
-                            guard let cell = table.cellRects[row][column], cell.contains(block.box),
-                                  normalized(table.rows[row][column]) == normalized(block.text),
-                                  !normalized(block.text).isEmpty else { continue }
-                            matches += 1
-                        }
-                    }
-                }
-                return matches != 1
+            // Each OCR source must independently account for the whole cell.
+            let representedBlocks = representedBlockIndices(documentBlocks, in: tables)
+            let retainedBlocks = documentBlocks.enumerated().compactMap { index, block in
+                representedBlocks.contains(index) ? nil : block
             }
             let remaining = lines.enumerated().compactMap { index, line -> OCRService.Line? in
                 if represented.contains(index) { return nil }
@@ -123,13 +111,65 @@ enum ScreenshotDocumentAssembler {
         value.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
     }
 
-    private static func matchingLines(_ indices: [Int], expected: String, in lines: [OCRService.Line]) -> Set<Int> {
-        let ordered = indices.sorted {
-            let a = lines[$0].normalizedBox, b = lines[$1].normalizedBox
-            return abs(a.midY - b.midY) > 0.005 ? a.midY > b.midY : a.minX < b.minX
-        }
+    /// Normalize only known line-break and time-parenthesis differences for a complete cell.
+    private static func normalizedCell(_ value: String) -> String {
+        normalized(value)
+            .replacingOccurrences(of: #"(?<=日-)[ ]+(?=\d{1,2}月\d{1,2}日)"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"（(\d{1,2}:\d{2}[ ]*[-–][ ]*\d{1,2}:\d{2})）"#, with: "($1)", options: .regularExpression)
+            .replacingOccurrences(of: #"([一二三四五六七八九十]+/[一二三四五六七八九十]+)[ ]+年级"#, with: "$1年级", options: .regularExpression)
+            .replacingOccurrences(of: #"(初[一二三])/ +(?=初[一二三])"#, with: "$1/", options: .regularExpression)
+    }
+
+    private static func matchingLines(_ indices: [Int], expected: String, in lines: [OCRService.Line],
+                                      cell: Bool = false) -> Set<Int> {
+        guard let ordered = readingOrder(indices, box: { lines[$0].normalizedBox }) else { return [] }
         let recognized = ordered.map { normalized(lines[$0].text) }.joined(separator: " ")
-        return !recognized.isEmpty && recognized == normalized(expected) ? Set(ordered) : []
+        let matches = cell ? normalizedCell(recognized) == normalizedCell(expected) : recognized == normalized(expected)
+        return !recognized.isEmpty && matches ? Set(ordered) : []
+    }
+
+    /// Only vertically separate boxes have an unambiguous language-independent order.
+    private static func readingOrder(_ indices: [Int], box: (Int) -> CGRect) -> [Int]? {
+        guard indices.count <= 128 else { return nil }
+        let ordered = indices.map { (index: $0, rect: box($0).standardized) }
+            .sorted { $0.rect.maxY > $1.rect.maxY }
+        guard ordered.allSatisfy({ $0.rect.width > 0 && $0.rect.height > 0 }) else { return nil }
+        for pair in zip(ordered, ordered.dropFirst()) {
+            if pair.0.rect.minY < pair.1.rect.maxY { return nil }
+        }
+        return ordered.map(\.index)
+    }
+
+    private static func uniqueCell(containing box: CGRect, in tables: [ScreenshotTable]) -> CellPosition? {
+        let box = box.standardized
+        guard box.width > 0, box.height > 0 else { return nil }
+        var match: CellPosition?
+        for (tableIndex, table) in tables.enumerated() {
+            for row in table.cellRects.indices {
+                for column in table.cellRects[row].indices {
+                    guard let cell = table.cellRects[row][column], cell.contains(box) else { continue }
+                    guard match == nil else { return nil }
+                    match = CellPosition(table: tableIndex, row: row, column: column)
+                }
+            }
+        }
+        return match
+    }
+
+    private static func representedBlockIndices(_ blocks: [ScreenshotTextBlock], in tables: [ScreenshotTable]) -> Set<Int> {
+        var assignments: [CellPosition: [Int]] = [:]
+        for (index, block) in blocks.enumerated() {
+            if let cell = uniqueCell(containing: block.box, in: tables) { assignments[cell, default: []].append(index) }
+        }
+        var represented: Set<Int> = []
+        for (cell, indices) in assignments {
+            guard let ordered = readingOrder(indices, box: { blocks[$0].box }) else { continue }
+            let recognized = ordered.map { normalized(blocks[$0].text) }.joined(separator: " ")
+            if !recognized.isEmpty, normalizedCell(recognized) == normalizedCell(tables[cell.table].rows[cell.row][cell.column]) {
+                represented.formUnion(ordered)
+            }
+        }
+        return represented
     }
 
     /// Remove OCR lines only when their ordered text exactly matches the one
@@ -137,22 +177,11 @@ enum ScreenshotDocumentAssembler {
     private static func representedLineIndices(_ lines: [OCRService.Line], in tables: [ScreenshotTable]) -> Set<Int> {
         var assignments: [CellPosition: [Int]] = [:]
         for (index, line) in lines.enumerated() {
-            let box = line.normalizedBox.standardized
-            guard box.width > 0, box.height > 0 else { continue }
-            var matches: [CellPosition] = []
-            for (tableIndex, table) in tables.enumerated() {
-                for row in table.cellRects.indices {
-                    for column in table.cellRects[row].indices {
-                        guard let cell = table.cellRects[row][column], cell.contains(box) else { continue }
-                        matches.append(CellPosition(table: tableIndex, row: row, column: column))
-                    }
-                }
-            }
-            if matches.count == 1, let cell = matches.first { assignments[cell, default: []].append(index) }
+            if let cell = uniqueCell(containing: line.normalizedBox, in: tables) { assignments[cell, default: []].append(index) }
         }
         var represented: Set<Int> = []
         for (cell, indices) in assignments {
-            represented.formUnion(matchingLines(indices, expected: tables[cell.table].rows[cell.row][cell.column], in: lines))
+            represented.formUnion(matchingLines(indices, expected: tables[cell.table].rows[cell.row][cell.column], in: lines, cell: true))
         }
         return represented
     }

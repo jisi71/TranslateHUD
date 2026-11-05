@@ -1,7 +1,7 @@
 (function () {
-  // v0.4.4 notarized Developer ID DMG for first-time installation.
-  // Version 0.4.4, build 14. macOS 14 or later. Apple silicon and Intel. Asset: TranslateHUD-0.4.4.dmg
-  var DOWNLOAD_URL = "https://github.com/jisi71/TranslateHUD/releases/download/v0.4.4/TranslateHUD-0.4.4.dmg";
+  // v0.4.5 notarized Developer ID DMG for first-time installation.
+  // Version 0.4.5, build 15. macOS 14 or later. Apple silicon and Intel. Asset: TranslateHUD-0.4.5.dmg
+  var DOWNLOAD_URL = "https://github.com/jisi71/TranslateHUD/releases/download/v0.4.5/TranslateHUD-0.4.5.dmg";
 
   var INVITE_STATUS_URL = "https://translatehud-d4gl951eo8bef4702-1445578102.ap-shanghai.app.tcloudbase.com/v1/trial/invite-status";
   var DEFAULT_INVITE_CODE = "translatehud-200";
@@ -127,8 +127,8 @@
   function noteMarkup() {
     return (
       '<p class="invite-note">' +
-      '<span class="lang-zh"><span class="invite-note-lead">新用户输入邀请码获得2元体验额度</span><span class="invite-note-count" data-count-lang="zh">剩余可兑换次数：<span data-invite-remaining>' + countText("zh") + "</span></span></span>" +
-      '<span class="lang-en"><span class="invite-note-lead">New users enter the invite code for ¥2 trial credit</span><span class="invite-note-count" data-count-lang="en">Remaining redemptions: <span data-invite-remaining>' + countText("en") + "</span></span></span>" +
+      '<span class="lang-zh"><span class="invite-note-lead">符合条件的中国大陆手机号新用户可凭邀请码领取2元体验额度</span><span class="invite-note-count" data-count-lang="zh">剩余可兑换次数：<span data-invite-remaining>' + countText("zh") + "</span></span></span>" +
+      '<span class="lang-en"><span class="invite-note-lead">Eligible new users with a mainland China phone number can redeem ¥2 of trial credit</span><span class="invite-note-count" data-count-lang="en">Remaining redemptions: <span data-invite-remaining>' + countText("en") + "</span></span></span>" +
       "</p>" +
       '<p class="invite-feedback" data-invite-feedback role="status" aria-live="polite" aria-atomic="true"></p>'
     );

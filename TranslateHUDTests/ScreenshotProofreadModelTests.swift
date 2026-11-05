@@ -171,8 +171,8 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         XCTAssertEqual(try state.model.plan().sourceForQuota, "old")
         XCTAssertNotNil(state.errorMessage)
         var cancelled: NSApplication.ModalResponse?
-        let alert = NSAlert()
-        let actions = ScreenshotConfirmAction(state: state, alert: alert, stop: { cancelled = $0 })
+        let window = NSPanel()
+        let actions = ScreenshotConfirmAction(state: state, window: window, stop: { cancelled = $0 })
         actions.confirm()
         XCTAssertNil(cancelled)
         actions.cancel()
@@ -204,8 +204,8 @@ final class ScreenshotProofreadModelTests: XCTestCase {
         editor.setMarkedText("ni", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: 3, length: 0))
         XCTAssertTrue(editor.hasMarkedText())
         var modalResult: NSApplication.ModalResponse?
-        let alert = NSAlert()
-        let actions = ScreenshotConfirmAction(state: state, alert: alert, stop: { modalResult = $0 })
+        let window = NSPanel()
+        let actions = ScreenshotConfirmAction(state: state, window: window, stop: { modalResult = $0 })
         actions.confirm()
         XCTAssertNil(modalResult)
         state.select(first)

@@ -6,62 +6,90 @@ enum ScreenshotProofreadWindow {
     static func ask(image: NSImage, plan: ScreenshotTranslationPlan, styleUnavailable: Bool,
                     tableWasRejected: Bool) -> ScreenshotTranslationPlan? {
         guard let state = try? ScreenshotProofreadState(plan: plan) else { return nil }
-        let alert = NSAlert()
-        alert.messageText = InterfaceLanguageStore.shared.text("翻译前核对截图")
-        alert.informativeText = InterfaceLanguageStore.shared.text("文字和样式由本机识别，请对照截图检查。只有点击翻译后才会发送文字。")
-        alert.addButton(withTitle: InterfaceLanguageStore.shared.text("确认并翻译"))
-        alert.addButton(withTitle: InterfaceLanguageStore.shared.text("取消"))
-        let confirm = ScreenshotConfirmAction(state: state, alert: alert)
-        alert.buttons[0].keyEquivalent = ""
-        alert.buttons[0].target = confirm
-        alert.buttons[0].action = #selector(ScreenshotConfirmAction.confirm)
-        alert.buttons[1].target = confirm
-        alert.buttons[1].action = #selector(ScreenshotConfirmAction.cancel)
-        alert.buttons[1].keyEquivalent = ""
-        alert.window.styleMask.remove(.closable)
-        alert.window.defaultButtonCell = nil
         let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 850)
         let width = min(1000, max(700, visible.width - 80))
         let height = min(650, max(480, visible.height - 160))
+        let info = NSTextField(wrappingLabelWithString: InterfaceLanguageStore.shared.text("文字和样式由本机识别，请对照截图检查。只有点击翻译后才会发送文字。"))
+        info.identifier = NSUserInterfaceItemIdentifier("screenshot-proofread-info")
+        let infoWidth = width - 12
+        let infoHeight = max(22, ceil(info.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: infoWidth, height: 1000)).height ?? 22))
+        let panelHeight = height + 78 + infoHeight
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: width + 24, height: panelHeight),
+                            styleMask: [.titled], backing: .buffered, defer: false)
+        panel.title = InterfaceLanguageStore.shared.text("翻译前核对截图")
+        panel.level = .modalPanel
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        let confirm = ScreenshotConfirmAction(state: state, window: panel)
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width + 24, height: panelHeight))
+        info.frame = NSRect(x: 18, y: height + 66, width: infoWidth, height: infoHeight)
+        container.addSubview(info)
         let content = NSHostingView(rootView: ScreenshotProofreadView(image: image, state: state,
                                                                        tableWasRejected: tableWasRejected,
                                                                        tableStylesNeedReview: plan.tableStylesNeedReview,
                                                                        styleUnavailable: styleUnavailable))
-        content.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        alert.accessoryView = content
+        content.frame = NSRect(x: 12, y: 48, width: width, height: height)
+        container.addSubview(content)
+        let cancel = NSButton(title: InterfaceLanguageStore.shared.text("取消"), target: confirm,
+                              action: #selector(ScreenshotConfirmAction.cancel))
+        cancel.bezelStyle = .rounded
+        let accept = NSButton(title: InterfaceLanguageStore.shared.text("确认并翻译"), target: confirm,
+                              action: #selector(ScreenshotConfirmAction.confirm))
+        accept.bezelStyle = .rounded
+        let acceptWidth = max(110, accept.intrinsicContentSize.width)
+        let cancelWidth = max(90, cancel.intrinsicContentSize.width)
+        accept.frame = NSRect(x: width + 6 - acceptWidth, y: 10, width: acceptWidth, height: 30)
+        cancel.frame = NSRect(x: accept.frame.minX - cancelWidth - 8, y: 10, width: cancelWidth, height: 30)
+        container.addSubview(cancel)
+        container.addSubview(accept)
+        panel.contentView = container
+        panel.center()
         NSApp.activate(ignoringOtherApps: true)
-        while alert.runModal() == .alertFirstButtonReturn {
-            guard state.readyForAction() else { continue }
-            do { return try state.model.plan() }
-            catch {
-                let message = NSAlert()
-                message.messageText = InterfaceLanguageStore.shared.text("请调整截图内容")
-                message.informativeText = InterfaceLanguageStore.shared.text("请确认至少有一段文字，并检查标题、表格及粗体位置后再试。")
-                message.addButton(withTitle: InterfaceLanguageStore.shared.text("继续核对"))
-                message.runModal()
+        return withExtendedLifetime(confirm) {
+            while true {
+                panel.makeKeyAndOrderFront(nil)
+                let response = NSApp.runModal(for: panel)
+                guard response == .alertFirstButtonReturn else {
+                    if response == .alertSecondButtonReturn { AppLog.info("screenshot_proofread_result=cancelled") }
+                    else { AppLog.error("screenshot_proofread_result=unexpected") }
+                    panel.orderOut(nil)
+                    return nil
+                }
+                guard state.readyForAction() else { continue }
+                do {
+                    let plan = try state.model.plan()
+                    AppLog.info("screenshot_proofread_result=confirmed")
+                    return plan
+                }
+                catch {
+                    let message = NSAlert()
+                    message.messageText = InterfaceLanguageStore.shared.text("请调整截图内容")
+                    message.informativeText = InterfaceLanguageStore.shared.text("请确认至少有一段文字，并检查标题、表格及粗体位置后再试。")
+                    message.addButton(withTitle: InterfaceLanguageStore.shared.text("继续核对"))
+                    message.runModal()
+                }
             }
         }
-        return nil
     }
 }
 
 @MainActor
 final class ScreenshotConfirmAction: NSObject {
     let state: ScreenshotProofreadState
-    weak var alert: NSAlert?
+    weak var window: NSWindow?
     private let stop: @MainActor (NSApplication.ModalResponse) -> Void
-    init(state: ScreenshotProofreadState, alert: NSAlert,
+    init(state: ScreenshotProofreadState, window: NSWindow,
          stop: @escaping @MainActor (NSApplication.ModalResponse) -> Void = { NSApp.stopModal(withCode: $0) }) {
-        self.state = state; self.alert = alert; self.stop = stop
+        self.state = state; self.window = window; self.stop = stop
     }
     @objc func confirm() {
         guard state.readyForAction() else { return }
         stop(.alertFirstButtonReturn)
-        alert?.window.orderOut(nil)
+        window?.orderOut(nil)
     }
     @objc func cancel() {
         stop(.alertSecondButtonReturn)
-        alert?.window.orderOut(nil)
+        window?.orderOut(nil)
     }
 }
 

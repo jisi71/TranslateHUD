@@ -27,6 +27,267 @@ final class ScreenshotProofreadEditorHostTests: XCTestCase {
         try XCTUnwrap(descendants(host).compactMap { $0 as? ScreenshotInputTextView }.first)
     }
 
+    private func pressMouse(_ button: NSButton, in window: NSWindow) -> Bool {
+        let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
+        let time = ProcessInfo.processInfo.systemUptime
+        guard let down = NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [], timestamp: time,
+                                            windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1),
+              let up = NSEvent.mouseEvent(with: .leftMouseUp, location: point, modifierFlags: [], timestamp: time + 0.01,
+                                          windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0) else { return false }
+        NSApp.postEvent(up, atStart: true)
+        NSApp.sendEvent(down)
+        return true
+    }
+
+    func testRealProofreadModalConfirmReturnsOneCorrectedPlan() throws {
+        let plan = ScreenshotTranslationPlan(blocks: [
+            .text(runs: [.init(text: "Heading", isStrong: true)], heading: 1),
+            .table(rows: [["Name", "Value"], ["A", ""]])
+        ])
+        var pressed = 0
+        var timedOut = false
+        let driver = Timer(timeInterval: 0.1, repeats: true) { timer in
+            guard let content = NSApp.modalWindow?.contentView,
+                  let button = self.descendants(content).compactMap({ $0 as? NSButton })
+                    .first(where: { $0.title == InterfaceLanguageStore.shared.text("确认并翻译") }) else { return }
+            pressed += 1
+            timer.invalidate()
+            button.performClick(nil)
+        }
+        let deadline = Date().addingTimeInterval(4)
+        let watchdog = Timer(timeInterval: 0.2, repeats: true) { _ in
+            if Date() >= deadline { timedOut = true; NSApp.stopModal(withCode: .abort) }
+        }
+        RunLoop.main.add(driver, forMode: .modalPanel)
+        RunLoop.main.add(watchdog, forMode: .modalPanel)
+        let result = ScreenshotProofreadWindow.ask(image: NSImage(size: NSSize(width: 40, height: 40)),
+                                                     plan: plan, styleUnavailable: false, tableWasRejected: false)
+        driver.invalidate(); watchdog.invalidate()
+        XCTAssertFalse(timedOut)
+        XCTAssertEqual(pressed, 1)
+        let corrected = try XCTUnwrap(result)
+        XCTAssertEqual(corrected.sourceTexts, ["Heading", "Name", "Value", "A"])
+        XCTAssertEqual(try corrected.render(corrected.sourceItems), "# **Heading**\n\n| Name | Value |\n| --- | --- |\n| A |  |")
+    }
+
+    func testRealProofreadModalCancelReturnsNoPlan() {
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: "Draft", isStrong: false)], heading: nil)])
+        var pressed = 0
+        var timedOut = false
+        let driver = Timer(timeInterval: 0.1, repeats: true) { timer in
+            guard let content = NSApp.modalWindow?.contentView,
+                  let button = self.descendants(content).compactMap({ $0 as? NSButton })
+                    .first(where: { $0.title == InterfaceLanguageStore.shared.text("取消") }) else { return }
+            pressed += 1
+            timer.invalidate()
+            button.performClick(nil)
+        }
+        let deadline = Date().addingTimeInterval(4)
+        let watchdog = Timer(timeInterval: 0.2, repeats: true) { _ in
+            if Date() >= deadline { timedOut = true; NSApp.stopModal(withCode: .abort) }
+        }
+        RunLoop.main.add(driver, forMode: .modalPanel)
+        RunLoop.main.add(watchdog, forMode: .modalPanel)
+        let result = ScreenshotProofreadWindow.ask(image: NSImage(size: NSSize(width: 40, height: 40)),
+                                                     plan: plan, styleUnavailable: false, tableWasRejected: false)
+        driver.invalidate(); watchdog.invalidate()
+        XCTAssertFalse(timedOut)
+        XCTAssertEqual(pressed, 1)
+        XCTAssertNil(result)
+    }
+
+    func testRealProofreadModalKeepsMarkedTextUntilCommitted() throws {
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: "正文", isStrong: false)], heading: nil)])
+        var stage = 0, sawMarked = false, keptDraft = false, focused = false, clicked = false, blockedMessage = false, timedOut = false
+        var windowID: ObjectIdentifier?, editorID: ObjectIdentifier?
+        let driver = Timer(timeInterval: 0.1, repeats: true) { timer in
+            guard let window = NSApp.modalWindow, let content = window.contentView,
+                  let view = self.descendants(content).compactMap({ $0 as? ScreenshotInputTextView }).first,
+                  let button = self.descendants(content).compactMap({ $0 as? NSButton })
+                    .first(where: { $0.title == InterfaceLanguageStore.shared.text("确认并翻译") }) else { return }
+            if stage == 0 && view.string == "正文" {
+                guard let action = button.target as? ScreenshotConfirmAction, action.state.errorMessage == nil else { return }
+                focused = window.makeFirstResponder(view) && window.firstResponder === view
+                windowID = ObjectIdentifier(window); editorID = ObjectIdentifier(view)
+                view.setSelectedRange(NSRange(location: 2, length: 0))
+                view.setMarkedText("ni", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: 2, length: 0))
+                sawMarked = view.hasMarkedText()
+                stage = 1
+                clicked = self.pressMouse(button, in: window)
+            } else if stage == 1 {
+                blockedMessage = (button.target as? ScreenshotConfirmAction)?.state.errorMessage == "请先完成输入法选词，再继续操作。"
+                keptDraft = window.isVisible && ObjectIdentifier(window) == windowID && ObjectIdentifier(view) == editorID &&
+                    view.hasMarkedText() && view.string == "正文ni"
+                view.insertText("你", replacementRange: view.markedRange())
+                stage = 2
+                timer.invalidate()
+                button.performClick(nil)
+            }
+        }
+        let deadline = Date().addingTimeInterval(5)
+        let watchdog = Timer(timeInterval: 0.2, repeats: true) { _ in
+            if Date() >= deadline { timedOut = true; NSApp.stopModal(withCode: .abort) }
+        }
+        RunLoop.main.add(driver, forMode: .modalPanel); RunLoop.main.add(watchdog, forMode: .modalPanel)
+        let result = ScreenshotProofreadWindow.ask(image: NSImage(size: NSSize(width: 40, height: 40)),
+                                                     plan: plan, styleUnavailable: false, tableWasRejected: false)
+        driver.invalidate(); watchdog.invalidate()
+        XCTAssertFalse(timedOut)
+        XCTAssertEqual(stage, 2)
+        XCTAssertTrue(focused && sawMarked && clicked && blockedMessage)
+        XCTAssertTrue(keptDraft)
+        XCTAssertEqual(try XCTUnwrap(result).sourceTexts, ["正文你"])
+    }
+
+    func testRealProofreadModalKeepsOversizedDraftUntilCorrected() throws {
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: "old", isStrong: false)], heading: nil)])
+        var stage = 0, keptDraft = false, focused = false, timedOut = false
+        var windowID: ObjectIdentifier?, editorID: ObjectIdentifier?
+        var selection = NSRange(location: 0, length: 0)
+        let driver = Timer(timeInterval: 0.1, repeats: true) { timer in
+            guard let window = NSApp.modalWindow, let content = window.contentView,
+                  let view = self.descendants(content).compactMap({ $0 as? ScreenshotInputTextView }).first,
+                  let button = self.descendants(content).compactMap({ $0 as? NSButton })
+                    .first(where: { $0.title == InterfaceLanguageStore.shared.text("确认并翻译") }) else { return }
+            if stage == 0 && view.string == "old" {
+                focused = window.makeFirstResponder(view) && window.firstResponder === view
+                windowID = ObjectIdentifier(window); editorID = ObjectIdentifier(view)
+                view.insertText(String(repeating: "x", count: 65_537), replacementRange: NSRange(location: 0, length: 3))
+                selection = view.selectedRange()
+                stage = 1
+                button.performClick(nil)
+            } else if stage == 1 {
+                keptDraft = window.isVisible && ObjectIdentifier(window) == windowID && ObjectIdentifier(view) == editorID &&
+                    view.string.utf8.count == 65_537 && view.selectedRange() == selection
+                view.insertText("new", replacementRange: NSRange(location: 0, length: view.string.utf16.count))
+                stage = 2
+                timer.invalidate()
+                button.performClick(nil)
+            }
+        }
+        let deadline = Date().addingTimeInterval(8)
+        let watchdog = Timer(timeInterval: 0.2, repeats: true) { _ in
+            if Date() >= deadline { timedOut = true; NSApp.stopModal(withCode: .abort) }
+        }
+        RunLoop.main.add(driver, forMode: .modalPanel); RunLoop.main.add(watchdog, forMode: .modalPanel)
+        let result = ScreenshotProofreadWindow.ask(image: NSImage(size: NSSize(width: 40, height: 40)),
+                                                     plan: plan, styleUnavailable: false, tableWasRejected: false)
+        driver.invalidate(); watchdog.invalidate()
+        XCTAssertFalse(timedOut)
+        XCTAssertEqual(stage, 2)
+        XCTAssertTrue(focused && keptDraft)
+        XCTAssertEqual(try XCTUnwrap(result).sourceTexts, ["new"])
+    }
+
+    func testRealProofreadModalCanCancelWhileTextIsMarked() {
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: "正文", isStrong: false)], heading: nil)])
+        var sawMarked = false, pressed = false, timedOut = false
+        let driver = Timer(timeInterval: 0.1, repeats: true) { timer in
+            guard let window = NSApp.modalWindow, let content = window.contentView,
+                  let view = self.descendants(content).compactMap({ $0 as? ScreenshotInputTextView }).first,
+                  view.string == "正文",
+                  let button = self.descendants(content).compactMap({ $0 as? NSButton })
+                    .first(where: { $0.title == InterfaceLanguageStore.shared.text("取消") }) else { return }
+            window.makeFirstResponder(view)
+            view.setMarkedText("ni", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: 2, length: 0))
+            sawMarked = view.hasMarkedText()
+            pressed = true
+            timer.invalidate()
+            button.performClick(nil)
+        }
+        let deadline = Date().addingTimeInterval(5)
+        let watchdog = Timer(timeInterval: 0.2, repeats: true) { _ in
+            if Date() >= deadline { timedOut = true; NSApp.stopModal(withCode: .abort) }
+        }
+        RunLoop.main.add(driver, forMode: .modalPanel); RunLoop.main.add(watchdog, forMode: .modalPanel)
+        let result = ScreenshotProofreadWindow.ask(image: NSImage(size: NSSize(width: 40, height: 40)),
+                                                     plan: plan, styleUnavailable: false, tableWasRejected: false)
+        driver.invalidate(); watchdog.invalidate()
+        XCTAssertFalse(timedOut)
+        XCTAssertTrue(sawMarked && pressed)
+        XCTAssertNil(result)
+    }
+
+    func testRealProofreadModalReturnsToEditorAfterEmptyContent() throws {
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: "old", isStrong: false)], heading: nil)])
+        var stage = 0, timedOut = false, returnedToEditor = false
+        let driver = Timer(timeInterval: 0.1, repeats: true) { timer in
+            guard let window = NSApp.modalWindow, let content = window.contentView else { return }
+            let views = self.descendants(content)
+            let buttons = views.compactMap { $0 as? NSButton }
+            if stage == 1, let button = buttons.first(where: { $0.title == InterfaceLanguageStore.shared.text("继续核对") }) {
+                stage = 2
+                button.performClick(nil)
+                return
+            }
+            guard let view = views.compactMap({ $0 as? ScreenshotInputTextView }).first,
+                  let button = buttons.first(where: { $0.title == InterfaceLanguageStore.shared.text("确认并翻译") }) else { return }
+            if stage == 0 && view.string == "old" {
+                window.makeFirstResponder(view)
+                view.insertText("", replacementRange: NSRange(location: 0, length: 3))
+                stage = 1
+                button.performClick(nil)
+            } else if stage == 2 {
+                returnedToEditor = window.isVisible && view.string.isEmpty
+                view.insertText("new", replacementRange: NSRange(location: 0, length: 0))
+                stage = 3
+                timer.invalidate()
+                button.performClick(nil)
+            }
+        }
+        let deadline = Date().addingTimeInterval(6)
+        let watchdog = Timer(timeInterval: 0.2, repeats: true) { _ in
+            if Date() >= deadline { timedOut = true; NSApp.stopModal(withCode: .abort) }
+        }
+        RunLoop.main.add(driver, forMode: .modalPanel); RunLoop.main.add(watchdog, forMode: .modalPanel)
+        let result = ScreenshotProofreadWindow.ask(image: NSImage(size: NSSize(width: 40, height: 40)),
+                                                     plan: plan, styleUnavailable: false, tableWasRejected: false)
+        driver.invalidate(); watchdog.invalidate()
+        XCTAssertFalse(timedOut)
+        XCTAssertEqual(stage, 3)
+        XCTAssertTrue(returnedToEditor)
+        XCTAssertEqual(try XCTUnwrap(result).sourceTexts, ["new"])
+    }
+
+    func testRealProofreadModalFitsChineseAndEnglishControls() {
+        let prior = InterfaceLanguageStore.shared.language
+        defer { InterfaceLanguageStore.shared.language = prior }
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: "Draft", isStrong: false)], heading: nil)])
+        for language in [InterfaceLanguage.chinese, .english] {
+            InterfaceLanguageStore.shared.language = language
+            var checked = false, fits = false, timedOut = false
+            let driver = Timer(timeInterval: 0.1, repeats: true) { timer in
+                guard let window = NSApp.modalWindow, let content = window.contentView else { return }
+                let views = self.descendants(content)
+                guard let info = views.compactMap({ $0 as? NSTextField })
+                    .first(where: { $0.identifier?.rawValue == "screenshot-proofread-info" }),
+                      let accept = views.compactMap({ $0 as? NSButton })
+                    .first(where: { $0.title == InterfaceLanguageStore.shared.text("确认并翻译") }),
+                      let cancel = views.compactMap({ $0 as? NSButton })
+                    .first(where: { $0.title == InterfaceLanguageStore.shared.text("取消") }) else { return }
+                let textHeight = (info.stringValue as NSString).boundingRect(
+                    with: NSSize(width: info.bounds.width, height: 1000),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: [.font: info.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)], context: nil).height
+                fits = info.frame.height + 2 >= ceil(textHeight) && accept.frame.width >= accept.intrinsicContentSize.width &&
+                    cancel.frame.width >= cancel.intrinsicContentSize.width && cancel.frame.maxX <= accept.frame.minX
+                checked = true
+                timer.invalidate()
+                cancel.performClick(nil)
+            }
+            let deadline = Date().addingTimeInterval(5)
+            let watchdog = Timer(timeInterval: 0.2, repeats: true) { _ in
+                if Date() >= deadline { timedOut = true; NSApp.stopModal(withCode: .abort) }
+            }
+            RunLoop.main.add(driver, forMode: .modalPanel); RunLoop.main.add(watchdog, forMode: .modalPanel)
+            _ = ScreenshotProofreadWindow.ask(image: NSImage(size: NSSize(width: 40, height: 40)),
+                                               plan: plan, styleUnavailable: false, tableWasRejected: false)
+            driver.invalidate(); watchdog.invalidate()
+            XCTAssertFalse(timedOut, "\(language)")
+            XCTAssertTrue(checked && fits, "\(language)")
+        }
+    }
+
     func testProofreadEditorUsesTextKit1AcrossOwnerSwitches() throws {
         let state = try ScreenshotProofreadState(plan: .init(blocks: [
             .text(runs: [.init(text: "Heading", isStrong: true)], heading: 1),

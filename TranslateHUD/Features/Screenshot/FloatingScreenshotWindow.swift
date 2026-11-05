@@ -5,6 +5,7 @@ import SwiftUI
 /// 可拖动（背景任意处）。未置顶时点窗口外关闭；已置顶点外不关闭。右上 X、ESC、取消按钮始终可关。
 @MainActor
 final class FloatingScreenshotWindow {
+    private enum CloseReason: String { case explicit, outside, escape }
     private let window: DraggableWindow
     private let progress: TranslationProgress
     private let termProgress: TermExplanationProgress
@@ -68,8 +69,8 @@ final class FloatingScreenshotWindow {
         window.contentView = host.view
         hostingController = host
 
-        window.escapeHandler = { [weak self] in self?.close() }
-        closeRef = { [weak self] in self?.close() }
+        window.escapeHandler = { [weak self] in self?.close(reason: .escape) }
+        closeRef = { [weak self] in self?.close(reason: .explicit) }
         retryRef = { [weak self] in self?.progress.retry() }
         pinRef = { [weak self] pinned in
             self?.isPinned = pinned
@@ -84,9 +85,11 @@ final class FloatingScreenshotWindow {
         window.orderFrontRegardless()
         installDismissMonitors()
         scheduleContentSizeAdjustment()
+        AppLog.info("screenshot_panel_shown")
     }
 
-    func close() {
+    private func close(reason: CloseReason) {
+        guard hostingController != nil else { return }
         progress.cancel()
         termProgress.cancel()
         speech.stop()
@@ -94,6 +97,7 @@ final class FloatingScreenshotWindow {
         window.orderOut(nil)
         hostingController = nil
         WindowRegistry.shared.remove(self)
+        AppLog.info("screenshot_panel_closed reason=\(reason.rawValue)")
     }
 
     private func scheduleContentSizeAdjustment() {
@@ -125,7 +129,7 @@ final class FloatingScreenshotWindow {
                     clickedWindow: nil,
                     panelWindow: self.window
                 ) else { return }
-                self.close()
+                self.close(reason: .outside)
             }
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseDown) { [weak self] event in
@@ -135,13 +139,13 @@ final class FloatingScreenshotWindow {
                 clickedWindow: event.window,
                 panelWindow: self.window
             ) {
-                Task { @MainActor in self.close() }
+                Task { @MainActor in self.close(reason: .outside) }
             }
             return event
         }
         keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if FloatingPanelDismissPolicy.shouldCloseOnKeyDown(keyCode: event.keyCode) {
-                Task { @MainActor in self?.close() }
+                Task { @MainActor in self?.close(reason: .escape) }
             }
         }
     }

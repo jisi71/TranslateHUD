@@ -1,9 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
   <channel>
     <title>TranslateHUD</title>
     <link>https://github.com/jisi71/TranslateHUD/releases</link>
     <description>TranslateHUD 的更新说明</description>
     <language>zh-Hans</language>
-  </channel>
+  <item><title>版本 0.4.5</title><link>https://github.com/jisi71/TranslateHUD/releases</link><sparkle:version>15</sparkle:version><sparkle:shortVersionString>0.4.5</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0.0</sparkle:minimumSystemVersion><description><![CDATA[<ul><li>截图翻译增加文字结构与表格校对，可调整标题、段落和单元格后再翻译。</li><li>译文浮窗保留表格行列；较宽的表格可以左右滚动查看。</li><li>登录时可在同一输入框使用手机号或邮箱接收验证码；邮箱账号可使用每日免费额度。</li><li>复杂截图中的文字和表格可能识别不准确，翻译前请对照原图检查并修正。</li></ul>]]></description><pubDate>Thu, 05 Nov 2026 17:08:40 +0000</pubDate><enclosure url="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.5/TranslateHUD-0.4.5.zip" sparkle:edSignature="C5ip3KtNCbNsxK7Ugv0P2s9Usvr5AdL+z7De3dK6m0CrgvL6KqJsrBfDg/b8kEh/jSOCPbghLXhore5/JqF2Bw==" length="3492532" type="application/octet-stream" /></item><item><title>版本 0.4.4</title><link>https://github.com/jisi71/TranslateHUD/releases</link><sparkle:version>14</sparkle:version><sparkle:shortVersionString>0.4.4</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0.0</sparkle:minimumSystemVersion><description><![CDATA[<ul><li>设置中可切换中文、英文或跟随系统，名词解释跟随翻译目标语言。</li><li>划词翻译支持保留常见 Markdown 结构和富文本层级，译文浮窗显示标题、列表、引用和表格。</li><li>体验翻译单次原文上限提高到 1000 字素；登录后可查看每日免费额度。</li><li>修复切换账号时旧请求的结果可能覆盖当前账号状态的问题。</li><li>修复普通多行文本的换行显示与反馈图片附件转换问题。</li></ul>]]></description><pubDate>Tue, 03 Nov 2026 16:19:55 +0000</pubDate><enclosure url="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.4/TranslateHUD-0.4.4.zip" sparkle:edSignature="kemkYdLvbrda1wVKdQ9/ycQSvznzE3xtsJJBHoiVZ4CRnPjXShPKpyFSy4Kfu1KpjDiAzMpyLitXPHryx6JfAA==" length="2962946" type="application/octet-stream" /></item></channel>
 </rss>

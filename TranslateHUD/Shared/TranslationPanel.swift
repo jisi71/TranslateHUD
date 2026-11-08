@@ -14,6 +14,7 @@ struct TranslationPanel: View {
     @Environment(\.colorScheme) private var systemScheme
     var heightBudget: PanelHeightBudget = PopoverContent.heightBudget(visibleHeight: 2_000)
     var recognitionNotice: String? = nil
+    var screenshotSource: ScreenshotSourceState? = nil
     var onClose: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
     var onPin: @MainActor (Bool) -> Void
@@ -41,32 +42,36 @@ struct TranslationPanel: View {
         VStack(spacing: 0) {
             header
             separator
-            if let recognitionNotice {
-                Text(interfaceLanguage.text(recognitionNotice))
-                    .font(.caption)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
+            if let source = screenshotSource, let editor = source.editor {
+                screenshotEditor(source: source, editor: editor)
+            } else {
+                if let notice = screenshotSource?.editError ?? recognitionNotice {
+                    Text(interfaceLanguage.text(notice))
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 8)
+                }
+                // Sections fit their content; each long section scrolls independently.
+                PanelSectionsLayout(
+                    maxHeight: heightBudget.contentMax,
+                    sourceCap: heightBudget.sourceMax,
+                    spacing: 14
+                ) {
+                    sourceSection
+                    separator.panelSectionRole(.divider)
+                    statusSection
+                    if !translated.isEmpty { translationSection }
+                    if termProgress.isExpanded { termsSection }
+                    if showsContext, image != nil { contextSection }
+                }
+                .padding(18)
+                .frame(maxHeight: heightBudget.bodyMax, alignment: .top)
+                .clipped()
             }
-            // Sections take their own content height. A ScrollView around the whole
-            // body would expand to the offered height and leave short text in an empty well.
-            PanelSectionsLayout(
-                maxHeight: heightBudget.contentMax,
-                sourceCap: heightBudget.sourceMax,
-                spacing: 14
-            ) {
-                sourceSection
-                separator.panelSectionRole(.divider)
-                statusSection
-                if !translated.isEmpty { translationSection }
-                if termProgress.isExpanded { termsSection }
-                if showsContext, image != nil { contextSection }
-            }
-            .padding(18)
-            .frame(maxHeight: heightBudget.bodyMax, alignment: .top)
-            .clipped()
             separator
             footer
+                .disabled(screenshotSource?.editor != nil)
         }
         .fixedSize(horizontal: false, vertical: true)
         .foregroundStyle(colors.primaryText)
@@ -116,7 +121,8 @@ struct TranslationPanel: View {
             terms,
             isOriginalExpanded ? "source-open" : "source-closed",
             showsContext ? "context-open" : "context-closed",
-            termProgress.isExpanded ? "terms-open" : "terms-closed"
+            termProgress.isExpanded ? "terms-open" : "terms-closed",
+            screenshotSource?.editor == nil ? "source-view" : "source-edit"
         ].joined(separator: "\u{1e}")
     }
 
@@ -174,6 +180,12 @@ struct TranslationPanel: View {
                 }
                 SpeechButton(text: MarkdownDisplay.plainText(from: original), id: "translation.original", speech: speech)
                     .frame(width: Self.sourceSpeechSide, height: Self.sourceSpeechSide)
+                if let screenshotSource {
+                    iconButton("pencil", help: "编辑原文") {
+                        speech.stop()
+                        screenshotSource.beginEditing()
+                    }
+                }
             }
         }
         .panelSectionRole(.source)
@@ -236,6 +248,21 @@ struct TranslationPanel: View {
             .panelSectionRole(.extra)
     }
 
+    private func screenshotEditor(source: ScreenshotSourceState, editor: ScreenshotProofreadState) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(interfaceLanguage.text("编辑原文")).font(.headline)
+            ScreenshotInlineSourceEditor(state: editor, width: PopoverContent.fixedWidth - 48)
+            HStack {
+                Button(interfaceLanguage.text("取消")) { source.cancelEditing() }
+                Spacer()
+                Button(interfaceLanguage.text("保存并重新翻译")) { source.applyEdits() }
+                    .keyboardShortcut(.return, modifiers: .command)
+            }
+        }
+        .padding(12)
+        .frame(height: max(180, min(520, heightBudget.bodyMax)), alignment: .top)
+    }
+
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: "character.bubble")
@@ -270,6 +297,7 @@ struct TranslationPanel: View {
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
+            .disabled(screenshotSource?.editor != nil)
             .help("目标语言")
             .accessibilityLabel(interfaceLanguage.format("目标语言：%@", interfaceLanguage.text(languageName)))
             iconButton(isPinned ? "pin.fill" : "pin", help: isPinned ? "取消置顶" : "置顶窗口", active: isPinned) {

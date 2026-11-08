@@ -163,8 +163,7 @@ struct ScreenshotTranslationPlan: Sendable {
     var sourceTexts: [String] { sourceItems.map(\.text) }
     var sourceForQuota: String { sourceTexts.joined(separator: "\n") }
     var sourceIsRepresentable: Bool { structureIsValid && (try? render(sourceItems)) != nil }
-    var originalMarkdown: String {
-        if let result = try? render(sourceItems) { return result }
+    var withoutStyles: ScreenshotTranslationPlan {
         let plainBlocks = blocks.map { block -> Block in
             switch block {
             case .text(let runs, let heading):
@@ -172,7 +171,12 @@ struct ScreenshotTranslationPlan: Sendable {
             case .table(let rows, _): return .table(rows: rows)
             }
         }
-        let plain = ScreenshotTranslationPlan(blocks: plainBlocks)
+        return ScreenshotTranslationPlan(blocks: plainBlocks, tableStylesNeedReview: tableStylesNeedReview)
+    }
+
+    var originalMarkdown: String {
+        if let result = try? render(sourceItems) { return result }
+        let plain = withoutStyles
         return (try? plain.render(plain.sourceItems)) ?? sourceTexts.map(Self.escape).joined(separator: "\n\n")
     }
 

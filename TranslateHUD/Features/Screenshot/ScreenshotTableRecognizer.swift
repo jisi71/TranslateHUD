@@ -81,7 +81,7 @@ enum ScreenshotTableRecognizer {
     struct Assessment: Sendable {
         let tables: [ScreenshotTable]
         let rejected: [RejectionReason]
-        /// Borderless layouts may be aligned prose. A user must confirm each candidate.
+        /// Borderless layouts may be aligned prose and should be presented as uncertain.
         let reviewRequired: [ScreenshotTable]
         let blockedRegions: [CGRect]
 
@@ -93,7 +93,7 @@ enum ScreenshotTableRecognizer {
         }
     }
 
-    /// A geometry-only inference. A user must inspect and approve it before use.
+    /// A geometry-only inference that may require correction against the image.
     struct BorderlessCandidate: Sendable {
         let table: ScreenshotTable
         var rows: [[String]] { table.rows }
@@ -186,13 +186,12 @@ enum ScreenshotTableRecognizer {
                 let area = candidate.normalizedBox.width * candidate.normalizedBox.height
                 return area > 0 && intersection.width * intersection.height / area > 0.75
             })
-            // A reconstructed title must always go through explicit review.
+            // A reconstructed title remains an uncertain candidate.
             let match = splitTitle ? nil : (ruledMatch ?? (hasRuleEvidence ? nil : borderlessMatch(rows: grid, box: box, image: image, lines: lines)))
             guard let match else {
                 // A colored header or sparse layout can defeat the independent
                 // grid check. Offer a structurally plausible Vision result only
-                // as an explicit, editable review candidate; never promote it
-                // to an automatically accepted table.
+                // as an editable candidate, separate from independently verified tables.
                 let nonemptyRows = grid.filter { $0.contains { !$0.isEmpty } }.count
                 let nonemptyColumns = (0..<width).filter { column in grid.contains { !$0[column].isEmpty } }.count
                 let hasOCR = lines.contains { box.contains(CGPoint(x: $0.normalizedBox.midX, y: $0.normalizedBox.midY)) }
@@ -291,8 +290,7 @@ enum ScreenshotTableRecognizer {
         return candidate
     }
 
-    /// OCR geometry alone cannot determine whether a layout is a table. This
-    /// candidate must be shown alongside the screenshot for user confirmation.
+    /// OCR geometry alone cannot determine whether a layout is a table.
     static func borderlessCandidate(from image: CGImage, lines: [OCRService.Line]) -> BorderlessCandidate? {
         let bounds = CGRect(x: 0, y: 0, width: 1, height: 1)
         guard let raster = Raster(image: image), !raster.hasRuleEvidence(in: bounds),

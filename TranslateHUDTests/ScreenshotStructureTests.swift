@@ -406,7 +406,7 @@ final class ScreenshotStructureTests: XCTestCase {
             OCRService.Line(text: "6", normalizedBox: CGRect(x: 0.55, y: 0.53, width: 0.05, height: 0.03), confidence: 1),
             OCRService.Line(text: "Across boundary", normalizedBox: CGRect(x: 0.08, y: 0.48, width: 0.2, height: 0.05), confidence: 1)
         ]
-        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: lines, tables: [table], reviewedTables: [table])
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: lines, tables: [table], tentativeTables: [table])
         XCTAssertTrue(plan.originalMarkdown.contains("| One | 5 |"))
         XCTAssertTrue(plan.originalMarkdown.contains("| Two | 5 |"))
         XCTAssertTrue(plan.originalMarkdown.contains("6"))
@@ -420,11 +420,11 @@ final class ScreenshotStructureTests: XCTestCase {
         let table = ScreenshotTable(rows: [["Name", "Count"], ["One", "1"]],
                                     normalizedBox: CGRect(x: 0.1, y: 0.4, width: 0.8, height: 0.3), hasMergedCells: false,
                                     leadingTitle: title)
-        let withoutOCR = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: [], tables: [table], reviewedTables: [table])
+        let withoutOCR = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: [], tables: [table], tentativeTables: [table])
         XCTAssertTrue(withoutOCR.originalMarkdown.contains("Comparison"))
         XCTAssertTrue(withoutOCR.originalMarkdown.contains("| One | 1 |"))
         let line = OCRService.Line(text: "Comparison", normalizedBox: title.normalizedBox, confidence: 1)
-        let withOCR = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: [line], tables: [table], reviewedTables: [table])
+        let withOCR = ScreenshotDocumentAssembler.makePlan(textBlocks: [], lines: [line], tables: [table], tentativeTables: [table])
         XCTAssertEqual(withOCR.sourceTexts.filter { $0 == "Comparison" }.count, 1)
     }
 
@@ -440,7 +440,7 @@ final class ScreenshotStructureTests: XCTestCase {
             OCRService.Line(text: "the rapist", normalizedBox: CGRect(x: 0.15, y: 0.63, width: 0.2, height: 0.03), confidence: 1),
             OCRService.Line(text: "1 000", normalizedBox: CGRect(x: 0.55, y: 0.63, width: 0.2, height: 0.03), confidence: 1)
         ]
-        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [title], lines: lines, tables: [table], reviewedTables: [table])
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: [title], lines: lines, tables: [table], tentativeTables: [table])
         XCTAssertTrue(plan.originalMarkdown.contains("# Document\\-only title"))
         XCTAssertTrue(plan.originalMarkdown.contains("the rapist"))
         XCTAssertTrue(plan.originalMarkdown.contains("1 000"))
@@ -469,7 +469,7 @@ final class ScreenshotStructureTests: XCTestCase {
             }
         }
         blocks.append(.init(text: "表外说明", box: CGRect(x: 0.1, y: 0.2, width: 0.3, height: 0.03)))
-        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], tentativeTables: [table])
         XCTAssertEqual(plan.sourceTexts.filter { $0 == "7月8日-8月28日" }.count, 2)
         XCTAssertEqual(plan.sourceTexts.filter { $0 == "周一-周五 (8:00-11:30)" }.count, 2)
         XCTAssertEqual(plan.sourceTexts.count, 7)
@@ -489,7 +489,7 @@ final class ScreenshotStructureTests: XCTestCase {
             OCRService.Line(text: "跨格说明", normalizedBox: CGRect(x: 0.48, y: 0.55, width: 0.1, height: 0.02), confidence: 1)
         ]
         let blocks = lines.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) }
-        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], tentativeTables: [table])
         for text in ["8月28日", "7月8日-", "5", "跨格说明"] {
             XCTAssertTrue(plan.sourceTexts.contains(text), "Unmatched text must remain: \(text)")
         }
@@ -505,7 +505,7 @@ final class ScreenshotStructureTests: XCTestCase {
             OCRService.Line(text: "7月8日-", normalizedBox: CGRect(x: 0.2, y: 0.6, width: 0.1, height: 0.002), confidence: 1)
         ]
         let blocks = lines.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) }
-        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], tentativeTables: [table])
         XCTAssertTrue(plan.sourceTexts.contains("8月28日"))
         XCTAssertTrue(plan.sourceTexts.contains("7月8日-"))
     }
@@ -519,7 +519,7 @@ final class ScreenshotStructureTests: XCTestCase {
             OCRService.Line(text: "Beta", normalizedBox: CGRect(x: 0.29, y: 0.625, width: 0.1, height: 0.04), confidence: 1)
         ]
         let blocks = lines.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) }
-        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], tentativeTables: [table])
         XCTAssertTrue(plan.sourceTexts.contains("Alpha"))
         XCTAssertTrue(plan.sourceTexts.contains("Beta"))
         XCTAssertTrue(plan.sourceTexts.contains("Alpha Beta"))
@@ -534,7 +534,7 @@ final class ScreenshotStructureTests: XCTestCase {
             OCRService.Line(text: "الثاني", normalizedBox: CGRect(x: 0.2, y: 0.6, width: 0.1, height: 0.03), confidence: 1)
         ]
         let blocks = lines.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) }
-        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], tentativeTables: [table])
         XCTAssertTrue(plan.sourceTexts.contains("الأول"))
         XCTAssertTrue(plan.sourceTexts.contains("الثاني"))
         XCTAssertTrue(plan.sourceTexts.contains("الثاني الأول"))
@@ -553,7 +553,7 @@ final class ScreenshotStructureTests: XCTestCase {
             OCRService.Line(text: "rapist", normalizedBox: CGRect(x: 0.55, y: 0.6, width: 0.2, height: 0.02), confidence: 1)
         ]
         let blocks = lines.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) }
-        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], reviewedTables: [table])
+        let plan = ScreenshotDocumentAssembler.makePlan(textBlocks: blocks, lines: lines, tables: [table], tentativeTables: [table])
         XCTAssertEqual(plan.sourceTexts.filter { $0 == "一/二年级" }.count, 1)
         XCTAssertFalse(plan.sourceTexts.contains("一/二"))
         XCTAssertFalse(plan.sourceTexts.contains("年级"))

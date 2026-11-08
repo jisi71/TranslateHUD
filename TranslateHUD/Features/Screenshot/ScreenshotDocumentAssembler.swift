@@ -17,16 +17,16 @@ enum ScreenshotDocumentAssembler {
 
     static func makePlan(textBlocks: [ScreenshotTextBlock], lines: [OCRService.Line],
                          tables: [ScreenshotTable], hasRejectedTable: Bool = false,
-                         reviewedTables: [ScreenshotTable] = []) -> ScreenshotTranslationPlan {
+                         tentativeTables: [ScreenshotTable] = []) -> ScreenshotTranslationPlan {
         // Document paragraphs may omit an ambiguous table entirely. Preserve
         // all legacy OCR lines whenever any table cannot be verified.
         // A crossing OCR line invalidates only its own independently accepted
-        // table. User-reviewed candidates retain the line for manual checking.
+        // table. Tentative tables retain crossing lines so text is not lost.
         let rejectedTables = tables.filter { table in
-            !reviewedTables.contains(table) && hasCrossingLine(lines, tables: [table])
+            !tentativeTables.contains(table) && hasCrossingLine(lines, tables: [table])
         }
         let tables = tables.filter { !rejectedTables.contains($0) }
-        let reviewedTables = reviewedTables.filter { tables.contains($0) }
+        let tentativeTables = tentativeTables.filter { tables.contains($0) }
         let representedByDocument = representedLineIndices(lines, inBlocks: textBlocks)
         let missingLine = lines.enumerated().contains { index, line in
             if tables.contains(where: { $0.normalizedBox.contains(line.normalizedBox) }) { return false }
@@ -34,9 +34,9 @@ enum ScreenshotDocumentAssembler {
         }
         let documentBlocks = textBlocks
         var textBlocks = hasRejectedTable || missingLine || !rejectedTables.isEmpty ? ScreenshotTextLayout.fromLines(lines) : textBlocks
-        if !reviewedTables.isEmpty || hasRejectedTable || missingLine || !rejectedTables.isEmpty {
-            let represented = representedLineIndices(lines, in: reviewedTables)
-            let strictTables = tables.filter { !reviewedTables.contains($0) }
+        if !tentativeTables.isEmpty || hasRejectedTable || missingLine || !rejectedTables.isEmpty {
+            let represented = representedLineIndices(lines, in: tentativeTables)
+            let strictTables = tables.filter { !tentativeTables.contains($0) }
             // Each OCR source must independently account for the whole cell.
             let representedBlocks = representedBlockIndices(documentBlocks, in: tables)
             let retainedBlocks = documentBlocks.enumerated().compactMap { index, block in

@@ -1,6 +1,11 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "编辑原文": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "编辑原文" } }, "en": { "stringUnit": { "state": "translated", "value": "Edit original" } } } },
+    "保存并重新翻译": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "保存并重新翻译" } }, "en": { "stringUnit": { "state": "translated", "value": "Save and retranslate" } } } },
+    "无法编辑识别内容，请重新截图。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法编辑识别内容，请重新截图。" } }, "en": { "stringUnit": { "state": "translated", "value": "Could not edit the recognized text. Please take the screenshot again." } } } },
+    "部分文字样式无法保留，已按普通文字翻译。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "部分文字样式无法保留，已按普通文字翻译。" } }, "en": { "stringUnit": { "state": "translated", "value": "Some text formatting could not be retained and was translated as plain text." } } } },
+    "截图结构无法可靠保留，已按文字翻译。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "截图结构无法可靠保留，已按文字翻译。" } }, "en": { "stringUnit": { "state": "translated", "value": "The screenshot layout could not be retained reliably and was translated as text." } } } },
     "左右滚动查看表格": {
       "extractionState": "manual",
       "localizations": {

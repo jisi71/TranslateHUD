@@ -1,7 +1,7 @@
 import AppKit
 import Vision
 
-/// 截图 → 本机 OCR → 用户校对 → 打开浮窗并翻译。
+/// 截图 → 本机 OCR → 打开浮窗并翻译。
 enum ScreenshotFlow {
     static func start() {
         Task { await run() }
@@ -31,11 +31,9 @@ enum ScreenshotFlow {
 
         // 3. OCR（本地、~500ms）
         let lines: [OCRService.Line]
-        let styleUnavailable: Bool
         do {
             let result = try await OCRService.recognizeDetailed(image: image)
             lines = result.lines
-            styleUnavailable = result.styleUnavailable
         } catch {
             ToastCenter.shared.show(title: "文字识别失败", message: ServiceErrorMessage.describe(error))
             FailureReporter.report(error, surface: .screenshotOCRTranslate)
@@ -45,7 +43,6 @@ enum ScreenshotFlow {
         var textBlocks = ScreenshotTextLayout.fromLines(lines)
         var tables: [ScreenshotTable] = []
         var reviewCandidates: [ScreenshotTable] = []
-        var reviewedTables: [ScreenshotTable] = []
         var tableWasRejected = false
         let imageData = OCRService.cgImage(from: image)
         if #available(macOS 26.0, *) {
@@ -101,53 +98,17 @@ enum ScreenshotFlow {
             }.value
             if let candidate { reviewCandidates.append(candidate.table) }
         }
-        let orderedCandidates = reviewCandidates.sorted(by: { $0.normalizedBox.maxY > $1.normalizedBox.maxY })
-        for (index, candidate) in orderedCandidates.enumerated() {
-            switch ScreenshotTableReview.ask(image: image, table: candidate, index: index + 1, total: orderedCandidates.count) {
-            case .useTable: tables.append(candidate); reviewedTables.append(candidate)
-            case .useText: tableWasRejected = true
-            case .cancel: return
-            }
-        }
-
-        tableWasRejected = tableWasRejected || ScreenshotDocumentAssembler.hasCrossingLine(lines, tables: tables)
-        let initialPlan = ScreenshotDocumentAssembler.makePlan(textBlocks: textBlocks, lines: lines, tables: tables,
-                                                                hasRejectedTable: tableWasRejected, reviewedTables: reviewedTables)
-        guard let plan = ScreenshotProofreadWindow.ask(image: image, plan: initialPlan, styleUnavailable: styleUnavailable,
-                                                        tableWasRejected: tableWasRejected || !reviewedTables.isEmpty) else { return }
-        let originals = [plan.originalMarkdown]
-        let source = plan.sourceForQuota
-        let target = TargetLanguage.resolved(
-            for: plan.sourceTexts,
-            configured: SettingsStore.shared.targetLanguage
-        )
-        let progress = TranslationProgress()
-        let termProgress = TermExplanationProgress(
-            texts: plan.sourceTexts,
-            outputLanguage: { progress.targetLanguage ?? target },
-            explainer: { TranslationSession.explainer(for: source) }
-        )
-
-        // 校对完成后展示浮窗，并使用同一份快照翻译。
-        progress.failureSurface = .screenshotOCRTranslate
-        progress.mapTranslator = { ScreenshotPlanTranslator(base: $0, plan: plan) }
-        progress.retrySourceText = source
-        let window = FloatingScreenshotWindow(
-            image: image,
-            originals: originals,
-            progress: progress,
-            termProgress: termProgress,
-            recognitionNotice: tableWasRejected ? "部分表格需要手动核对，请以截图为准。" : nil
-        )
-        window.show()
-
-        // 异步翻译；超长原文在这里被拦住。
-        switch TranslationSession.prepare(sourceText: source) {
-        case .blocked(_, let message):
-            progress.start(translator: FailingTranslator(message: message), originals: originals, target: target)
+        switch ScreenshotAutoPlan.make(textBlocks: textBlocks, lines: lines, tables: tables,
+                                       candidates: reviewCandidates, hasRejectedTable: tableWasRejected) {
+        case .empty:
+            ToastCenter.shared.show(title: "文字识别失败", message: "未识别到文字，请重新框选包含清晰文字的区域。")
+        case .unrenderable:
+            ToastCenter.shared.show(title: "文字识别失败", message: "截图文字或粗体无法在浮窗中可靠显示，请重新截图后重试。")
         case .ready(let ready):
-            let translator = progress.mapTranslator?(ready.translator) ?? ready.translator
-            progress.start(translator: translator, originals: originals, target: target)
+            let source = ScreenshotSourceState(plan: ready.plan)
+            let window = FloatingScreenshotWindow(image: image, source: source, recognitionNotice: ready.notice)
+            window.show()
+            source.start()
         }
     }
 }

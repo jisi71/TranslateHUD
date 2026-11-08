@@ -7,8 +7,7 @@ import SwiftUI
 final class FloatingScreenshotWindow {
     private enum CloseReason: String { case explicit, outside, escape }
     private let window: DraggableWindow
-    private let progress: TranslationProgress
-    private let termProgress: TermExplanationProgress
+    private let source: ScreenshotSourceState
     private let speech = SpeechController()
     private var globalMonitor: Any?
     private var localMonitor: Any?
@@ -19,13 +18,10 @@ final class FloatingScreenshotWindow {
 
     init(
         image: NSImage,
-        originals: [String],
-        progress: TranslationProgress,
-        termProgress: TermExplanationProgress,
+        source: ScreenshotSourceState,
         recognitionNotice: String? = nil
     ) {
-        self.progress = progress
-        self.termProgress = termProgress
+        self.source = source
 
         let budget = PanelSizeBudget(visibleHeight: PanelScreenPicker.visibleHeight(placement: nil))
         let initialSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
@@ -53,9 +49,7 @@ final class FloatingScreenshotWindow {
         var layoutRef: (@MainActor () -> Void)?
         let view = ResultView(
             image: image,
-            originals: originals,
-            progress: progress,
-            termProgress: termProgress,
+            source: source,
             speech: speech,
             recognitionNotice: recognitionNotice,
             sizeBudget: budget,
@@ -71,7 +65,7 @@ final class FloatingScreenshotWindow {
 
         window.escapeHandler = { [weak self] in self?.close(reason: .escape) }
         closeRef = { [weak self] in self?.close(reason: .explicit) }
-        retryRef = { [weak self] in self?.progress.retry() }
+        retryRef = { [weak self] in self?.source.progress.retry() }
         pinRef = { [weak self] pinned in
             self?.isPinned = pinned
             self?.window.level = pinned ? .floating : .normal
@@ -90,8 +84,7 @@ final class FloatingScreenshotWindow {
 
     private func close(reason: CloseReason) {
         guard hostingController != nil else { return }
-        progress.cancel()
-        termProgress.cancel()
+        source.cancel()
         speech.stop()
         removeDismissMonitors()
         window.orderOut(nil)
@@ -124,7 +117,7 @@ final class FloatingScreenshotWindow {
             Task { @MainActor in
                 guard let self else { return }
                 guard FloatingPanelDismissPolicy.shouldCloseOnMouseDown(
-                    isPinned: self.isPinned,
+                    isPinned: self.isPinned || self.source.editor != nil,
                     occurredOutsideThisApp: true,
                     clickedWindow: nil,
                     panelWindow: self.window
@@ -134,7 +127,7 @@ final class FloatingScreenshotWindow {
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseDown) { [weak self] event in
             if let self, FloatingPanelDismissPolicy.shouldCloseOnMouseDown(
-                isPinned: self.isPinned,
+                isPinned: self.isPinned || self.source.editor != nil,
                 occurredOutsideThisApp: false,
                 clickedWindow: event.window,
                 panelWindow: self.window
@@ -176,9 +169,7 @@ private final class DraggableWindow: NSWindow {
 
 private struct ResultView: View {
     let image: NSImage
-    let originals: [String]
-    @ObservedObject var progress: TranslationProgress
-    @ObservedObject var termProgress: TermExplanationProgress
+    @ObservedObject var source: ScreenshotSourceState
     @ObservedObject var speech: SpeechController
     let recognitionNotice: String?
     @ObservedObject var sizeBudget: PanelSizeBudget
@@ -189,13 +180,14 @@ private struct ResultView: View {
 
     var body: some View {
         TranslationPanel(
-            original: originals.joined(separator: "\n"),
+            original: source.plan.originalMarkdown,
             image: image,
-            progress: progress,
-            termProgress: termProgress,
+            progress: source.progress,
+            termProgress: source.termProgress,
             speech: speech,
             heightBudget: sizeBudget.budget,
             recognitionNotice: recognitionNotice,
+            screenshotSource: source,
             onClose: onClose,
             onRetry: onRetry,
             onPin: onPin,

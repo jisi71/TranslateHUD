@@ -88,12 +88,21 @@ enum OCRService {
         try await recognizeDetailed(image: image).lines
     }
 
+    /// The ordinary screenshot path uses the original text-only Vision request.
+    static func recognizePlain(image: NSImage) async throws -> [Line] {
+        try await recognize(image: image, detectStyles: false).lines
+    }
+
     struct Recognition {
         let lines: [Line]
         let styleUnavailable: Bool
     }
 
     static func recognizeDetailed(image: NSImage) async throws -> Recognition {
+        try await recognize(image: image, detectStyles: true)
+    }
+
+    private static func recognize(image: NSImage, detectStyles: Bool) async throws -> Recognition {
         guard let cg = cgImage(from: image) else { throw OCRError.noCGImage }
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Recognition, Error>) in
@@ -119,7 +128,7 @@ enum OCRService {
                     return
                 }
                 let observations = (request.results ?? [])
-                let bold = ScreenshotBoldDetector(image: cg)
+                let bold = detectStyles ? ScreenshotBoldDetector(image: cg) : nil
                 let candidates = observations.compactMap { $0.topCandidates(1).first }
                 let analysis = bold?.analyze(candidates)
                 let detectedRuns = analysis?.runs ?? candidates.map { _ in [] }
@@ -139,7 +148,7 @@ enum OCRService {
                     let b = 1 - $1.normalizedBox.midY
                     return a < b
                 }
-                cont.resume(returning: Recognition(lines: sorted, styleUnavailable: bold == nil || analysis?.limited == true))
+                cont.resume(returning: Recognition(lines: sorted, styleUnavailable: detectStyles && (bold == nil || analysis?.limited == true)))
             }
         }
     }

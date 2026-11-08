@@ -43,15 +43,17 @@ enum ScreenshotFlow {
         // 4. OCR（本地、~500ms）
         let lines: [OCRService.Line]
         do {
-            let result = try await OCRService.recognizeDetailed(image: image)
-            lines = ScreenshotTextLayout.deduplicatedLines(result.lines)
+            let recognized = hasGrid
+                ? try await OCRService.recognizeDetailed(image: image).lines
+                : try await OCRService.recognizePlain(image: image)
+            lines = ScreenshotTextLayout.deduplicatedLines(recognized)
         } catch {
             ToastCenter.shared.show(title: "文字识别失败", message: ServiceErrorMessage.describe(error))
             FailureReporter.report(error, surface: .screenshotOCRTranslate)
             return
         }
 
-        var textBlocks = ScreenshotTextLayout.fromLines(lines)
+        var textBlocks: [ScreenshotTextBlock] = []
         var tables: [ScreenshotTable] = []
         var tableWasRejected = false
         if hasGrid, let imageData {
@@ -93,8 +95,22 @@ enum ScreenshotFlow {
                 tableWasRejected = !assessment.rejected.isEmpty
             }
         }
-        switch ScreenshotAutoPlan.make(textBlocks: textBlocks, lines: lines, tables: tables,
-                                       hasRejectedTable: tableWasRejected) {
+        let safeTables = tables.filter { !ScreenshotDocumentAssembler.hasCrossingLine(lines, tables: [$0]) }
+        let outcome: ScreenshotAutoPlan.Outcome
+        if safeTables.isEmpty {
+            let plan = ScreenshotPlainText.plan(from: lines)
+            if plan.sourceItems.isEmpty {
+                outcome = .empty
+            } else if plan.sourceIsRepresentable {
+                outcome = .ready(.init(plan: plan, notice: tableWasRejected ? "部分表格需要手动核对，请以截图为准。" : nil))
+            } else {
+                outcome = .unrenderable
+            }
+        } else {
+            outcome = ScreenshotAutoPlan.make(textBlocks: textBlocks, lines: lines, tables: safeTables,
+                                              hasRejectedTable: tableWasRejected || safeTables.count != tables.count)
+        }
+        switch outcome {
         case .empty:
             ToastCenter.shared.show(title: "文字识别失败", message: "未识别到文字，请重新框选包含清晰文字的区域。")
         case .unrenderable:

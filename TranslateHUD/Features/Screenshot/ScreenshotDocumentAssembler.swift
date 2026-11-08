@@ -1,6 +1,12 @@
 import Foundation
 
 enum ScreenshotDocumentAssembler {
+    static func makePlanFromReconciledLines(_ lines: [OCRService.Line], tables: [ScreenshotTable],
+                                            consumed: Set<Int>) -> ScreenshotTranslationPlan {
+        let outside = lines.enumerated().compactMap { consumed.contains($0.offset) ? nil : $0.element }
+        return assemble(textBlocks: ScreenshotPlainText.blocks(from: outside), tables: tables, lines: [], detectStyles: false)
+    }
+
     static func makePlanFromLines(_ lines: [OCRService.Line], tables: [ScreenshotTable]) -> ScreenshotTranslationPlan {
         let safeTables = tables.filter { !hasCrossingLine(lines, tables: [$0]) }
         let outside = lines.filter { line in
@@ -85,7 +91,7 @@ enum ScreenshotDocumentAssembler {
     }
 
     private static func assemble(textBlocks: [ScreenshotTextBlock], tables: [ScreenshotTable],
-                                 lines: [OCRService.Line]) -> ScreenshotTranslationPlan {
+                                 lines: [OCRService.Line], detectStyles: Bool = true) -> ScreenshotTranslationPlan {
         var positioned: [(CGRect, ScreenshotTranslationPlan.Block)] = textBlocks.map { block in
             let heading: Int?
             if case .heading(let level) = block.style { heading = level } else { heading = nil }
@@ -99,11 +105,15 @@ enum ScreenshotDocumentAssembler {
                 positioned.append((title.normalizedBox, .text(runs: [.init(text: title.text, isStrong: false)], heading: nil)))
             }
             let cellRuns: [[[ScreenshotTextRun]]]
-            switch ScreenshotTableStyleMapper.map(table: table, lines: lines) {
-            case .success(let mapping): cellRuns = mapping.cellRuns
-            case .failure:
+            if detectStyles {
+                switch ScreenshotTableStyleMapper.map(table: table, lines: lines) {
+                case .success(let mapping): cellRuns = mapping.cellRuns
+                case .failure:
+                    cellRuns = []
+                    tableStylesNeedReview = true
+                }
+            } else {
                 cellRuns = []
-                tableStylesNeedReview = true
             }
             positioned.append((table.normalizedBox, .table(rows: table.rows, cellRuns: cellRuns)))
         }

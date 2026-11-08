@@ -29,23 +29,10 @@ enum ScreenshotFlow {
             return
         }
 
-        // 3. Check for grid-like lines before choosing the table-recognition path.
-        let imageData = OCRService.cgImage(from: image)
-        let hasGrid: Bool
-        if let imageData {
-            hasGrid = await Task.detached(priority: .userInitiated) {
-                ScreenshotTableRecognizer.mayContainGrid(from: imageData)
-            }.value
-        } else {
-            hasGrid = false
-        }
-
-        // 4. OCR（本地、~500ms）
+        // Ordinary OCR is the single source of text for both output paths.
         let lines: [OCRService.Line]
         do {
-            let recognized = hasGrid
-                ? try await OCRService.recognizeDetailed(image: image).lines
-                : try await OCRService.recognizePlain(image: image)
+            let recognized = try await OCRService.recognizePlain(image: image)
             lines = ScreenshotTextLayout.deduplicatedLines(recognized)
         } catch {
             ToastCenter.shared.show(title: "文字识别失败", message: ServiceErrorMessage.describe(error))
@@ -53,63 +40,7 @@ enum ScreenshotFlow {
             return
         }
 
-        var textBlocks: [ScreenshotTextBlock] = []
-        var tables: [ScreenshotTable] = []
-        var tableWasRejected = false
-        if hasGrid, let imageData {
-            if #available(macOS 26.0, *) {
-                do {
-                    let documents = try await OCRService.recognizeDocuments(cgImage: imageData)
-                    if lines.isEmpty {
-                        let recognized = documents.flatMap { OCRService.textBlocks(from: $0.document, lines: lines) }
-                        if !recognized.isEmpty { textBlocks = recognized }
-                    }
-                    let assessment = await Task.detached(priority: .userInitiated) {
-                        guard !documents.isEmpty else {
-                            return ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
-                        }
-                        let assessments = documents.map {
-                            ScreenshotTableRecognizer.assess(from: $0.document, image: imageData, lines: lines)
-                        }
-                        let counts = documents.map { $0.document.tables.count }
-                        let fallback = counts.allSatisfy({ $0 == 0 })
-                            ? ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
-                            : .init(tables: [], rejected: [])
-                        return ScreenshotTableRecognizer.combinedDocumentAssessments(assessments, tableCounts: counts, fallback: fallback)
-                    }.value
-                    tables = assessment.tables
-                    tableWasRejected = !assessment.rejected.isEmpty
-                } catch {
-                    AppLog.info("文档结构识别不可用，使用文字行识别结果")
-                    let assessment = await Task.detached(priority: .userInitiated) {
-                        ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
-                    }.value
-                    tables = assessment.tables
-                    tableWasRejected = !assessment.rejected.isEmpty
-                }
-            } else {
-                let assessment = await Task.detached(priority: .userInitiated) {
-                    ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
-                }.value
-                tables = assessment.tables
-                tableWasRejected = !assessment.rejected.isEmpty
-            }
-        }
-        let safeTables = tables.filter { !ScreenshotDocumentAssembler.hasCrossingLine(lines, tables: [$0]) }
-        let outcome: ScreenshotAutoPlan.Outcome
-        if safeTables.isEmpty {
-            let plan = ScreenshotPlainText.plan(from: lines)
-            if plan.sourceItems.isEmpty {
-                outcome = .empty
-            } else if plan.sourceIsRepresentable {
-                outcome = .ready(.init(plan: plan, notice: tableWasRejected ? "部分表格需要手动核对，请以截图为准。" : nil))
-            } else {
-                outcome = .unrenderable
-            }
-        } else {
-            outcome = ScreenshotAutoPlan.make(textBlocks: textBlocks, lines: lines, tables: safeTables,
-                                              hasRejectedTable: tableWasRejected || safeTables.count != tables.count)
-        }
+        let outcome = await ScreenshotTablePipeline.makePlan(image: image, lines: lines)
         switch outcome {
         case .empty:
             ToastCenter.shared.show(title: "文字识别失败", message: "未识别到文字，请重新框选包含清晰文字的区域。")

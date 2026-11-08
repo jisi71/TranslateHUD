@@ -4,18 +4,23 @@ import Foundation
 /// Groups the text-only OCR results without inferring document styles.
 enum ScreenshotPlainText {
     static func plan(from lines: [OCRService.Line]) -> ScreenshotTranslationPlan {
-        let text = paragraphs(from: lines)
-        return ScreenshotTranslationPlan(blocks: text.map { .text(runs: [.init(text: $0, isStrong: false)], heading: nil) })
+        let text = blocks(from: lines)
+        return ScreenshotTranslationPlan(blocks: text.map { .text(runs: [.init(text: $0.text, isStrong: false)], heading: nil) })
     }
 
     static func paragraphs(from lines: [OCRService.Line]) -> [String] {
+        blocks(from: lines).map(\.text)
+    }
+
+    static func blocks(from lines: [OCRService.Line]) -> [ScreenshotTextBlock] {
         let ordered = visualLines(from: lines)
         guard let first = ordered.first else { return [] }
         let heights = ordered.map { $0.normalizedBox.height }.filter { $0 > 0 }.sorted()
-        guard !heights.isEmpty else { return ordered.map(\.text) }
+        guard !heights.isEmpty else { return ordered.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) } }
         let median = heights[heights.count / 2]
-        var result: [String] = []
+        var result: [ScreenshotTextBlock] = []
         var current = first.text
+        var currentBox = first.normalizedBox
         var previous = first
 
         for line in ordered.dropFirst() {
@@ -28,13 +33,15 @@ enum ScreenshotPlainText {
             let limit = isContinuation(previous.text, line.text) ? median * 1.5 : median * 0.8
             if gap >= -median * 0.15 && gap <= limit && aligned && similarSize && !startsListItem(line.text) {
                 current = join(current, line.text)
+                currentBox = currentBox.union(line.normalizedBox)
             } else {
-                result.append(current)
+                result.append(ScreenshotTextBlock(text: current, box: currentBox))
                 current = line.text
+                currentBox = line.normalizedBox
             }
             previous = line
         }
-        result.append(current)
+        result.append(ScreenshotTextBlock(text: current, box: currentBox))
         return result
     }
 
@@ -104,7 +111,7 @@ enum ScreenshotPlainText {
         return value.range(of: #"^(?:[-*]|\d{1,3}[.)、])\s+"#, options: .regularExpression) != nil
     }
 
-    private static func join(_ left: String, _ right: String) -> String {
+    static func join(_ left: String, _ right: String) -> String {
         guard let last = left.last, let first = right.first else { return left + right }
         if last.isWhitespace || first.isWhitespace || "([{（【「『".contains(last) ||
             ",.;:!?)]}，。！？；：、）】」』".contains(first) || (isCJK(last) && isCJK(first)) {

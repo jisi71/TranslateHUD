@@ -75,6 +75,17 @@ enum ScreenshotTableRecognizer {
         return raster.mayContainGrid()
     }
 
+    /// A regular layout alone can also be aligned prose. Require visible rules
+    /// or repeated cell backgrounds before automatically using an unverified grid.
+    static func supportsAutomaticCandidate(_ table: ScreenshotTable, image: CGImage) -> Bool {
+        guard table.rows.count >= 3, let columns = table.rows.first?.count, columns >= 2,
+              table.rows.allSatisfy({ $0.count == columns }),
+              table.cellRects.count == table.rows.count,
+              table.cellRects.allSatisfy({ $0.count == columns && $0.allSatisfy { $0 != nil } }),
+              !table.hasMergedCells, let raster = Raster(image: image) else { return false }
+        return raster.hasCellSeparators(table) || raster.hasCellBands(table)
+    }
+
     enum RejectionReason: Equatable, Sendable {
         case unsupportedDimensions
         case mergedCells
@@ -528,6 +539,74 @@ private struct Raster {
                 if length >= threshold { horizontal += 1; break }
             }
             if horizontal >= 2 { return true }
+        }
+        return false
+    }
+
+    func hasCellBands(_ table: ScreenshotTable) -> Bool {
+        let rowCount = min(table.cellRects.count, 8)
+        guard rowCount >= 3, let columns = table.cellRects.first?.count else { return false }
+        let columnCount = min(columns, 8)
+        guard columnCount >= 2 else { return false }
+
+        func background(_ rect: CGRect) -> [Int] {
+            var channels = [[Int](), [Int](), [Int]()]
+            for y in 1...5 { for x in 1...5 {
+                let px = max(0, min(width - 1, Int((rect.minX + rect.width * CGFloat(x) / 6) * CGFloat(width))))
+                let py = max(0, min(height - 1, Int((1 - rect.maxY + rect.height * CGFloat(y) / 6) * CGFloat(height))))
+                let index = (py * width + px) * 4
+                for channel in 0..<3 { channels[channel].append(Int(bytes[index + channel])) }
+            } }
+            return channels.map { $0.sorted()[$0.count / 2] }
+        }
+
+        let colors = (0..<rowCount).map { row in
+            (0..<columnCount).map { column in background(table.cellRects[row][column]!) }
+        }
+        func bandDifference(_ first: Int, _ second: Int) -> Bool {
+            var lighter = 0, darker = 0
+            for column in 0..<columnCount {
+                let a = colors[first][column], b = colors[second][column]
+                guard zip(a, b).map({ abs($0 - $1) }).max() ?? 0 >= 12 else { continue }
+                let difference = zip(a, b).reduce(0) { $0 + $1.0 - $1.1 }
+                if difference >= 12 { lighter += 1 }
+                if difference <= -12 { darker += 1 }
+            }
+            return max(lighter, darker) >= min(2, columnCount)
+        }
+        if bandDifference(0, 1) { return true }
+        return (1..<(rowCount - 1)).filter { bandDifference($0, $0 + 1) }.count >= 2
+    }
+
+    func hasCellSeparators(_ table: ScreenshotTable) -> Bool {
+        let rect = table.normalizedBox.standardized
+        let x0 = max(0, Int((rect.minX + rect.width * 0.05) * CGFloat(width)))
+        let x1 = min(width, Int((rect.maxX - rect.width * 0.05) * CGFloat(width)))
+        guard x1 - x0 >= 40, table.cellRects.count >= 3 else { return false }
+        func brightness(_ x: Int, _ y: Int) -> Int {
+            let i = (y * width + x) * 4
+            return Int(bytes[i]) + Int(bytes[i + 1]) + Int(bytes[i + 2])
+        }
+        var found = 0
+        for row in 0..<(table.cellRects.count - 1) {
+            guard let cell = table.cellRects[row].first ?? nil else { continue }
+            let expected = Int((1 - cell.minY) * CGFloat(height))
+            let radius = max(3, min(14, Int(cell.height * CGFloat(height) * 0.3)))
+            let offset = max(2, min(4, radius / 2))
+            let lower = max(offset, expected - radius), upper = min(height - offset - 1, expected + radius)
+            guard lower <= upper else { continue }
+            let separator = (lower...upper).contains { y in
+                var different = 0
+                for x in x0..<x1 {
+                    let current = brightness(x, y)
+                    let before = current - brightness(x, y - offset)
+                    let after = current - brightness(x, y + offset)
+                    if abs(before) >= 25 && abs(after) >= 25 && ((before > 0) == (after > 0)) { different += 1 }
+                }
+                return different * 100 >= (x1 - x0) * 45
+            }
+            if separator { found += 1 }
+            if found >= 2 { return true }
         }
         return false
     }

@@ -89,4 +89,29 @@ final class ScreenshotTablePreflightTests: XCTestCase {
                                 ["Beta", "", "200"], ["Gamma", "Q3", "300"]]])
         XCTAssertEqual(ready.plan.sourceTexts.filter { $0 == "Alpha" }.count, 1)
     }
+
+    @MainActor
+    func testAutomaticPipelineKeepsRuledEmptyCellAndSkipsAlignedProse() async throws {
+        guard #available(macOS 26, *) else { throw XCTSkip("Document recognition requires macOS 26") }
+        for name in ["ruled", "aligned-prose"] {
+            let cg = try fixture(name)
+            let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+            let lines = ScreenshotTextLayout.deduplicatedLines(try await OCRService.recognizePlain(image: image))
+            guard case .ready(let result) = await ScreenshotTablePipeline.makePlan(image: image, lines: lines) else {
+                return XCTFail("Expected a result for \(name)")
+            }
+            let tables = result.plan.blocks.compactMap { block -> [[String]]? in
+                if case .table(let rows, _) = block { return rows }
+                return nil
+            }
+            if name == "ruled" {
+                XCTAssertEqual(tables, [[ ["Product", "Quarter", "Revenue"], ["Alpha", "Q1", "100"],
+                                          ["Beta", "", "200"], ["Gamma", "Q3", "300"] ]])
+                XCTAssertEqual(result.plan.sourceTexts.filter { $0 == "Alpha" }.count, 1)
+            } else {
+                XCTAssertTrue(tables.isEmpty, "Visually ambiguous aligned prose must remain ordinary text")
+                XCTAssertTrue(result.plan.sourceItems.allSatisfy { $0.boldRanges.isEmpty })
+            }
+        }
+    }
 }

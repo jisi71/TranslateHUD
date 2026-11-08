@@ -88,6 +88,11 @@ final class ScreenshotParagraphLayoutTests: XCTestCase {
         XCTAssertTrue(lines.allSatisfy { $0.runs.isEmpty })
         let paragraphs = ScreenshotPlainText.paragraphs(from: lines)
         XCTAssertEqual(paragraphs.map { $0.replacingOccurrences(of: "，", with: ",") }, [sentence])
+        guard case .ready(let ready) = await ScreenshotTablePipeline.makePlan(image: image, lines: lines) else {
+            return XCTFail("The ordinary screenshot should be ready")
+        }
+        XCTAssertEqual(ready.plan.sourceTexts.map { $0.replacingOccurrences(of: "，", with: ",") }, [sentence])
+        XCTAssertTrue(ready.plan.blocks.allSatisfy { if case .text = $0 { return true }; return false })
     }
 
     private func line(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) -> OCRService.Line {

@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import Vision
 
 enum OCRService {
@@ -102,21 +103,142 @@ enum OCRService {
         try await recognize(image: image, detectStyles: true)
     }
 
+    /// Resolve OCR lines that cross inferred table cells into word-sized boxes.
+    /// Only table candidates with an ambiguous line require a second request.
+    static func tableWordBoxes(image: NSImage, matching targets: [Line]) async -> [[Line]?] {
+        guard !targets.isEmpty, let cg = cgImage(from: image) else { return targets.map { _ in nil } }
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let request = textRequest()
+                guard (try? VNImageRequestHandler(cgImage: cg, options: [:]).perform([request])) != nil else {
+                    continuation.resume(returning: targets.map { _ in nil })
+                    return
+                }
+                let observations = request.results ?? []
+                let words = try? NSRegularExpression(pattern: #"\S+"#)
+                let result: [[Line]?] = targets.map { target in
+                    guard let words else { return nil }
+                    let matches = observations.filter { observation in
+                        guard observation.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines) == target.text else { return false }
+                        let intersection = observation.boundingBox.intersection(target.normalizedBox)
+                        let denominator = min(observation.boundingBox.width * observation.boundingBox.height,
+                                              target.normalizedBox.width * target.normalizedBox.height)
+                        return !intersection.isNull && denominator > 0 && intersection.width * intersection.height / denominator >= 0.9
+                    }
+                    guard matches.count == 1, let candidate = matches[0].topCandidates(1).first else { return nil }
+                    let text = candidate.string
+                    let ranges = words.matches(in: text, range: NSRange(text.startIndex..., in: text))
+                    guard ranges.count > 1 else { return nil }
+                    var pieces: [Line] = []
+                    for match in ranges {
+                        guard let range = Range(match.range, in: text),
+                              let observation = try? candidate.boundingBox(for: range),
+                              observation.boundingBox.width > 0, observation.boundingBox.height > 0 else { return nil }
+                        let box = observation.boundingBox
+                        pieces.append(Line(text: String(text[range]), normalizedBox: box, confidence: target.confidence))
+                    }
+                    return pieces
+                }
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    /// A tiny character can be missed in the whole image. Recheck a bounded
+    /// number of visually empty cells at higher resolution before rendering.
+    static func recoverEmptyCells(image: NSImage, table: ScreenshotTable) async -> ScreenshotTable? {
+        let empty = table.rows.indices.flatMap { row in
+            table.rows[row].indices.compactMap { column in table.rows[row][column].isEmpty ? TableCell(row: row, column: column) : nil }
+        }
+        guard !empty.isEmpty else { return table }
+        guard let contents = await tableCellContents(image: image, table: table, cells: empty) else { return nil }
+        var rows = table.rows
+        for (cell, value) in zip(empty, contents) { rows[cell.row][cell.column] = value }
+        return ScreenshotTable(rows: rows, normalizedBox: table.normalizedBox, hasMergedCells: false,
+                               cellRects: table.cellRects, leadingTitle: table.leadingTitle)
+    }
+
+    struct TableCell: Hashable, Sendable {
+        let row: Int
+        let column: Int
+    }
+
+    static func tableCellContents(image: NSImage, table: ScreenshotTable, cells: [TableCell]) async -> [String]? {
+        guard cells.count <= 16, let cg = cgImage(from: image) else { return nil }
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let context = CIContext(options: [.useSoftwareRenderer: true])
+                var output: [String] = []
+                for cell in cells {
+                    guard table.cellRects.indices.contains(cell.row), table.cellRects[cell.row].indices.contains(cell.column),
+                          let rect = table.cellRects[cell.row][cell.column] else { continuation.resume(returning: nil); return }
+                    let pixels = CGRect(x: rect.minX * CGFloat(cg.width), y: (1 - rect.maxY) * CGFloat(cg.height),
+                                        width: rect.width * CGFloat(cg.width), height: rect.height * CGFloat(cg.height)).integral
+                    guard let crop = cg.cropping(to: pixels), crop.width >= 4, crop.height >= 4 else {
+                        continuation.resume(returning: nil); return
+                    }
+                    let scale = min(4, max(1, 1_200 / CGFloat(max(crop.width, crop.height))))
+                    let enlarged = CIImage(cgImage: crop).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+                    guard let processed = context.createCGImage(enlarged, from: enlarged.extent) else {
+                        continuation.resume(returning: nil); return
+                    }
+                    let request = VNRecognizeTextRequest()
+                    request.recognitionLevel = .accurate
+                    request.usesLanguageCorrection = false
+                    request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR"]
+                    guard (try? VNImageRequestHandler(cgImage: processed).perform([request])) != nil else {
+                        continuation.resume(returning: nil); return
+                    }
+                    var found: [(CGRect, String)] = []
+                    for observation in request.results ?? [] {
+                        guard let candidate = observation.topCandidates(1).first else { continue }
+                        let value = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !value.isEmpty else { continue }
+                        let box = observation.boundingBox
+                        guard candidate.confidence >= 0.95, value.count <= 128,
+                              value.rangeOfCharacter(from: .alphanumerics) != nil,
+                              box.minX >= 0.03, box.maxX <= 0.97, box.minY >= 0.03, box.maxY <= 0.97 else {
+                            continuation.resume(returning: nil); return
+                        }
+                        found.append((box, value))
+                    }
+                    var lines: [[(CGRect, String)]] = []
+                    for value in found.sorted(by: { $0.0.midY > $1.0.midY }) {
+                        if let first = lines.last?.first {
+                            let overlap = min(first.0.maxY, value.0.maxY) - max(first.0.minY, value.0.minY)
+                            if overlap >= min(first.0.height, value.0.height) * 0.5 {
+                                lines[lines.count - 1].append(value)
+                                continue
+                            }
+                        }
+                        lines.append([value])
+                    }
+                    let ordered = lines.flatMap { $0.sorted { $0.0.minX < $1.0.minX } }
+                    output.append(ordered.map(\.1).reduce("") { ScreenshotPlainText.join($0, $1) })
+                }
+                continuation.resume(returning: output)
+            }
+        }
+    }
+
+    private static func textRequest() -> VNRecognizeTextRequest {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.recognitionLanguages = [
+            "zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR",
+            "fr-FR", "de-DE", "es-ES", "it-IT", "pt-BR", "ru-RU"
+        ]
+        request.minimumTextHeight = 0.0
+        return request
+    }
+
     private static func recognize(image: NSImage, detectStyles: Bool) async throws -> Recognition {
         guard let cg = cgImage(from: image) else { throw OCRError.noCGImage }
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Recognition, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                let request = VNRecognizeTextRequest()
-                request.recognitionLevel = .accurate
-                request.usesLanguageCorrection = true
-                // 覆盖中英日韩 + 主流欧洲语种；Vision 会自动从中挑
-                request.recognitionLanguages = [
-                    "zh-Hans", "zh-Hant", "en-US",
-                    "ja-JP", "ko-KR",
-                    "fr-FR", "de-DE", "es-ES", "it-IT", "pt-BR", "ru-RU"
-                ]
-                request.minimumTextHeight = 0.0
+                let request = textRequest()
 
                 let handler = VNImageRequestHandler(cgImage: cg, options: [:])
                 do {

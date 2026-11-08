@@ -45,7 +45,13 @@ enum ScreenshotRegionRecovery {
 
     static func findCandidates(image: CGImage, lines: [OCRService.Line], rawRegions: [CGRect],
                                existing: [ScreenshotTable]) async -> [ScreenshotTable] {
-        let regions = candidateRegions(lines: lines, rawRegions: rawRegions)
+        let regions = candidateRegions(lines: lines, rawRegions: rawRegions).filter { region in
+            let outside = lines.filter { line in
+                let point = CGPoint(x: line.normalizedBox.midX, y: line.normalizedBox.midY)
+                return region.contains(point) && !rawRegions.contains { $0.contains(point) }
+            }
+            return ScreenshotTableRouting.hasRepeatedColumns(outside)
+        }
         var found: [ScreenshotTable] = []
         for region in regions {
             let top = region.minY > 0

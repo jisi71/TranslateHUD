@@ -740,12 +740,7 @@ enum MarkdownDisplay {
     }
 
     static func parseGFMTableCells(_ line: String) -> [String] {
-        var trimmed = line.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasPrefix("|") { trimmed.removeFirst() }
-        if trimmed.hasSuffix("|") { trimmed.removeLast() }
-        return trimmed
-            .split(separator: "|", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+        MarkdownTableCells.parse(line).map { $0.replacingOccurrences(of: #"\|"#, with: "|") }
     }
 
     private static let minimumTableColumnWidth: CGFloat = 105

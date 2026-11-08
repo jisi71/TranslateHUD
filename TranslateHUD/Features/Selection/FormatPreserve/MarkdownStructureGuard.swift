@@ -6,6 +6,7 @@ enum MarkdownStructureGuard {
     struct Protection {
         var text: String
         var store: [String]
+        var kinds: [String]
     }
 
     private static let placeholderPattern = #"⟦MD:(fence|icode|link|table|bound|pipe):\d+⟧"#
@@ -13,29 +14,31 @@ enum MarkdownStructureGuard {
 
     static func protect(_ text: String) -> Protection {
         var store: [String] = []
+        var kinds: [String] = []
         var work = text
 
         func save(_ kind: String, _ chunk: String) -> String {
             let idx = store.count
             store.append(chunk)
+            kinds.append(kind)
             return "⟦MD:\(kind):\(idx)⟧"
         }
 
         // 成对围栏
         work = replaceMatches(
             in: work,
-            pattern: #"(?m)^(```|~~~)[^\n]*\n.*?^\1[ \t]*$"#,
+            pattern: #"(?m)^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*?^[ \t]{0,3}\1[ \t]*$"#,
             options: [.dotMatchesLineSeparators],
             transform: { save("fence", $0) }
         )
         // 未闭合围栏到文末
         work = replaceMatches(
             in: work,
-            pattern: #"(?m)^(```|~~~)[^\n]*\n.*\z"#,
+            pattern: #"(?m)^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*\z"#,
             options: [.dotMatchesLineSeparators],
             transform: { save("fence", $0) }
         )
-        work = replaceMatches(in: work, pattern: #"`[^`\n]+`"#, transform: { save("icode", $0) })
+        work = replaceMatches(in: work, pattern: #"(?<![\\`])(`+)(?!`)([^\n]+?)\1(?!`)"#, transform: { save("icode", $0) })
         work = replaceMatches(in: work, pattern: #"!\[[^\]]*\]\([^)]+\)"#, transform: { save("link", $0) })
         work = replaceMatches(in: work, pattern: #"\[[^\]]*\]\([^)]+\)"#, transform: { save("link", $0) })
         // 只护对齐分隔行；表头/数据行的竖线另做 pipe 占位，单元格正文仍可送译。
@@ -53,7 +56,7 @@ enum MarkdownStructureGuard {
             transform: { save("bound", $0) }
         )
 
-        return Protection(text: work, store: store)
+        return Protection(text: work, store: store, kinds: kinds)
     }
 
     static func restore(_ text: String, store: [String]) -> String {
@@ -221,14 +224,9 @@ enum MarkdownStructureGuard {
         ) != nil
     }
 
-    /// 与 MarkdownDisplay.parseGFMTableCells 对齐：按 `|` 切单元格并 trim。
+    /// 与浮窗共用表格拆列规则，避免行内代码及转义竖线被误拆。
     private static func parseGFMTableCells(_ line: String) -> [String] {
-        var trimmed = line.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasPrefix("|") { trimmed.removeFirst() }
-        if trimmed.hasSuffix("|") { trimmed.removeLast() }
-        return trimmed
-            .split(separator: "|", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+        MarkdownTableCells.parse(line)
     }
 
     private static func replaceMatches(

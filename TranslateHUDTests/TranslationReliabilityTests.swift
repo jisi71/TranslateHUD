@@ -3,6 +3,56 @@ import XCTest
 
 @MainActor
 final class TranslationReliabilityTests: XCTestCase {
+    func testInlineCodeStreamingUsesBodyForHTTPQualityChecks() async throws {
+        let prepared = SelectionFormatPipeline.prepare("`hello world`")
+        let client = mockTranslator(responses: [streamResult("hello world"), streamResult("你好世界")])
+        let translator = FormatPreservingTranslator(base: client, prepared: prepared)
+        var result = ""
+        var resets = 0
+        for try await event in translator.translateStreaming(prepared.streamingSourceText, to: .chinese, context: nil) {
+            switch event {
+            case .delta(let value): result = value
+            case .reset: resets += 1
+            }
+        }
+        XCTAssertEqual(result, "`你好世界`")
+        XCTAssertEqual(resets, 1, "untranslated code text must trigger the existing quality retry")
+        let requests = TranslationURLProtocol.requests()
+        XCTAssertEqual(requests.count, 2)
+        let body = try XCTUnwrap(requests.first?.httpBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try XCTUnwrap(json["messages"] as? [[String: String]])
+        XCTAssertEqual(messages.first(where: { $0["role"] == "user" })?["content"], "hello world")
+    }
+
+    func testInlineCodeBatchHTTPBodyMatchesBilledSource() async throws {
+        let source = "Run `hello world` now."
+        let prepared = SelectionFormatPipeline.prepare(source)
+        XCTAssertEqual(prepared.segmentsToTranslate, ["Run", "now.", "hello world"])
+        let response = #"{"results":[{"i":0,"t":"运行"},{"i":1,"t":"现在"},{"i":2,"t":"你好世界"}]}"#
+        TranslationURLProtocol.reset([.batch(response)])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let billed = prepared.segmentsToTranslate.joined(separator: "\n")
+        let client = OpenAICompatibleTranslator(
+            config: ProviderConfig(baseURL: "https://example.com/v1", model: "trial", apiKey: ""),
+            session: URLSession(configuration: configuration),
+            extraHTTPHeaders: TrialHeaders.source(billed)
+        )
+        let translator = FormatPreservingTranslator(base: client, prepared: prepared)
+        let result = try await translator.translate([source], to: .chinese, context: nil)
+        XCTAssertEqual(result, ["运行 `你好世界` 现在"])
+        let request = try XCTUnwrap(TranslationURLProtocol.requests().first)
+        let header = try XCTUnwrap(request.value(forHTTPHeaderField: TrialHeaders.source))
+        XCTAssertEqual(String(data: try XCTUnwrap(Data(base64Encoded: header)), encoding: .utf8), billed)
+        let body = try XCTUnwrap(request.httpBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try XCTUnwrap(json["messages"] as? [[String: String]])
+        let message = try XCTUnwrap(messages.first(where: { $0["role"] == "user" })?["content"])
+        let items = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(message.utf8)) as? [[String: Any]])
+        XCTAssertEqual(items.compactMap { $0["text"] as? String }.joined(separator: "\n"), billed)
+    }
+
     func testCompleteSyntheticScreenshotRestoresServerResponseAndRetainsLabel() async throws {
         let plan = syntheticScreenshotPlan()
         XCTAssertTrue(plan.sourceIsRepresentable)

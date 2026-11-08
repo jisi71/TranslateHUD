@@ -51,6 +51,15 @@ final class ScreenshotTableRoutingTests: XCTestCase {
         XCTAssertFalse(ScreenshotTableRouting.hasRepeatedColumns(Array(sampleLines().prefix(2))))
     }
 
+    func testOutOfBoundsCandidateDoesNotReachPixelSampling() throws {
+        let table = sampleTable()
+        var rects = table.cellRects
+        rects[0][0] = CGRect(x: -0.1, y: 0.7, width: 0.25, height: 0.15)
+        let invalid = ScreenshotTable(rows: table.rows, normalizedBox: table.normalizedBox,
+                                      hasMergedCells: false, cellRects: rects)
+        XCTAssertFalse(ScreenshotTableRecognizer.supportsAutomaticCandidate(invalid, image: try image(striped: true)))
+    }
+
     func testReconciledTableUsesEachOCRLineOnceAndKeepsBlankCell() throws {
         let lines = sampleLines()
         guard case .ready(let table, let consumed) = ScreenshotTableReconciler.reconcile(sampleTable(), lines: lines) else {

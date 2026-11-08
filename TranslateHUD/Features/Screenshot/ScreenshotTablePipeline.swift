@@ -75,8 +75,8 @@ enum ScreenshotTablePipeline {
                 ready = (table, indices)
             case .needsCellChecks(let table, let indices, let conflicts):
                 if let focused = await OCRService.tableCellContents(image: image, table: table, cells: conflicts.map(\.cell)),
-                   zip(conflicts, focused).allSatisfy({ ScreenshotTableReconciler.agreesWithFocusedOCR($0.0.text, $0.1) }) {
-                    ready = (table, indices)
+                   let checked = ScreenshotTableReconciler.checkedTable(table, conflicts: conflicts, focused: focused) {
+                    ready = (checked, indices)
                 } else {
                     rejected = true
                 }

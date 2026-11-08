@@ -7,6 +7,19 @@ struct ScreenshotTableTitle: Equatable, Sendable {
     let normalizedBox: CGRect
 }
 
+/// The top-left position owns the text; the remaining positions are covered.
+struct ScreenshotCellSpan: Equatable, Hashable, Sendable {
+    let row: Int
+    let column: Int
+    let rowCount: Int
+    let columnCount: Int
+
+    func covers(row: Int, column: Int) -> Bool {
+        row >= self.row && row < self.row + rowCount &&
+        column >= self.column && column < self.column + columnCount
+    }
+}
+
 /// A rectangular grid in screenshot coordinates. Empty strings are real empty cells.
 struct ScreenshotTable: Equatable, Sendable {
     let rows: [[String]]
@@ -16,14 +29,42 @@ struct ScreenshotTable: Equatable, Sendable {
     let cellRects: [[CGRect?]]
     let hasMergedCells: Bool
     let leadingTitle: ScreenshotTableTitle?
+    let spans: [ScreenshotCellSpan]
 
     init(rows: [[String]], normalizedBox: CGRect, hasMergedCells: Bool, cellRects: [[CGRect?]]? = nil,
-         leadingTitle: ScreenshotTableTitle? = nil) {
+         leadingTitle: ScreenshotTableTitle? = nil, spans: [ScreenshotCellSpan] = []) {
         self.rows = rows
         self.normalizedBox = normalizedBox
         self.hasMergedCells = hasMergedCells
         self.cellRects = cellRects ?? rows.map { Array(repeating: nil, count: $0.count) }
         self.leadingTitle = leadingTitle
+        self.spans = spans
+    }
+
+    func isCovered(row: Int, column: Int) -> Bool {
+        spans.contains { $0.covers(row: row, column: column) && ($0.row != row || $0.column != column) }
+    }
+
+    /// Validate topology before trusting it to suppress or move cell text.
+    var hasValidSpans: Bool {
+        guard hasMergedCells == !spans.isEmpty, let width = rows.first?.count,
+              !rows.isEmpty, rows.allSatisfy({ $0.count == width }) else { return false }
+        var occupied = Set<Int>()
+        for span in spans {
+            guard span.row >= 0, span.column >= 0, span.rowCount > 0, span.columnCount > 0,
+                  span.rowCount > 1 || span.columnCount > 1,
+                  span.row < rows.count, span.column < width,
+                  span.rowCount <= rows.count - span.row, span.columnCount <= width - span.column else { return false }
+            for row in span.row..<(span.row + span.rowCount) {
+                for column in span.column..<(span.column + span.columnCount) {
+                    guard occupied.insert(row * width + column).inserted else { return false }
+                    if row != span.row || column != span.column {
+                        guard rows[row][column].isEmpty else { return false }
+                    }
+                }
+            }
+        }
+        return true
     }
 
     var nonEmptyCells: [String] {
@@ -40,7 +81,7 @@ struct ScreenshotTable: Equatable, Sendable {
             return translated[i]
         } }
         return ScreenshotTable(rows: result, normalizedBox: normalizedBox, hasMergedCells: hasMergedCells,
-                               cellRects: cellRects, leadingTitle: leadingTitle)
+                               cellRects: cellRects, leadingTitle: leadingTitle, spans: spans)
     }
 
     /// A GFM separator is required by the existing table renderer. Encode pipes as an
@@ -78,12 +119,44 @@ enum ScreenshotTableRecognizer {
     /// A regular layout alone can also be aligned prose. Require visible rules
     /// or repeated cell backgrounds before automatically using an unverified grid.
     static func supportsAutomaticCandidate(_ table: ScreenshotTable, image: CGImage) -> Bool {
-        guard table.rows.count >= 3, let columns = table.rows.first?.count, columns >= 2,
+        let evidenceTable: ScreenshotTable
+        if table.hasMergedCells {
+            guard table.hasValidSpans, table.cellRects.count == table.rows.count,
+                  table.cellRects.enumerated().allSatisfy({ $0.element.count == table.rows[$0.offset].count }) else { return false }
+            var rects = table.cellRects
+            for span in table.spans {
+                guard let original = rects[span.row][span.column] else { return false }
+                for row in span.row..<(span.row + span.rowCount) {
+                    for column in span.column..<(span.column + span.columnCount) {
+                        let w = original.width / CGFloat(span.columnCount)
+                        let h = original.height / CGFloat(span.rowCount)
+                        rects[row][column] = CGRect(x: original.minX + CGFloat(column - span.column) * w,
+                                                    y: original.maxY - CGFloat(row - span.row + 1) * h,
+                                                    width: w, height: h)
+                    }
+                }
+            }
+            evidenceTable = ScreenshotTable(rows: table.rows, normalizedBox: table.normalizedBox,
+                                            hasMergedCells: false, cellRects: rects)
+        } else { evidenceTable = table }
+        let bounds = table.normalizedBox
+        guard bounds.minX.isFinite, bounds.minY.isFinite, bounds.maxX.isFinite, bounds.maxY.isFinite,
+              bounds.width > 0, bounds.height > 0, bounds.minX >= 0, bounds.minY >= 0,
+              bounds.maxX <= 1, bounds.maxY <= 1,
+              table.rows.count >= 3, let columns = table.rows.first?.count, columns >= 2,
               table.rows.allSatisfy({ $0.count == columns }),
-              table.cellRects.count == table.rows.count,
-              table.cellRects.allSatisfy({ $0.count == columns && $0.allSatisfy { $0 != nil } }),
-              !table.hasMergedCells, let raster = Raster(image: image) else { return false }
-        return raster.hasCellSeparators(table) || raster.hasCellBands(table)
+              evidenceTable.cellRects.count == table.rows.count,
+              evidenceTable.cellRects.allSatisfy({ row in
+                  row.count == columns && row.allSatisfy { cell in
+                      guard let rect = cell else { return false }
+                      return rect.minX.isFinite && rect.minY.isFinite && rect.maxX.isFinite && rect.maxY.isFinite &&
+                          rect.width > 0 && rect.height > 0 && rect.minX >= 0 && rect.minY >= 0 &&
+                          rect.maxX <= 1 && rect.maxY <= 1
+                  }
+              }),
+              let raster = Raster(image: image) else { return false }
+        let visibleGrid = raster.hasCellSeparators(evidenceTable) || raster.hasCellBands(evidenceTable)
+        return visibleGrid && (!table.hasMergedCells || raster.supportsSpans(table))
     }
 
     enum RejectionReason: Equatable, Sendable {
@@ -157,6 +230,7 @@ enum ScreenshotTableRecognizer {
             var grid = Array(repeating: Array(repeating: "", count: width), count: height)
             var occupied = Array(repeating: Array(repeating: false, count: width), count: height)
             var visionRects = Array(repeating: Array<CGRect?>(repeating: nil, count: width), count: height)
+            var cellSpans: [ScreenshotCellSpan] = []
             var issue: RejectionReason?
             // Vision may repeat a merged cell in several rows/columns.
             for cell in cells {
@@ -167,11 +241,17 @@ enum ScreenshotTableRecognizer {
                       rs.upperBound < table.rows.count, cs.upperBound < width else {
                     issue = .invalidCellRanges; break
                 }
-                guard rs.count == 1, cs.count == 1 else { issue = .mergedCells; break }
                 let row = rs.lowerBound - rowOffset
-                if occupied[row][cs.lowerBound] { issue = .overlappingCells }
-                occupied[row][cs.lowerBound] = true
+                for r in row..<(row + rs.count) {
+                    for c in cs {
+                        if occupied[r][c] { issue = .overlappingCells }
+                        occupied[r][c] = true
+                    }
+                }
                 if issue != nil { break }
+                if rs.count > 1 || cs.count > 1 {
+                    cellSpans.append(.init(row: row, column: cs.lowerBound, rowCount: rs.count, columnCount: cs.count))
+                }
                 grid[row][cs.lowerBound] = cell.content.text.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
                 let rect = cell.content.boundingRegion.boundingBox.cgRect.standardized
                 if rect.width > 0, rect.height > 0,
@@ -192,6 +272,19 @@ enum ScreenshotTableRecognizer {
                 text: spanning[0].content.text.transcript.trimmingCharacters(in: .whitespacesAndNewlines),
                 normalizedBox: spanning[0].content.boundingRegion.boundingBox.cgRect
             ) : nil
+            if !cellSpans.isEmpty {
+                // A complete Vision topology is still only a candidate. The
+                // caller additionally requires visible table evidence and OCR
+                // reconciliation before using it automatically.
+                let orderedSpans = cellSpans.sorted { ($0.row, $0.column) < ($1.row, $1.column) }
+                let candidate = ScreenshotTable(rows: grid, normalizedBox: box, hasMergedCells: true,
+                                                cellRects: visionRects, leadingTitle: leadingTitle, spans: orderedSpans)
+                guard occupied.allSatisfy({ $0.allSatisfy { $0 } }), candidate.hasValidSpans else {
+                    reject(.ambiguousGrid); continue
+                }
+                review.append(candidate)
+                continue
+            }
             let hasRuleEvidence = raster?.hasRuleEvidence(in: box) ?? true
             if splitTitle && !hasRuleEvidence {
                 reject(.mergedCells); continue
@@ -259,6 +352,7 @@ enum ScreenshotTableRecognizer {
                 entries.append((table, entry.1))
             } else if matches.count == 1, let index = matches.first,
                       entries[index].table.rows == table.rows,
+                      entries[index].table.spans == table.spans,
                       entries[index].table.leadingTitle?.text == table.leadingTitle?.text {
                 if entry.1 && !entries[index].verified { entries[index] = (table, true) }
             } else {
@@ -448,6 +542,90 @@ private struct Raster {
     private func dark(_ x: Int, _ y: Int) -> Bool {
         let i = (y * width + x) * 4
         return Int(bytes[i]) + Int(bytes[i + 1]) + Int(bytes[i + 2]) < 690
+    }
+
+    /// An apparent span must not cross a visible cell divider.
+    func supportsSpans(_ table: ScreenshotTable) -> Bool {
+        struct Cell {
+            let row: Int, column: Int, rowCount: Int, columnCount: Int
+            let rect: CGRect
+        }
+        var cells: [Cell] = []
+        for row in table.cellRects.indices { for column in table.cellRects[row].indices {
+            guard let rect = table.cellRects[row][column] else { continue }
+            let span = table.spans.first { $0.row == row && $0.column == column }
+            cells.append(Cell(row: row, column: column, rowCount: span?.rowCount ?? 1,
+                              columnCount: span?.columnCount ?? 1, rect: rect))
+        } }
+        func median(_ values: [CGFloat]) -> CGFloat? {
+            let sorted = values.sorted()
+            guard !sorted.isEmpty else { return nil }
+            return sorted[sorted.count / 2]
+        }
+        func brightness(_ x: Int, _ y: Int) -> Int {
+            let index = (y * width + x) * 4
+            return Int(bytes[index]) + Int(bytes[index + 1]) + Int(bytes[index + 2])
+        }
+        func hasLine(at coordinate: CGFloat, from start: CGFloat, to end: CGFloat, vertical: Bool) -> Bool {
+            let fixedSize = vertical ? width : height
+            let length = vertical ? height : width
+            let fixed = Int(coordinate * CGFloat(fixedSize))
+            let lower = max(0, Int(start * CGFloat(length)))
+            let upper = min(length - 1, Int(end * CGFloat(length)))
+            guard upper - lower >= 12 else { return false }
+            let offset = 3
+            let radius = max(2, min(6, fixedSize / 400))
+            let step = max(1, (upper - lower) / 256)
+            for line in (fixed - radius)...(fixed + radius) where line >= offset && line < fixedSize - offset {
+                var hits = 0, count = 0
+                var position = lower
+                while position <= upper {
+                    let current = vertical ? brightness(line, position) : brightness(position, line)
+                    let before = vertical ? brightness(line - offset, position) : brightness(position, line - offset)
+                    let after = vertical ? brightness(line + offset, position) : brightness(position, line + offset)
+                    let a = current - before, b = current - after
+                    if abs(a) >= 16 && abs(b) >= 16 && (a > 0) == (b > 0) { hits += 1 }
+                    count += 1
+                    position += step
+                }
+                if count > 0 && hits * 100 >= count * 65 { return true }
+            }
+            return false
+        }
+        for span in table.spans {
+            guard let rect = table.cellRects[span.row][span.column] else { return false }
+            if span.columnCount > 1 {
+                for boundary in (span.column + 1)..<(span.column + span.columnCount) {
+                    let neighbors = cells.filter { $0.column == boundary || $0.column + $0.columnCount == boundary }
+                    let edges = neighbors.map { $0.column == boundary ? $0.rect.minX : $0.rect.maxX }
+                    guard let x = median(edges), x > rect.minX, x < rect.maxX else { return false }
+                    let top = 1 - rect.maxY + rect.height * 0.1
+                    let bottom = 1 - rect.minY - rect.height * 0.1
+                    if hasLine(at: x, from: top, to: bottom, vertical: true) { return false }
+                    guard neighbors.contains(where: { cell in
+                        let from = 1 - cell.rect.maxY + cell.rect.height * 0.1
+                        let to = 1 - cell.rect.minY - cell.rect.height * 0.1
+                        return hasLine(at: x, from: from, to: to, vertical: true)
+                    }) else { return false }
+                }
+            }
+            if span.rowCount > 1 {
+                for boundary in (span.row + 1)..<(span.row + span.rowCount) {
+                    let neighbors = cells.filter { $0.row == boundary || $0.row + $0.rowCount == boundary }
+                    let edges = neighbors.map { $0.row == boundary ? $0.rect.maxY : $0.rect.minY }
+                    guard let y = median(edges), y > rect.minY, y < rect.maxY else { return false }
+                    let left = rect.minX + rect.width * 0.1
+                    let right = rect.maxX - rect.width * 0.1
+                    if hasLine(at: 1 - y, from: left, to: right, vertical: false) { return false }
+                    guard neighbors.contains(where: { cell in
+                        let from = cell.rect.minX + cell.rect.width * 0.1
+                        let to = cell.rect.maxX - cell.rect.width * 0.1
+                        return hasLine(at: 1 - y, from: from, to: to, vertical: false)
+                    }) else { return false }
+                }
+            }
+        }
+        return true
     }
 
     private func runs(_ values: [Int]) -> [Int] {

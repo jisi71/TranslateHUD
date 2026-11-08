@@ -148,14 +148,16 @@ enum OCRService {
     /// number of visually empty cells at higher resolution before rendering.
     static func recoverEmptyCells(image: NSImage, table: ScreenshotTable) async -> ScreenshotTable? {
         let empty = table.rows.indices.flatMap { row in
-            table.rows[row].indices.compactMap { column in table.rows[row][column].isEmpty ? TableCell(row: row, column: column) : nil }
+            table.rows[row].indices.compactMap { column in
+                table.rows[row][column].isEmpty && !table.isCovered(row: row, column: column) ? TableCell(row: row, column: column) : nil
+            }
         }
         guard !empty.isEmpty else { return table }
         guard let contents = await tableCellContents(image: image, table: table, cells: empty) else { return nil }
         var rows = table.rows
         for (cell, value) in zip(empty, contents) { rows[cell.row][cell.column] = value }
-        return ScreenshotTable(rows: rows, normalizedBox: table.normalizedBox, hasMergedCells: false,
-                               cellRects: table.cellRects, leadingTitle: table.leadingTitle)
+        return ScreenshotTable(rows: rows, normalizedBox: table.normalizedBox, hasMergedCells: table.hasMergedCells,
+                               cellRects: table.cellRects, leadingTitle: table.leadingTitle, spans: table.spans)
     }
 
     struct TableCell: Hashable, Sendable {

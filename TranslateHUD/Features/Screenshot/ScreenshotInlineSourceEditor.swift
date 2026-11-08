@@ -1,4 +1,5 @@
 import AppKit
+import ExyteGrid
 import SwiftUI
 
 @MainActor
@@ -29,7 +30,39 @@ struct ScreenshotInlineSourceEditor: View {
         }
     }
 
+    @ViewBuilder
     private func tableView(item: UUID, table: ScreenshotTableEditModel) -> some View {
+        if table.spans.isEmpty {
+            regularTableView(item: item, table: table)
+        } else {
+            mergedTableView(item: item, table: table)
+        }
+    }
+
+    private func mergedTableView(item: UUID, table: ScreenshotTableEditModel) -> some View {
+        let cellWidth = max(110, width / CGFloat(max(table.columnCount, 1)))
+        let font = NSFont.systemFont(ofSize: 14)
+        let rows = table.cells.map { $0.map(\.text) }
+        let cells = ScreenshotGridLayout.cells(rows: rows, spans: table.spans)
+        let heights = ScreenshotGridLayout.rowHeights(rows: rows, cells: cells, minimum: 30) { text, columns in
+            Self.height(text, width: cellWidth * CGFloat(columns), font: font)
+        }
+        let tracks = heights.map { ExyteGrid.GridTrack.pt($0) }
+        return ScrollView(.horizontal) {
+            ExyteGrid.Grid(cells, tracks: tracks, contentMode: .fill, flow: .columns, spacing: 0) { cell in
+                let position = ScreenshotTableEditModel.Position(row: cell.row, column: cell.column)
+                let cellHeight = heights[cell.row..<(cell.row + cell.rowCount)].reduce(0, +)
+                InlineTextField(state: state, item: item, cell: position, text: rows[cell.row][cell.column], font: font)
+                    .frame(width: cellWidth * CGFloat(cell.columnCount), height: cellHeight)
+                    .border(Color.secondary.opacity(0.35))
+                    .gridStart(column: cell.column, row: cell.row)
+                    .gridSpan(column: cell.columnCount, row: cell.rowCount)
+            }
+            .frame(width: cellWidth * CGFloat(table.columnCount), height: heights.reduce(0, +))
+        }
+    }
+
+    private func regularTableView(item: UUID, table: ScreenshotTableEditModel) -> some View {
         let cellWidth = max(110, width / CGFloat(max(table.columnCount, 1)))
         let font = NSFont.systemFont(ofSize: 14)
         return ScrollView(.horizontal) {

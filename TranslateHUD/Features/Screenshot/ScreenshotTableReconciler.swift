@@ -15,6 +15,7 @@ enum ScreenshotTableReconciler {
     struct CellConflict {
         let cell: OCRService.TableCell
         let text: String
+        let documentText: String
     }
 
     struct MappedTable {
@@ -107,7 +108,7 @@ enum ScreenshotTableReconciler {
             if text.isEmpty && !documentText.isEmpty { return .uncertain }
             if !text.isEmpty && !documentText.isEmpty && !splitRows.contains(r),
                differsMaterially(text, documentText) {
-                conflicts.append(CellConflict(cell: .init(row: r, column: c), text: text))
+                conflicts.append(CellConflict(cell: .init(row: r, column: c), text: text, documentText: documentText))
             }
             rows[r][c] = text
         } }
@@ -116,17 +117,18 @@ enum ScreenshotTableReconciler {
                                   allowAdditionalNumbers: true) { return .uncertain }
         }
         guard rows.filter({ $0.filter { !$0.isEmpty }.count >= 2 }).count >= min(3, rows.count) else { return .uncertain }
-        let result = ScreenshotTable(rows: rows, normalizedBox: table.normalizedBox, hasMergedCells: false,
-                                     cellRects: table.cellRects, leadingTitle: table.leadingTitle)
+        let result = ScreenshotTable(rows: rows, normalizedBox: table.normalizedBox, hasMergedCells: table.hasMergedCells,
+                                     cellRects: table.cellRects, leadingTitle: table.leadingTitle, spans: table.spans)
         guard conflicts.count <= 8 else { return .uncertain }
         return conflicts.isEmpty ? .ready(result, consumed) : .needsCellChecks(result, consumed, conflicts)
     }
 
     private static func validGeometry(_ table: ScreenshotTable) -> Bool {
-        guard !table.hasMergedCells, table.rows.count >= 2, let columns = table.rows.first?.count, columns >= 2,
+        guard table.rows.count >= 2, let columns = table.rows.first?.count, columns >= 2,
               table.rows.count <= 100, columns <= 40, table.rows.count * columns <= 1_000,
               table.rows.allSatisfy({ $0.count == columns }), table.cellRects.count == table.rows.count,
               table.cellRects.allSatisfy({ $0.count == columns }), valid(table.normalizedBox) else { return false }
+        if table.hasMergedCells { return validMergedGeometry(table) }
         let outer = table.normalizedBox.insetBy(dx: -0.0001, dy: -0.0001)
         let xTolerance = max(0.002, table.normalizedBox.width * 0.015)
         let yTolerance = max(0.002, table.normalizedBox.height * 0.015)
@@ -140,6 +142,39 @@ enum ScreenshotTableReconciler {
                 if cell.maxY > previous.minY + 0.001 || abs(cell.minX - previous.minX) > xTolerance ||
                     abs(cell.maxX - previous.maxX) > xTolerance { return false }
             }
+        } }
+        return true
+    }
+
+    private static func validMergedGeometry(_ table: ScreenshotTable) -> Bool {
+        guard table.hasValidSpans else { return false }
+        struct Cell {
+            let row: Int, column: Int, lastRow: Int, lastColumn: Int
+            let rect: CGRect
+        }
+        let outer = table.normalizedBox.insetBy(dx: -0.0001, dy: -0.0001)
+        var cells: [Cell] = []
+        for row in table.rows.indices { for column in table.rows[row].indices {
+            if table.isCovered(row: row, column: column) {
+                guard table.cellRects[row][column] == nil else { return false }
+                continue
+            }
+            guard let rect = table.cellRects[row][column], valid(rect), outer.contains(rect) else { return false }
+            let span = table.spans.first { $0.row == row && $0.column == column }
+            cells.append(Cell(row: row, column: column,
+                              lastRow: row + (span?.rowCount ?? 1) - 1,
+                              lastColumn: column + (span?.columnCount ?? 1) - 1, rect: rect))
+        } }
+        for i in cells.indices { for j in cells.indices where j > i {
+            let a = cells[i], b = cells[j]
+            let overlap = a.rect.intersection(b.rect)
+            if !overlap.isNull && overlap.width > 0.001 && overlap.height > 0.001 { return false }
+            let sameRows = a.row <= b.lastRow && b.row <= a.lastRow
+            let sameColumns = a.column <= b.lastColumn && b.column <= a.lastColumn
+            if sameRows && a.lastColumn < b.column && a.rect.maxX > b.rect.minX + 0.001 { return false }
+            if sameRows && b.lastColumn < a.column && b.rect.maxX > a.rect.minX + 0.001 { return false }
+            if sameColumns && a.lastRow < b.row && a.rect.minY < b.rect.maxY - 0.001 { return false }
+            if sameColumns && b.lastRow < a.row && b.rect.minY < a.rect.maxY - 0.001 { return false }
         } }
         return true
     }
@@ -175,6 +210,20 @@ enum ScreenshotTableReconciler {
         let chinese = (a + b).unicodeScalars.contains { (0x3400...0x9fff).contains($0.value) }
         if !chinese && withoutWhitespace(a) == withoutWhitespace(b) && a != b { return false }
         return !differsMaterially(a, b) && withoutWhitespace(a) == withoutWhitespace(b)
+    }
+
+    static func checkedTable(_ table: ScreenshotTable, conflicts: [CellConflict], focused: [String]) -> ScreenshotTable? {
+        guard conflicts.count == focused.count else { return nil }
+        var rows = table.rows
+        for (conflict, check) in zip(conflicts, focused) {
+            if agreesWithFocusedOCR(conflict.text, check) { continue }
+            guard table.hasMergedCells, agreesWithFocusedOCR(conflict.documentText, check),
+                  rows.indices.contains(conflict.cell.row), rows[conflict.cell.row].indices.contains(conflict.cell.column),
+                  !table.isCovered(row: conflict.cell.row, column: conflict.cell.column) else { return nil }
+            rows[conflict.cell.row][conflict.cell.column] = check
+        }
+        return ScreenshotTable(rows: rows, normalizedBox: table.normalizedBox, hasMergedCells: table.hasMergedCells,
+                               cellRects: table.cellRects, leadingTitle: table.leadingTitle, spans: table.spans)
     }
 
     private static func differsMaterially(_ first: String, _ second: String, allowAdditionalNumbers: Bool = false) -> Bool {

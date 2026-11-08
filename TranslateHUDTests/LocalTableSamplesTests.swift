@@ -26,7 +26,7 @@ final class LocalTableSamplesTests: XCTestCase {
                 continue
             }
             let tables = result.plan.blocks.compactMap { block -> [[String]]? in
-                if case .table(let rows, _) = block { return rows }
+                if case .table(let rows, _, _) = block { return rows }
                 return nil
             }
             print("LOCAL_SAMPLE_\(index + 1) tables=\(tables.map { [$0.count, $0.first?.count ?? 0] }) notice=\(result.notice ?? "none")")

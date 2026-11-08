@@ -136,16 +136,17 @@ struct TranslationPanel: View {
     private var sourceBody: String {
         original.isEmpty ? interfaceLanguage.text("未识别到文字，请重新框选包含清晰文字的区域。") : original
     }
+    private var tableSpans: [[ScreenshotCellSpan]] { screenshotSource?.plan.tableSpans ?? [] }
 
     /// Expand is offered only when the text is taller than the collapsed line cap.
     /// Measuring at the wider width first (no chevron) avoids showing the control for text that already fits.
     private var sourceLayout: (textHeight: CGFloat, showsExpand: Bool) {
         let openWidth = sourceTextWidth(showsExpand: false)
         let full = MarkdownDisplay.height(
-            sourceBody, role: .source, colors: colors, width: openWidth, maxLines: nil
+            sourceBody, role: .source, colors: colors, width: openWidth, maxLines: nil, tableSpans: tableSpans
         )
         let capped = MarkdownDisplay.height(
-            sourceBody, role: .source, colors: colors, width: openWidth, maxLines: Self.collapsedSourceLines
+            sourceBody, role: .source, colors: colors, width: openWidth, maxLines: Self.collapsedSourceLines, tableSpans: tableSpans
         )
         let showsExpand = full > capped + 1
         guard showsExpand else { return (full, false) }
@@ -155,7 +156,8 @@ struct TranslationPanel: View {
             role: .source,
             colors: colors,
             width: narrow,
-            maxLines: isOriginalExpanded ? nil : Self.collapsedSourceLines
+            maxLines: isOriginalExpanded ? nil : Self.collapsedSourceLines,
+            tableSpans: tableSpans
         )
         return (visible, true)
     }
@@ -196,7 +198,7 @@ struct TranslationPanel: View {
     @ViewBuilder
     private func sourceText(_ layout: (textHeight: CGFloat, showsExpand: Bool)) -> some View {
         let label = MarkdownDisplay.BlocksView(markdown: sourceBody, role: .source, colors: colors,
-                                               width: sourceTextWidth(showsExpand: layout.showsExpand))
+                                               width: sourceTextWidth(showsExpand: layout.showsExpand), tableSpans: tableSpans)
 
         if layout.showsExpand && !isOriginalExpanded {
             // Propose the six-line cap so HeightFitting scrolls, instead of
@@ -224,11 +226,12 @@ struct TranslationPanel: View {
             role: .translation,
             colors: colors,
             width: width,
-            maxLines: nil
+            maxLines: nil,
+            tableSpans: tableSpans
         )
         // Stay on the first line while text streams in. Do not follow the tail.
         return HeightFitting {
-            MarkdownDisplay.BlocksView(markdown: translated, role: .translation, colors: colors, width: width)
+            MarkdownDisplay.BlocksView(markdown: translated, role: .translation, colors: colors, width: width, tableSpans: tableSpans)
         }
         .frame(maxHeight: textHeight, alignment: .topLeading)
         .panelSectionRole(.translation)

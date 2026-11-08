@@ -82,7 +82,7 @@ final class ScreenshotTablePreflightTests: XCTestCase {
             return XCTFail("Expected a table plan")
         }
         let rows = ready.plan.blocks.compactMap { block -> [[String]]? in
-            if case .table(let rows, _) = block { return rows }
+            if case .table(let rows, _, _) = block { return rows }
             return nil
         }
         XCTAssertEqual(rows, [[["Product", "Quarter", "Revenue"], ["Alpha", "Q1", "100"],
@@ -101,7 +101,7 @@ final class ScreenshotTablePreflightTests: XCTestCase {
                 return XCTFail("Expected a result for \(name)")
             }
             let tables = result.plan.blocks.compactMap { block -> [[String]]? in
-                if case .table(let rows, _) = block { return rows }
+                if case .table(let rows, _, _) = block { return rows }
                 return nil
             }
             if name == "ruled" {

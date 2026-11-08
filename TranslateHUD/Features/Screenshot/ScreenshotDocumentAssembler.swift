@@ -115,7 +115,7 @@ enum ScreenshotDocumentAssembler {
             } else {
                 cellRuns = []
             }
-            positioned.append((table.normalizedBox, .table(rows: table.rows, cellRuns: cellRuns)))
+            positioned.append((table.normalizedBox, .table(rows: table.rows, cellRuns: cellRuns, spans: table.spans)))
         }
         positioned.sort { a, b in
             if abs(a.0.maxY - b.0.maxY) > 0.005 { return a.0.maxY > b.0.maxY }

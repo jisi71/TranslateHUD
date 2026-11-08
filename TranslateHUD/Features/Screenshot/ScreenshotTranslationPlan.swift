@@ -108,7 +108,7 @@ protocol ScreenshotTrialBillingRoute: Translator {
 struct ScreenshotTranslationPlan: Sendable {
     enum Block: Sendable {
         case text(runs: [ScreenshotTextRun], heading: Int?)
-        case table(rows: [[String]], cellRuns: [[[ScreenshotTextRun]]] = [])
+        case table(rows: [[String]], cellRuns: [[[ScreenshotTextRun]]] = [], spans: [ScreenshotCellSpan] = [])
     }
 
     let blocks: [Block]
@@ -120,7 +120,7 @@ struct ScreenshotTranslationPlan: Sendable {
             case .text(let runs, _):
                 let value = Self.styled(runs)
                 return value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [value]
-            case .table(let rows, let cellRuns):
+            case .table(let rows, let cellRuns, _):
                 return rows.enumerated().flatMap { rowIndex, row in
                     row.enumerated().compactMap { columnIndex, text -> ScreenshotStyledText? in
                         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
@@ -150,7 +150,10 @@ struct ScreenshotTranslationPlan: Sendable {
 
     private var structureIsValid: Bool {
         blocks.allSatisfy { block in
-            guard case .table(let rows, let runs) = block, !runs.isEmpty else { return true }
+            guard case .table(let rows, let runs, let spans) = block else { return true }
+            let table = ScreenshotTable(rows: rows, normalizedBox: .zero, hasMergedCells: !spans.isEmpty, spans: spans)
+            guard table.hasValidSpans else { return false }
+            guard !runs.isEmpty else { return true }
             guard runs.count == rows.count else { return false }
             return rows.indices.allSatisfy { row in
                 runs[row].count == rows[row].count && rows[row].indices.allSatisfy { column in
@@ -161,6 +164,12 @@ struct ScreenshotTranslationPlan: Sendable {
     }
 
     var sourceTexts: [String] { sourceItems.map(\.text) }
+    var tableSpans: [[ScreenshotCellSpan]] {
+        blocks.compactMap { block in
+            guard case .table(_, _, let spans) = block else { return nil }
+            return spans
+        }
+    }
     var sourceForQuota: String { sourceTexts.joined(separator: "\n") }
     var sourceIsRepresentable: Bool { structureIsValid && (try? render(sourceItems)) != nil }
     var withoutStyles: ScreenshotTranslationPlan {
@@ -168,7 +177,7 @@ struct ScreenshotTranslationPlan: Sendable {
             switch block {
             case .text(let runs, let heading):
                 return .text(runs: runs.map { .init(text: $0.text, isStrong: false) }, heading: heading)
-            case .table(let rows, _): return .table(rows: rows)
+            case .table(let rows, _, let spans): return .table(rows: rows, spans: spans)
             }
         }
         return ScreenshotTranslationPlan(blocks: plainBlocks, tableStylesNeedReview: tableStylesNeedReview)
@@ -214,7 +223,7 @@ struct ScreenshotTranslationPlan: Sendable {
                 if case .text(let previous)? = expected.last {
                     expected[expected.count - 1] = .text(previous + [text])
                 } else { expected.append(.text([text])) }
-            case .table(let rows, _):
+            case .table(let rows, _, _):
                 guard let width = rows.map(\.count).max(), width >= 2 else {
                     throw TranslationError.parse("截图表格结构不完整，请重试。")
                 }

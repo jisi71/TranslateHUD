@@ -85,7 +85,7 @@ enum ScreenshotRegionRecovery {
                                              cellRects: table.cellRects.map { $0.map { $0.map { map($0, into: actual) } } },
                                              leadingTitle: table.leadingTitle.map {
                                                  ScreenshotTableTitle(text: $0.text, normalizedBox: map($0.normalizedBox, into: actual))
-                                             })
+                                             }, spans: table.spans)
                 found.append(mapped)
             }
         }

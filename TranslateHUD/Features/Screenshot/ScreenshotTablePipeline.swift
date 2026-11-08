@@ -14,30 +14,27 @@ enum ScreenshotTablePipeline {
         if #available(macOS 26.0, *) {
             do {
                 let documents = try await OCRService.recognizeDocuments(cgImage: imageData)
-                let assessment = await Task.detached(priority: .userInitiated) {
-                    guard !documents.isEmpty else {
-                        return ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
-                    }
-                    let assessments = documents.map {
-                        ScreenshotTableRecognizer.assess(from: $0.document, image: imageData, lines: lines)
-                    }
-                    let counts = documents.map { $0.document.tables.count }
-                    let fallback = counts.allSatisfy({ $0 == 0 })
-                        ? ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
-                        : .init(tables: [], rejected: [])
-                    return ScreenshotTableRecognizer.combinedDocumentAssessments(assessments, tableCounts: counts, fallback: fallback)
+                if documents.contains(where: { !$0.document.tables.isEmpty }) {
+                    let recognized = documents.map { ScreenshotVisionTable.tables(from: $0.document) }
+                    let rawRegions = documents.flatMap { $0.document.tables.map { $0.boundingRegion.boundingBox.cgRect } }
+                    var tables = ScreenshotVisionTable.uniqueTables(recognized.flatMap(\.tables))
+                    let recovered = await ScreenshotRegionRecovery.findCandidates(image: imageData, lines: lines,
+                        rawRegions: rawRegions, existing: tables)
+                    tables = ScreenshotVisionTable.uniqueTables(tables + recovered)
+                    return await visionPlan(image: image, lines: lines, tables: tables,
+                                            rejected: recognized.contains { $0.rejected })
+                }
+                let hasDocuments = !documents.isEmpty
+                let fallback = await Task.detached(priority: .userInitiated) {
+                    let assessment = ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
+                    let supported = hasDocuments
+                        ? assessment.tables.filter { ScreenshotTableRecognizer.supportsAutomaticCandidate($0, image: imageData) }
+                        : assessment.tables
+                    return (tables: supported,
+                            rejected: !assessment.rejected.isEmpty || supported.count != assessment.tables.count)
                 }.value
-                let rawRegions = documents.flatMap { $0.document.tables.map { $0.boundingRegion.boundingBox.cgRect } }
-                let recovered = await ScreenshotRegionRecovery.findCandidates(image: imageData, lines: lines,
-                    rawRegions: rawRegions, existing: assessment.tables + assessment.reviewRequired)
-                let combined = ScreenshotTableRecognizer.consolidate(accepted: assessment.tables,
-                    review: assessment.reviewRequired + recovered, rejected: assessment.rejected,
-                    blockedRegions: assessment.blockedRegions)
-                let supported = await Task.detached(priority: .userInitiated) {
-                    combined.reviewRequired.filter { ScreenshotTableRecognizer.supportsAutomaticCandidate($0, image: imageData) }
-                }.value
-                candidates = combined.tables + supported
-                rejected = !combined.rejected.isEmpty || supported.count != combined.reviewRequired.count
+                candidates = fallback.tables
+                rejected = fallback.rejected
             } catch {
                 AppLog.info("文档结构识别不可用，使用文字行识别结果")
                 let fallback = await Task.detached(priority: .userInitiated) {
@@ -96,6 +93,46 @@ enum ScreenshotTablePipeline {
         guard !safeTables.isEmpty else { return plainPlan(lines, rejected: rejected) }
         let needsTextReview = unique.tables.contains { $0.needsTextReview }
         return ScreenshotAutoPlan.makeReconciled(lines: lines, tables: safeTables, consumed: consumed,
+                                                 hasRejectedTable: rejected, needsTextReview: needsTextReview)
+    }
+
+    private static func visionPlan(image: NSImage, lines: [OCRService.Line], tables: [ScreenshotTable],
+                                   rejected: Bool) async -> ScreenshotAutoPlan.Outcome {
+        var mapped: [ScreenshotTable] = []
+        var consumed: Set<Int> = []
+        var needsTextReview = false
+        var rejected = rejected
+        for table in tables {
+            guard !table.nonEmptyCells.isEmpty else { rejected = true; continue }
+            var result = ScreenshotTableReconciler.reconcile(table, lines: lines)
+            if case .needsWords(let indices) = result {
+                let boxes = await OCRService.tableWordBoxes(image: image, matching: indices.map { lines[$0] })
+                var words: [Int: [OCRService.Line]] = [:]
+                for (index, value) in zip(indices, boxes) { if let value { words[index] = value } }
+                result = ScreenshotTableReconciler.reconcile(table, lines: lines, words: words)
+            }
+            let chosen: ScreenshotTable
+            switch result {
+            case .ready(let improved, _):
+                chosen = improved
+            case .needsCellChecks(let improved, _, let conflicts):
+                let cells = conflicts.prefix(8).map(\.cell)
+                let focused = await OCRService.tableCellReadings(image: image, table: improved, cells: cells)
+                let resolved = ScreenshotTableReconciler.resolveConflicts(improved, conflicts: conflicts, focused: focused)
+                chosen = resolved.table
+                needsTextReview = needsTextReview || resolved.needsTextReview
+            case .needsWords, .uncertain:
+                chosen = table
+                needsTextReview = true
+            }
+            let recovered = await OCRService.recoverEmptyCells(image: image, table: chosen)
+            let merged = ScreenshotVisionTable.mergeRecovered(recovered.table, into: chosen)
+            mapped.append(merged.table)
+            needsTextReview = needsTextReview || recovered.needsTextReview || merged.needsTextReview
+            consumed.formUnion(ScreenshotVisionTable.consumedLines(lines, by: table))
+        }
+        guard !mapped.isEmpty else { return plainPlan(lines, rejected: rejected) }
+        return ScreenshotAutoPlan.makeReconciled(lines: lines, tables: mapped, consumed: consumed,
                                                  hasRejectedTable: rejected, needsTextReview: needsTextReview)
     }
 

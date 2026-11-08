@@ -15,7 +15,8 @@ final class LocalTableSamplesTests: XCTestCase {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         XCTAssertEqual(files.count, 4)
         guard files.count == 4 else { return }
-        let expected = [[[8, 6], [8, 6]], [[6, 4]], [[5, 7], [5, 4]], [[4, 5], [6, 4]]]
+        // Vision includes the second cloud-table title as a separate table row.
+        let expected = [[[8, 6], [9, 6]], [[6, 4]], [[5, 7], [5, 4]], [[4, 5], [6, 4]]]
         for (index, file) in files.enumerated() {
             let source = try XCTUnwrap(CGImageSourceCreateWithURL(file as CFURL, nil))
             let cg = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
@@ -50,9 +51,10 @@ final class LocalTableSamplesTests: XCTestCase {
                               ["50kb/s", "400k/s", "50kb/s", "满速", "满速"],
                               ["4G", "不限制", "5G", "不限制", "不限制"], ["0.05", "0.05", "0.16", "0.39", "0.46"]]
                 for table in tables {
-                    XCTAssertEqual(table[0], ["云盘", "百度网盘", "腾讯微云", "115网盘", "icloud", "onedrive"])
-                    XCTAssertEqual(table.dropFirst().map { Array($0.dropFirst()) }, values)
-                    XCTAssertEqual(table[6][0], "上传单个文件大小")
+                    let header = try XCTUnwrap(table.firstIndex { $0.first == "云盘" })
+                    XCTAssertEqual(table[header], ["云盘", "百度网盘", "腾讯微云", "115网盘", "icloud", "onedrive"])
+                    XCTAssertEqual(table.dropFirst(header + 1).map { Array($0.dropFirst()) }, values)
+                    XCTAssertEqual(table[header + 6][0], "上传单个文件大小")
                 }
                 XCTAssertEqual(result.plan.sourceTexts.filter { $0 == "PPT数据图表" }.count, 1)
             }

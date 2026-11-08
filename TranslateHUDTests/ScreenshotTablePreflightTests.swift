@@ -91,7 +91,7 @@ final class ScreenshotTablePreflightTests: XCTestCase {
     }
 
     @MainActor
-    func testAutomaticPipelineKeepsRuledEmptyCellAndSkipsAlignedProse() async throws {
+    func testAutomaticPipelineKeepsRuledEmptyCellAndUsesVisionForAlignedText() async throws {
         guard #available(macOS 26, *) else { throw XCTSkip("Document recognition requires macOS 26") }
         for name in ["ruled", "aligned-prose"] {
             let cg = try fixture(name)
@@ -109,7 +109,11 @@ final class ScreenshotTablePreflightTests: XCTestCase {
                                           ["Beta", "", "200"], ["Gamma", "Q3", "300"] ]])
                 XCTAssertEqual(result.plan.sourceTexts.filter { $0 == "Alpha" }.count, 1)
             } else {
-                XCTAssertTrue(tables.isEmpty, "Visually ambiguous aligned prose must remain ordinary text")
+                let documents = try await OCRService.recognizeDocuments(cgImage: cg)
+                let recognized = documents.flatMap { ScreenshotVisionTable.tables(from: $0.document).tables }
+                XCTAssertEqual(tables.map { [$0.count, $0.first?.count ?? 0] },
+                               recognized.map { [$0.rows.count, $0.rows.first?.count ?? 0] })
+                XCTAssertEqual(result.plan.sourceTexts.filter { $0 == "Alpha" }.count, 1)
                 XCTAssertTrue(result.plan.sourceItems.allSatisfy { $0.boldRanges.isEmpty })
             }
         }

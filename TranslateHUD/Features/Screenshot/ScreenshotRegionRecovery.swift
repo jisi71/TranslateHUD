@@ -22,12 +22,6 @@ enum ScreenshotRegionRecovery {
                width: rect.width * region.width, height: rect.height * region.height)
     }
 
-    static func unmap(_ rect: CGRect, from region: CGRect) -> CGRect {
-        CGRect(x: (rect.minX - region.minX) / region.width,
-               y: (rect.minY - region.minY) / region.height,
-               width: rect.width / region.width, height: rect.height / region.height)
-    }
-
     static func overlaps(_ a: CGRect, _ b: CGRect) -> Bool {
         let intersection = a.intersection(b)
         guard !intersection.isNull else { return false }
@@ -62,21 +56,8 @@ enum ScreenshotRegionRecovery {
             guard let crop = image.cropping(to: CGRect(x: 0, y: pixelY, width: image.width, height: pixelCount)) else { continue }
             let actual = CGRect(x: 0, y: 1 - CGFloat(pixelY + pixelCount) / CGFloat(image.height),
                                 width: 1, height: CGFloat(pixelCount) / CGFloat(image.height))
-            let localLines = lines.compactMap { line -> OCRService.Line? in
-                guard actual.contains(line.normalizedBox) else { return nil }
-                return OCRService.Line(text: line.text, normalizedBox: unmap(line.normalizedBox, from: actual),
-                                       confidence: line.confidence, runs: line.runs)
-            }
             guard let documents = try? await OCRService.recognizeDocuments(cgImage: crop), !documents.isEmpty else { continue }
-            let candidates = await Task.detached(priority: .userInitiated) {
-                let assessments = documents.map { ScreenshotTableRecognizer.assess(from: $0.document, image: crop, lines: localLines) }
-                let counts = documents.map { $0.document.tables.count }
-                let fallback = counts.allSatisfy { $0 == 0 }
-                    ? ScreenshotTableRecognizer.assessFallback(from: crop, lines: localLines)
-                    : .init(tables: [], rejected: [])
-                let result = ScreenshotTableRecognizer.combinedDocumentAssessments(assessments, tableCounts: counts, fallback: fallback)
-                return result.tables + result.reviewRequired
-            }.value
+            let candidates = documents.flatMap { ScreenshotVisionTable.tables(from: $0.document).tables }
             for table in candidates {
                 guard isSeparateCandidate(table.normalizedBox, region: actual, rawRegions: rawRegions,
                                           existing: (existing + found).map(\.normalizedBox)) else { continue }

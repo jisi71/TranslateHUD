@@ -1,6 +1,14 @@
 import Foundation
 
 enum ScreenshotDocumentAssembler {
+    static func makePlanFromLines(_ lines: [OCRService.Line], tables: [ScreenshotTable]) -> ScreenshotTranslationPlan {
+        let safeTables = tables.filter { !hasCrossingLine(lines, tables: [$0]) }
+        let outside = lines.filter { line in
+            !safeTables.contains { $0.normalizedBox.contains(line.normalizedBox) }
+        }
+        return assemble(textBlocks: ScreenshotTextLayout.fromLines(outside), tables: safeTables, lines: lines)
+    }
+
     /// Never remove a line that crosses the inferred table boundary. This can
     /// contain both a cell and non-table content even when its midpoint is inside.
     static func hasCrossingLine(_ lines: [OCRService.Line], tables: [ScreenshotTable]) -> Bool {
@@ -73,6 +81,11 @@ enum ScreenshotDocumentAssembler {
             }
         }
 
+        return assemble(textBlocks: textBlocks, tables: tables, lines: lines)
+    }
+
+    private static func assemble(textBlocks: [ScreenshotTextBlock], tables: [ScreenshotTable],
+                                 lines: [OCRService.Line]) -> ScreenshotTranslationPlan {
         var positioned: [(CGRect, ScreenshotTranslationPlan.Block)] = textBlocks.map { block in
             let heading: Int?
             if case .heading(let level) = block.style { heading = level } else { heading = nil }

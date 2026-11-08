@@ -4,7 +4,76 @@ import XCTest
 @testable import TranslateHUD
 
 final class ScreenshotDirectTranslationTests: XCTestCase {
-    func testAutomaticPlanKeepsCandidateTableAndAmbiguousText() throws {
+    func testPlainTextDoesNotCombineDisagreeingOCRSources() {
+        let box = CGRect(x: 0.1, y: 0.7, width: 0.7, height: 0.05)
+        let block = ScreenshotTextBlock(text: "Hello, world!", box: box)
+        let line = OCRService.Line(text: "Hello world!", normalizedBox: box, confidence: 1)
+        for rejected in [false, true] {
+            guard case .ready(let ready) = ScreenshotAutoPlan.make(textBlocks: [block], lines: [line], tables: [],
+                                                                    hasRejectedTable: rejected) else {
+                return XCTFail("Plain text should be ready")
+            }
+            XCTAssertEqual(ready.plan.sourceTexts, ["Hello world!"])
+        }
+    }
+
+    func testPlainTextRetainsIntentionalRepeatedLines() {
+        let lines = [
+            OCRService.Line(text: "Again", normalizedBox: CGRect(x: 0.1, y: 0.8, width: 0.2, height: 0.04), confidence: 1),
+            OCRService.Line(text: "Again", normalizedBox: CGRect(x: 0.1, y: 0.5, width: 0.2, height: 0.04), confidence: 1)
+        ]
+        guard case .ready(let ready) = ScreenshotAutoPlan.make(textBlocks: [], lines: lines, tables: [],
+                                                                hasRejectedTable: false) else {
+            return XCTFail("Plain text should be ready")
+        }
+        XCTAssertEqual(ready.plan.sourceTexts, ["Again", "Again"])
+    }
+
+    func testOnlyOverlappingIdenticalOCRLinesAreDeduplicated() {
+        let box = CGRect(x: 0.1, y: 0.8, width: 0.2, height: 0.04)
+        let input = [
+            OCRService.Line(text: "Again", normalizedBox: box, confidence: 0.5),
+            OCRService.Line(text: "Again", normalizedBox: box, confidence: 0.9),
+            OCRService.Line(text: "Again", normalizedBox: CGRect(x: 0.1, y: 0.5, width: 0.2, height: 0.04), confidence: 1),
+            OCRService.Line(text: "Other", normalizedBox: box, confidence: 1)
+        ]
+        let output = ScreenshotTextLayout.deduplicatedLines(input)
+        XCTAssertEqual(output.map(\.text), ["Again", "Again", "Other"])
+        XCTAssertEqual(output[0].confidence, 0.9)
+    }
+
+    func testLineLayoutKeepsMainTitleAndSubheading() {
+        let lines = [
+            OCRService.Line(text: "Main Title", normalizedBox: CGRect(x: 0.1, y: 0.85, width: 0.5, height: 0.08), confidence: 1),
+            OCRService.Line(text: "Subheading", normalizedBox: CGRect(x: 0.1, y: 0.72, width: 0.5, height: 0.05), confidence: 1),
+            OCRService.Line(text: "First paragraph", normalizedBox: CGRect(x: 0.1, y: 0.58, width: 0.5, height: 0.03), confidence: 1),
+            OCRService.Line(text: "Second paragraph", normalizedBox: CGRect(x: 0.1, y: 0.4, width: 0.5, height: 0.03), confidence: 1)
+        ]
+        let blocks = ScreenshotTextLayout.fromLines(lines)
+        XCTAssertEqual(blocks.map(\.style), [.heading(1), .heading(2), .paragraph, .paragraph])
+    }
+
+    func testConfirmedTableKeepsCellsAndOutsideTextWithoutDuplication() {
+        let table = ScreenshotTable(rows: [["Name", "Value"], ["Alpha", ""]],
+                                    normalizedBox: CGRect(x: 0.1, y: 0.4, width: 0.8, height: 0.4),
+                                    hasMergedCells: false)
+        let lines = [
+            OCRService.Line(text: "Title", normalizedBox: CGRect(x: 0.1, y: 0.9, width: 0.2, height: 0.04), confidence: 1),
+            OCRService.Line(text: "Name", normalizedBox: CGRect(x: 0.15, y: 0.7, width: 0.15, height: 0.04), confidence: 1),
+            OCRService.Line(text: "Value", normalizedBox: CGRect(x: 0.55, y: 0.7, width: 0.15, height: 0.04), confidence: 1),
+            OCRService.Line(text: "Alpha", normalizedBox: CGRect(x: 0.15, y: 0.5, width: 0.15, height: 0.04), confidence: 1)
+        ]
+        let duplicateBlock = ScreenshotTextBlock(text: "Title", box: lines[0].normalizedBox)
+        guard case .ready(let ready) = ScreenshotAutoPlan.make(textBlocks: [duplicateBlock], lines: lines,
+                                                                tables: [table], hasRejectedTable: false) else {
+            return XCTFail("Confirmed table should be ready")
+        }
+        XCTAssertEqual(ready.plan.sourceTexts.filter { $0 == "Title" }.count, 1)
+        XCTAssertEqual(ready.plan.sourceTexts.filter { $0 == "Alpha" }.count, 1)
+        XCTAssertTrue(ready.plan.originalMarkdown.contains("| Alpha |  |"))
+    }
+
+    func testUncertainTableFallsBackToOrdinaryText() throws {
         let rects: [[CGRect?]] = [
             [CGRect(x: 0.1, y: 0.7, width: 0.4, height: 0.1), CGRect(x: 0.5, y: 0.7, width: 0.4, height: 0.1)],
             [CGRect(x: 0.1, y: 0.6, width: 0.4, height: 0.1), CGRect(x: 0.5, y: 0.6, width: 0.4, height: 0.1)]
@@ -16,12 +85,13 @@ final class ScreenshotDirectTranslationTests: XCTestCase {
             OCRService.Line(text: "the rapist", normalizedBox: CGRect(x: 0.15, y: 0.63, width: 0.2, height: 0.03), confidence: 1),
             OCRService.Line(text: "1 000", normalizedBox: CGRect(x: 0.55, y: 0.63, width: 0.2, height: 0.03), confidence: 1)
         ]
-        guard case .ready(let ready) = ScreenshotAutoPlan.make(textBlocks: [], lines: lines, tables: [],
-                                                                candidates: [table], hasRejectedTable: false) else {
-            return XCTFail("The table should be ready without a confirmation dialog")
+        let assessment = ScreenshotTableRecognizer.Assessment(tables: [], rejected: [], reviewRequired: [table])
+        guard case .ready(let ready) = ScreenshotAutoPlan.make(textBlocks: [], lines: lines, tables: assessment.tables,
+                                                                hasRejectedTable: false) else {
+            return XCTFail("Uncertain layouts should be ready as ordinary text")
         }
-        XCTAssertNotNil(ready.notice)
-        XCTAssertTrue(ready.plan.originalMarkdown.contains("| therapist | 1000 |"))
+        XCTAssertNil(ready.notice)
+        XCTAssertFalse(ready.plan.originalMarkdown.contains("| therapist | 1000 |"))
         XCTAssertTrue(ready.plan.sourceTexts.contains("the rapist"))
         XCTAssertTrue(ready.plan.sourceTexts.contains("1 000"))
     }
@@ -31,7 +101,7 @@ final class ScreenshotDirectTranslationTests: XCTestCase {
             .init(text: "a", isStrong: false), .init(text: "!", isStrong: true), .init(text: "b", isStrong: false)
         ])
         guard case .ready(let ready) = ScreenshotAutoPlan.make(textBlocks: [block], lines: [], tables: [],
-                                                                candidates: [], hasRejectedTable: false) else {
+                                                                hasRejectedTable: false) else {
             return XCTFail("Plain text should remain usable")
         }
         XCTAssertEqual(ready.plan.sourceTexts, ["a!b"])
@@ -41,7 +111,7 @@ final class ScreenshotDirectTranslationTests: XCTestCase {
 
     func testEmptyRecognitionDoesNotProduceARequest() {
         guard case .empty = ScreenshotAutoPlan.make(textBlocks: [], lines: [], tables: [],
-                                                    candidates: [], hasRejectedTable: false) else {
+                                                    hasRejectedTable: false) else {
             return XCTFail("Empty OCR cannot be translated")
         }
     }

@@ -69,6 +69,12 @@ struct ScreenshotTable: Equatable, Sendable {
 }
 
 enum ScreenshotTableRecognizer {
+    /// A pixel-only preflight; OCR cell mapping and document recognition run later.
+    static func mayContainGrid(from image: CGImage) -> Bool {
+        guard let raster = Raster(image: image) else { return false }
+        return raster.mayContainGrid()
+    }
+
     enum RejectionReason: Equatable, Sendable {
         case unsupportedDimensions
         case mergedCells
@@ -444,7 +450,7 @@ private struct Raster {
         return result
     }
 
-    func grids() -> [(xs: [Int], ys: [Int])] {
+    private func longRules() -> (xs: [Int], ys: [Int]) {
         // Long runs avoid classifying ordinary aligned paragraphs as a table.
         func hasHorizontalRun(_ y: Int, minimum: Int) -> Bool {
             var run = 0
@@ -464,7 +470,16 @@ private struct Raster {
         }
         let h = (0..<height).filter { hasHorizontalRun($0, minimum: max(80, width / 5)) }
         let v = (0..<width).filter { hasVerticalRun($0, minimum: max(60, height / 8)) }
-        let ys = runs(h), xs = runs(v)
+        return (runs(v), runs(h))
+    }
+
+    func mayContainGrid() -> Bool {
+        let rules = longRules()
+        return rules.xs.count >= 3 && rules.ys.count >= 3 && rules.xs.count <= 41 && rules.ys.count <= 201
+    }
+
+    func grids() -> [(xs: [Int], ys: [Int])] {
+        let (xs, ys) = longRules()
         guard xs.count >= 3, ys.count >= 3, xs.count <= 41, ys.count <= 201 else { return [] }
         guard let x0 = xs.first, let x1 = xs.last, let y0 = ys.first, let y1 = ys.last,
               x1 > x0, y1 > y0 else { return [] }

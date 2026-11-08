@@ -41,12 +41,14 @@ def is_md_structure_line(line: str) -> bool:
     return False
 
 
-def protect_markdown(text: str) -> tuple[str, list[str]]:
+def protect_markdown(text: str) -> tuple[str, list[str], list[str]]:
     store: list[str] = []
+    kinds: list[str] = []
 
     def save(kind: str, chunk: str) -> str:
         idx = len(store)
         store.append(chunk)
+        kinds.append(kind)
         return f"⟦MD:{kind}:{idx}⟧"
 
     def repl_fence(m: re.Match) -> str:
@@ -54,18 +56,18 @@ def protect_markdown(text: str) -> tuple[str, list[str]]:
 
     # 闭合围栏：行末只吃横向空白，不吞后面的空行换行。
     text = re.sub(
-        r"(?m)^(```|~~~)[^\n]*\n.*?^\1[ \t]*$",
+        r"(?m)^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*?^[ \t]{0,3}\1[ \t]*$",
         repl_fence,
         text,
         flags=re.S,
     )
     text = re.sub(
-        r"(?m)^(```|~~~)[^\n]*\n.*\Z",
+        r"(?m)^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*\Z",
         repl_fence,
         text,
         flags=re.S,
     )
-    text = re.sub(r"`[^`\n]+`", lambda m: save("icode", m.group(0)), text)
+    text = re.sub(r"(?<![\\`])(`+)(?!`)([^\n]+?)\1(?!`)", lambda m: save("icode", m.group(0)), text)
     text = re.sub(r"!\[[^\]]*\]\([^)]+\)", lambda m: save("link", m.group(0)), text)
     text = re.sub(r"\[[^\]]*\]\([^)]+\)", lambda m: save("link", m.group(0)), text)
     text = re.sub(
@@ -80,7 +82,7 @@ def protect_markdown(text: str) -> tuple[str, list[str]]:
         lambda m: save("bound", m.group(0)),
         text,
     )
-    return text, store
+    return text, store, kinds
 
 
 def _is_alignment_separator(trimmed: str) -> bool:
@@ -91,9 +93,58 @@ def parse_gfm_table_cells(line: str) -> list[str]:
     trimmed = line.strip()
     if trimmed.startswith("|"):
         trimmed = trimmed[1:]
-    if trimmed.endswith("|"):
-        trimmed = trimmed[:-1]
-    return [c.strip() for c in trimmed.split("|")]
+    cells, current = [], ""
+    delimiter = None
+    index = 0
+    ended_with_separator = False
+
+    def has_closing(start, count):
+        pos = start
+        while pos < len(trimmed):
+            if trimmed[pos] == "\\" and pos + 1 < len(trimmed):
+                pos += 2
+            elif trimmed[pos] == "`":
+                end = pos
+                while end < len(trimmed) and trimmed[end] == "`":
+                    end += 1
+                if end - pos == count:
+                    return True
+                pos = end
+            else:
+                pos += 1
+        return False
+
+    while index < len(trimmed):
+        char = trimmed[index]
+        if char == "\\" and index + 1 < len(trimmed):
+            current += trimmed[index:index + 2]
+            index += 2
+            ended_with_separator = False
+            continue
+        if char == "`":
+            end = index
+            while end < len(trimmed) and trimmed[end] == "`":
+                end += 1
+            count = end - index
+            if delimiter == count:
+                delimiter = None
+            elif delimiter is None and has_closing(end, count):
+                delimiter = count
+            current += trimmed[index:end]
+            index = end
+            ended_with_separator = False
+            continue
+        if char == "|" and delimiter is None:
+            cells.append(current.strip())
+            current = ""
+            ended_with_separator = True
+        else:
+            current += char
+            ended_with_separator = False
+        index += 1
+    if not ended_with_separator:
+        cells.append(current.strip())
+    return cells
 
 
 def protect_pipe_data_rows(text: str, save) -> str:
@@ -290,9 +341,10 @@ def is_non_translatable_segment(seg: str) -> bool:
 
 def prepare(text: str, smart_purify: bool = True, preserve_markdown: bool = True):
     store: list[str] = []
-    working = text
+    kinds: list[str] = []
+    working = text.replace("\r\n", "\n").replace("\r", "\n").replace("\u2028", "\n").replace("\u2029", "\n")
     if preserve_markdown:
-        working, store = protect_markdown(working)
+        working, store, kinds = protect_markdown(working)
     if smart_purify:
         working = purify_clean(working, protect_md_boundaries=preserve_markdown)
     else:
@@ -304,18 +356,19 @@ def prepare(text: str, smart_purify: bool = True, preserve_markdown: bool = True
     for p in parts:
         if is_pipe_protected_row(p):
             cells = cells_from_pipe_protected_row(p)
-            idxs = []
-            for cell in cells:
-                idxs.append(len(segments_to_translate))
-                send = re.sub(r"⟦MD:bound:\d+⟧", "", cell)
-                segments_to_translate.append(send)
-            part_maps.append(("cells", idxs))
+            part_maps.append(("cells", [fragments(cell, segments_to_translate) for cell in cells]))
         elif is_non_translatable_segment(p):
             part_maps.append(("keep", None))
+        elif re.search(r"⟦MD:icode:\d+⟧", p):
+            part_maps.append(("fragments", fragments(p, segments_to_translate)))
         else:
             part_maps.append(("single", len(segments_to_translate)))
             send = re.sub(r"⟦MD:bound:\d+⟧", "", p)
             segments_to_translate.append(send)
+    code_maps = {
+        idx: code_fragments(store[idx], kind, segments_to_translate)
+        for idx, kind in enumerate(kinds) if kind in ("icode", "fence")
+    }
     readable = restore_markdown(working, store)
     return {
         "display": text,
@@ -323,8 +376,75 @@ def prepare(text: str, smart_purify: bool = True, preserve_markdown: bool = True
         "store": store,
         "parts": parts,
         "part_maps": part_maps,
+        "code_maps": code_maps,
         "segments_to_translate": segments_to_translate,
     }
+
+
+def append_text(text, result, segments):
+    bounds = leading_bound_placeholders(text)
+    if bounds:
+        result.append(("literal", bounds))
+    text = text[len(bounds):]
+    leading = text[:len(text) - len(text.lstrip(" \t"))]
+    unbound = text[len(leading):]
+    body = unbound.rstrip(" \t")
+    trailing = unbound[len(body):]
+    if is_non_translatable_segment(body):
+        result.append(("literal", text))
+    else:
+        index = len(segments)
+        segments.append(body)
+        result.append(("translated", index, body, leading, trailing))
+
+
+def fragments(text, segments):
+    result = []
+    for part in re.split(r"(⟦MD:icode:\d+⟧)", text):
+        if re.fullmatch(r"⟦MD:icode:\d+⟧", part):
+            result.append(("literal", part))
+        else:
+            append_text(part, result, segments)
+    return result
+
+
+def code_fragments(code, kind, segments):
+    result = []
+
+    def add_code(line):
+        if any(ch.isalpha() for ch in line):
+            append_text(line, result, segments)
+        else:
+            result.append(("literal", line))
+
+    if kind == "icode":
+        delimiter = re.match(r"`+", code).group()
+        result.append(("literal", delimiter))
+        add_code(code[len(delimiter):-len(delimiter)])
+        result.append(("literal", delimiter))
+    else:
+        lines = code.split("\n")
+        marker = re.match(r"[`~]+", lines[0].lstrip(" \t")).group()
+        for idx, line in enumerate(lines):
+            if idx:
+                result.append(("literal", "\n"))
+            if idx == 0 or (idx == len(lines) - 1 and line.strip(" \t") == marker):
+                result.append(("literal", line))
+            else:
+                add_code(line)
+    return result
+
+
+def render_fragments(fragments, translations):
+    result = ""
+    for fragment in fragments:
+        if fragment[0] == "literal":
+            result += fragment[1]
+        else:
+            _, index, original, leading, trailing = fragment
+            text = translations[index] if index < len(translations) else original
+            result += leading + text.strip(" \t") + trailing
+    return result
 
 
 def leading_bound_placeholders(part: str) -> str:
@@ -352,19 +472,16 @@ def restore(prepared, translated_segments: list[str]) -> str:
             else:
                 out_parts.append(p)
         elif kind == "cells":
-            originals = cells_from_pipe_protected_row(p)
-            cells = []
-            for offset, seg_idx in enumerate(payload):
-                if seg_idx < len(translated_segments):
-                    cells.append(translated_segments[seg_idx])
-                elif offset < len(originals):
-                    cells.append(originals[offset])
-                else:
-                    cells.append("")
+            cells = [render_fragments(cell, translated_segments) for cell in payload]
             out_parts.append(rebuild_pipe_protected_row(p, cells))
+        elif kind == "fragments":
+            out_parts.append(render_fragments(payload, translated_segments))
         else:
             out_parts.append(p)
-    return restore_markdown("\n".join(out_parts), prepared["store"])
+    store = list(prepared["store"])
+    for index, pieces in prepared["code_maps"].items():
+        store[index] = render_fragments(pieces, translated_segments)
+    return restore_markdown("\n".join(out_parts), store)
 
 
 def check(name: str, cond: bool, detail: str = "") -> bool:
@@ -412,12 +529,22 @@ def main() -> int:
 
     src = "See:\n```\ncode_here()\n```\nDone."
     p = prepare(src)
-    restored = restore(p, list(p["segments_to_translate"]))
+    translated = ["代码()" if s == "code_here()" else s for s in p["segments_to_translate"]]
+    restored = restore(p, translated)
     ok &= check(
-        "E9 fence intact",
-        "```\ncode_here()\n```" in restored and "See:" in restored and "Done." in restored,
+        "E9 fence body translated, delimiters intact",
+        "code_here()" in p["segments_to_translate"] and "```\n代码()\n```" in restored,
         repr(restored),
     )
+
+    p = prepare("Run `hello world` now.")
+    translated = ["你好世界" if s == "hello world" else s for s in p["segments_to_translate"]]
+    restored = restore(p, translated)
+    ok &= check("inline code body translated", "hello world" in p["segments_to_translate"] and "`你好世界`" in restored, repr(restored))
+
+    p = prepare("```swift\n  hello\n\nnext line")
+    restored = restore(p, [f"译:{s}" for s in p["segments_to_translate"]])
+    ok &= check("unclosed fence body translated", restored == "```swift\n  译:hello\n\n译:next line", repr(restored))
 
     src = "Read the [docs](https://example.com/path) now"
     p = prepare(src)

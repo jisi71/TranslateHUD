@@ -45,11 +45,13 @@ final class SelectionFormatPreserveTests: XCTestCase {
         XCTAssertEqual(prepared.workingText, "## Title\nThis paragraph was broken here.")
     }
 
-    func testE9FencedCodeNotTranslatedBodyPreserved() {
+    func testE9FencedCodeBodyIsTranslatedAndFencePreserved() {
         let source = "See:\n```\ncode_here()\n```\nDone."
         let prepared = SelectionFormatPipeline.prepare(source)
-        let restored = prepared.restore(translatedSegments: prepared.segmentsToTranslate)
-        XCTAssertTrue(restored.contains("```\ncode_here()\n```"))
+        XCTAssertTrue(prepared.segmentsToTranslate.contains("code_here()"))
+        let translations = prepared.segmentsToTranslate.map { $0 == "code_here()" ? "代码()" : $0 }
+        let restored = prepared.restore(translatedSegments: translations)
+        XCTAssertTrue(restored.contains("```\n代码()\n```"))
         XCTAssertTrue(restored.contains("See:"))
         XCTAssertTrue(restored.contains("Done."))
     }
@@ -222,8 +224,8 @@ final class SelectionFormatPreserveTests: XCTestCase {
         }), "\(pieces)")
     }
 
-    /// 九、表格：单元格里的行内代码仍走 icode 占位，不把竖线拆散。
-    func testGFMTableCellInlineCodeStaysProtected() {
+    /// 单元格里的行内代码需送译，代码中的竖线不能拆成新列。
+    func testGFMTableCellInlineCodeIsTranslatedWithoutSplittingPipes() {
         let source = """
         | 名称 | 样例 |
         | --- | --- |
@@ -233,15 +235,104 @@ final class SelectionFormatPreserveTests: XCTestCase {
         XCTAssertTrue(prepared.segmentsToTranslate.contains("名称"), "\(prepared.segmentsToTranslate)")
         XCTAssertTrue(prepared.segmentsToTranslate.contains("样例"), "\(prepared.segmentsToTranslate)")
         XCTAssertTrue(prepared.segmentsToTranslate.contains("命令"), "\(prepared.segmentsToTranslate)")
-        // 行内代码整段占位进单元格，竖线在 code 内不应再切列。
-        XCTAssertTrue(
-            prepared.segmentsToTranslate.contains(where: { $0.contains("⟦MD:icode:") }),
-            "\(prepared.segmentsToTranslate)"
-        )
-        let restored = prepared.restore(translatedSegments: prepared.segmentsToTranslate)
+        XCTAssertTrue(prepared.segmentsToTranslate.contains("echo | wc"))
+        XCTAssertFalse(prepared.segmentsToTranslate.contains(where: { $0.contains("⟦MD:icode:") }))
+        let translations = prepared.segmentsToTranslate.map { $0 == "echo | wc" ? "输出 | 计数" : $0 }
+        let restored = prepared.restore(translatedSegments: translations)
         XCTAssertTrue(restored.contains("| --- | --- |"), restored)
-        XCTAssertTrue(restored.contains("`echo | wc`"), restored)
+        XCTAssertTrue(restored.contains("`输出 | 计数`"), restored)
+        XCTAssertTrue(MarkdownDisplay.prosePieces(from: restored).contains(.table(rows: [
+            ["名称", "样例"], ["命令", "`输出 | 计数`"]
+        ])), restored)
+    }
+
+    func testInlineCodeAloneUsesCodeBodyAsStreamingInput() async throws {
+        let prepared = SelectionFormatPipeline.prepare("`hello world`")
+        XCTAssertEqual(prepared.segmentsToTranslate, ["hello world"])
+        let translator = FormatPreservingTranslator(base: FormatTestTranslator(), prepared: prepared)
+        var result = ""
+        for try await event in translator.translateStreaming(prepared.streamingSourceText, to: .chinese, context: nil) {
+            if case .delta(let value) = event { result = value }
+        }
+        XCTAssertEqual(result, "`译:hello world`")
+    }
+
+    func testInlineCodeAndTextTranslateIndependentlyAndRestoreInPlace() async throws {
+        let source = "Run `hello world` now."
+        let prepared = SelectionFormatPipeline.prepare(source)
+        XCTAssertTrue(prepared.segmentsToTranslate.contains("hello world"))
+        XCTAssertFalse(prepared.segmentsToTranslate.contains(where: { $0.contains("⟦MD:icode:") }))
+        let translator = FormatPreservingTranslator(base: FormatTestTranslator(), prepared: prepared)
+        let translated = try await translator.translate([source], to: .chinese, context: nil)
+        XCTAssertEqual(translated, ["译:Run `译:hello world` 译:now."])
+    }
+
+    func testHTMLClipboardCodeConvertsAndTranslates() async throws {
+        let html = "<p>Run <code>hello world</code> now.</p>"
+        let markdown = try XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+        XCTAssertEqual(markdown, "Run `hello world` now.")
+        let prepared = SelectionFormatPipeline.prepare(markdown)
+        let translator = FormatPreservingTranslator(base: FormatTestTranslator(), prepared: prepared)
+        let translated = try await translator.translate([markdown], to: .chinese, context: nil)
+        XCTAssertEqual(translated, ["译:Run `译:hello world` 译:now."])
+    }
+
+    func testFenceLanguageEmptyLinesAndIndentationArePreserved() {
+        let source = "Before\n\n```swift\n  hello world\n\n    second line\n```\n\nAfter"
+        let prepared = SelectionFormatPipeline.prepare(source)
+        XCTAssertTrue(prepared.segmentsToTranslate.contains("hello world"))
+        XCTAssertTrue(prepared.segmentsToTranslate.contains("second line"))
+        XCTAssertFalse(prepared.segmentsToTranslate.contains("swift"))
+        let translated = prepared.segmentsToTranslate.map { "译:\($0)" }
+        XCTAssertEqual(prepared.restore(translatedSegments: translated),
+                       "译:Before\n\n```swift\n  译:hello world\n\n    译:second line\n```\n\n译:After")
+    }
+
+    func testUnclosedFenceBodyIsTranslatedWithoutInventingClosingFence() {
+        let source = "```python\n  hello world\n\nnext line"
+        let prepared = SelectionFormatPipeline.prepare(source)
+        XCTAssertEqual(prepared.segmentsToTranslate, ["hello world", "next line"])
+        XCTAssertEqual(prepared.restore(translatedSegments: ["你好", "下一行"]),
+                       "```python\n  你好\n\n下一行")
+    }
+
+    func testMultipleBacktickDelimitersArePreserved() {
+        let prepared = SelectionFormatPipeline.prepare("``hello ` world``")
+        XCTAssertEqual(prepared.segmentsToTranslate, ["hello ` world"])
+        XCTAssertEqual(prepared.restore(translatedSegments: ["你好 ` 世界"]), "``你好 ` 世界``")
+    }
+
+    func testBlankTableCellIsNotSentToTranslator() {
+        let source = "| Name | Value |\n| --- | --- |\n| `hello` |  |"
+        let prepared = SelectionFormatPipeline.prepare(source)
+        XCTAssertFalse(prepared.segmentsToTranslate.contains(""))
+        let translations = prepared.segmentsToTranslate.map { $0 == "hello" ? "你好" : $0 }
+        XCTAssertTrue(prepared.restore(translatedSegments: translations).contains("| `你好` |  |"))
+    }
+
+    func testRenderedTableParsesEscapedAndInlineCodePipes() {
+        let source = "| Name | Value |\n| --- | --- |\n| a \\| b | ``say `yes` | no`` |"
+        let parsed = MarkdownDisplay.prosePieces(from: source)
+        XCTAssertTrue(parsed.contains(.table(rows: [
+            ["Name", "Value"], ["a | b", "``say `yes` | no``"]
+        ])), "\(parsed)")
+    }
+
+    func testRenderedTableUnescapesCodeCellPipe() {
+        let source = "| Name | Value |\n| --- | --- |\n| command | `echo \\| wc` |"
+        let parsed = MarkdownDisplay.prosePieces(from: source)
+        XCTAssertTrue(parsed.contains(.table(rows: [
+            ["Name", "Value"], ["command", "`echo | wc`"]
+        ])), "\(parsed)")
     }
 
 
+}
+
+private struct FormatTestTranslator: Translator {
+    func translate(
+        _ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?
+    ) async throws -> [String] {
+        texts.map { "译:\($0)" }
+    }
 }

@@ -498,7 +498,8 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
             var contentChunkCount = 0
 
             // 处理一个完整的 SSE event（多个 data: 行用 "\n" 拼接成 payload）。
-            // 返回 true → 收到 [DONE]，调用方 break。
+            // Own-key streams can stop at the final choice; trial streams must also
+            // read the trailing settlement event before [DONE].
             func emitEvent() async throws -> Bool {
                 let payload = dataLines.joined(separator: "\n")
                 dataLines.removeAll(keepingCapacity: true)
@@ -526,14 +527,16 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                     throw TranslationError.parse("服务响应不符合流式翻译接口格式，请确认接口兼容性或更换服务。")
                 }
                 guard let first = choices.first else { return false }
+                var stopHere = false
                 if let reason = first["finish_reason"] as? String {
                     guard reason == "stop" else {
                         throw TranslationError.parse(ServiceErrorMessage.incompleteOutput(reason: reason))
                     }
                     completed = true
+                    stopHere = onTrialSettlement == nil
                 }
                 let dlt = first["delta"] as? [String: Any] ?? first["message"] as? [String: Any]
-                guard let chunk = dlt?["content"] as? String, !chunk.isEmpty else { return false }
+                guard let chunk = dlt?["content"] as? String, !chunk.isEmpty else { return stopHere }
 
                 contentChunkCount += 1
                 accumulated += chunk
@@ -546,7 +549,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                 }
 
                 continuation.yield(.delta(accumulated))
-                return false
+                return stopHere
             }
 
             func bufferedPayloadIsComplete() -> Bool {
@@ -573,13 +576,9 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                     var value = String(line.dropFirst("data:".count))
                     if value.hasPrefix(" ") { value.removeFirst() }
 
-                    // Some OpenAI-compatible providers stream one JSON object per `data:` line
-                    // without the blank-line event separator required by SSE. If the current
-                    // buffer is already a complete payload, flush it before starting the next one.
-                    if !dataLines.isEmpty, bufferedPayloadIsComplete() {
-                        if try await emitEvent() { break }
-                    }
                     dataLines.append(value)
+                    // Some providers omit event separators, including after their last event.
+                    if bufferedPayloadIsComplete(), try await emitEvent() { break }
                 }
                 // 其他字段（event:/id:/retry:）忽略
             }

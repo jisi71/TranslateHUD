@@ -26,13 +26,36 @@ struct FailingTermExplainer: TermExplainer {
     }
 }
 
+struct TrialStreamingAccount: Sendable {
+    let accessToken: @Sendable () async throws -> TrialActor.Credential
+    let applySettlement: @Sendable (TrialSettlement, UUID) async -> Void
+    let refreshBalance: @Sendable (UUID) async -> Void
+
+    static let live = TrialStreamingAccount(
+        accessToken: { try await TrialActor.accessToken() },
+        applySettlement: { await TrialActor.apply($0, generation: $1) },
+        refreshBalance: { await TrialActor.refreshBalance(generation: $0) }
+    )
+
+    func refreshInBackground(generation: UUID, timeoutSeconds: TimeInterval = 25) {
+        Task {
+            _ = try? await withTimeout(seconds: timeoutSeconds) {
+                await refreshBalance(generation)
+            }
+        }
+    }
+}
+
 struct TrialProxyTranslator: ScreenshotStyledTranslator, ScreenshotTrialBillingRoute {
     let proxyBaseURL: String
     let session: URLSession
+    private let streamingAccount: TrialStreamingAccount
 
-    init(proxyBaseURL: String, session: URLSession = .shared) {
+    init(proxyBaseURL: String, session: URLSession = .shared,
+         streamingAccount: TrialStreamingAccount = .live) {
         self.proxyBaseURL = proxyBaseURL
         self.session = session
+        self.streamingAccount = streamingAccount
     }
 
     func translate(
@@ -106,27 +129,34 @@ struct TrialProxyTranslator: ScreenshotStyledTranslator, ScreenshotTrialBillingR
     ) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
         let proxyBaseURL = proxyBaseURL
         let session = session
+        let account = streamingAccount
         return AsyncThrowingStream { continuation in
             let task = Task {
                 var generation: UUID?
                 do {
-                    let credential = try await TrialActor.accessToken()
+                    let credential = try await account.accessToken()
+                    try Task.checkCancellation()
                     generation = credential.generation
                     let inner = OpenAICompatibleTranslator(
                         config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: credential.token),
                         session: session,
                         extraHTTPHeaders: TrialHeaders.source(text),
                         onTrialSettlement: { settlement in
-                            await TrialActor.apply(settlement, generation: credential.generation)
+                            await account.applySettlement(settlement, credential.generation)
                         }
                     )
                     for try await event in inner.translateStreaming(text, to: target, context: context) {
                         continuation.yield(event)
                     }
-                    await TrialActor.refreshBalance(generation: credential.generation)
+                    try Task.checkCancellation()
+                    // The stream and any received settlement have been processed.
+                    // finish() cancels this task; the bounded refresh runs separately.
+                    account.refreshInBackground(generation: credential.generation)
                     continuation.finish()
                 } catch {
-                    if let generation { await TrialActor.refreshBalance(generation: generation, unless: error) }
+                    if let generation, !Task.isCancelled, !(error is CancellationError) {
+                        account.refreshInBackground(generation: generation)
+                    }
                     continuation.finish(throwing: error)
                 }
             }
@@ -208,15 +238,11 @@ enum TrialActor {
         }
     }
 
+    @MainActor
     static func refreshBalance(generation: UUID, unless error: Error? = nil) async {
         if error is CancellationError { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            Task { @MainActor in
-                let store = TrialAccountStore.shared
-                if store.sessionGeneration == generation { await store.refreshFromServer() }
-                continuation.resume()
-            }
-        }
+        let store = TrialAccountStore.shared
+        if store.sessionGeneration == generation { await store.refreshFromServer() }
     }
 }
 

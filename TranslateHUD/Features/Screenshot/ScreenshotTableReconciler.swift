@@ -21,6 +21,7 @@ enum ScreenshotTableReconciler {
     struct MappedTable {
         let table: ScreenshotTable
         let consumed: Set<Int>
+        var needsTextReview = false
     }
 
     static func dropOverlaps(_ tables: [MappedTable]) -> (tables: [MappedTable], dropped: Bool) {
@@ -119,7 +120,6 @@ enum ScreenshotTableReconciler {
         guard rows.filter({ $0.filter { !$0.isEmpty }.count >= 2 }).count >= min(3, rows.count) else { return .uncertain }
         let result = ScreenshotTable(rows: rows, normalizedBox: table.normalizedBox, hasMergedCells: table.hasMergedCells,
                                      cellRects: table.cellRects, leadingTitle: table.leadingTitle, spans: table.spans)
-        guard conflicts.count <= 8 else { return .uncertain }
         return conflicts.isEmpty ? .ready(result, consumed) : .needsCellChecks(result, consumed, conflicts)
     }
 
@@ -224,6 +224,21 @@ enum ScreenshotTableReconciler {
         }
         return ScreenshotTable(rows: rows, normalizedBox: table.normalizedBox, hasMergedCells: table.hasMergedCells,
                                cellRects: table.cellRects, leadingTitle: table.leadingTitle, spans: table.spans)
+    }
+
+    static func resolveConflicts(_ table: ScreenshotTable, conflicts: [CellConflict],
+                                 focused: [String?]) -> (table: ScreenshotTable, needsTextReview: Bool) {
+        var result = table
+        var needsTextReview = focused.count != conflicts.count
+        for (index, conflict) in conflicts.enumerated() {
+            guard focused.indices.contains(index), let value = focused[index],
+                  let checked = checkedTable(result, conflicts: [conflict], focused: [value]) else {
+                needsTextReview = true
+                continue
+            }
+            result = checked
+        }
+        return (result, needsTextReview)
     }
 
     private static func differsMaterially(_ first: String, _ second: String, allowAdditionalNumbers: Bool = false) -> Bool {

@@ -13,11 +13,19 @@ enum ScreenshotAutoPlan {
     }
 
     static func makeReconciled(lines: [OCRService.Line], tables: [ScreenshotTable],
-                               consumed: Set<Int>, hasRejectedTable: Bool) -> Outcome {
+                               consumed: Set<Int>, hasRejectedTable: Bool, needsTextReview: Bool = false) -> Outcome {
         let plan = ScreenshotDocumentAssembler.makePlanFromReconciledLines(lines, tables: tables, consumed: consumed)
         guard !plan.sourceItems.isEmpty else { return .empty }
         if plan.sourceIsRepresentable {
-            return .ready(Ready(plan: plan, notice: hasRejectedTable ? "部分表格需要手动核对，请以截图为准。" : nil))
+            let notice: String?
+            if hasRejectedTable && needsTextReview {
+                notice = "部分表格未完整识别，文字也可能有误，可点击铅笔编辑原文。"
+            } else if needsTextReview {
+                notice = "部分表格文字可能有误，可点击铅笔编辑原文。"
+            } else {
+                notice = hasRejectedTable ? "部分表格需要手动核对，请以截图为准。" : nil
+            }
+            return .ready(Ready(plan: plan, notice: notice))
         }
         let plain = ScreenshotPlainText.plan(from: lines)
         guard !plain.sourceItems.isEmpty, plain.sourceIsRepresentable else { return .unrenderable }

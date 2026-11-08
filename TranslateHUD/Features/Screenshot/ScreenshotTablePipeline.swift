@@ -69,28 +69,24 @@ enum ScreenshotTablePipeline {
 
         var mapped: [ScreenshotTableReconciler.MappedTable] = []
         for candidate in candidates {
-            var ready: (ScreenshotTable, Set<Int>)?
+            var ready: (table: ScreenshotTable, consumed: Set<Int>, needsTextReview: Bool)?
             switch ScreenshotTableReconciler.reconcile(candidate, lines: lines, words: words) {
             case .ready(let table, let indices):
-                ready = (table, indices)
+                ready = (table, indices, false)
             case .needsCellChecks(let table, let indices, let conflicts):
-                if let focused = await OCRService.tableCellContents(image: image, table: table, cells: conflicts.map(\.cell)),
-                   let checked = ScreenshotTableReconciler.checkedTable(table, conflicts: conflicts, focused: focused) {
-                    ready = (checked, indices)
-                } else {
-                    rejected = true
-                }
+                let cells = conflicts.prefix(8).map(\.cell)
+                let focused = await OCRService.tableCellReadings(image: image, table: table, cells: cells)
+                let checked = ScreenshotTableReconciler.resolveConflicts(table, conflicts: conflicts, focused: focused)
+                ready = (checked.table, indices, checked.needsTextReview)
             case .needsWords:
                 rejected = true
             case .uncertain:
                 rejected = true
             }
-            if let (table, indices) = ready {
-                if let complete = await OCRService.recoverEmptyCells(image: image, table: table) {
-                    mapped.append(.init(table: complete, consumed: indices))
-                } else {
-                    rejected = true
-                }
+            if let (table, indices, needsTextReview) = ready {
+                let recovered = await OCRService.recoverEmptyCells(image: image, table: table)
+                mapped.append(.init(table: recovered.table, consumed: indices,
+                                    needsTextReview: needsTextReview || recovered.needsTextReview))
             }
         }
         let unique = ScreenshotTableReconciler.dropOverlaps(mapped)
@@ -98,7 +94,9 @@ enum ScreenshotTablePipeline {
         let safeTables = unique.tables.map(\.table)
         let consumed = unique.tables.reduce(into: Set<Int>()) { $0.formUnion($1.consumed) }
         guard !safeTables.isEmpty else { return plainPlan(lines, rejected: rejected) }
-        return ScreenshotAutoPlan.makeReconciled(lines: lines, tables: safeTables, consumed: consumed, hasRejectedTable: rejected)
+        let needsTextReview = unique.tables.contains { $0.needsTextReview }
+        return ScreenshotAutoPlan.makeReconciled(lines: lines, tables: safeTables, consumed: consumed,
+                                                 hasRejectedTable: rejected, needsTextReview: needsTextReview)
     }
 
     private static func plainPlan(_ lines: [OCRService.Line], rejected: Bool) -> ScreenshotAutoPlan.Outcome {

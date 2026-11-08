@@ -146,18 +146,33 @@ enum OCRService {
 
     /// A tiny character can be missed in the whole image. Recheck a bounded
     /// number of visually empty cells at higher resolution before rendering.
-    static func recoverEmptyCells(image: NSImage, table: ScreenshotTable) async -> ScreenshotTable? {
+    static func recoverEmptyCells(image: NSImage, table: ScreenshotTable) async -> (table: ScreenshotTable, needsTextReview: Bool) {
         let empty = table.rows.indices.flatMap { row in
             table.rows[row].indices.compactMap { column in
                 table.rows[row][column].isEmpty && !table.isCovered(row: row, column: column) ? TableCell(row: row, column: column) : nil
             }
         }
-        guard !empty.isEmpty else { return table }
-        guard let contents = await tableCellContents(image: image, table: table, cells: empty) else { return nil }
+        guard !empty.isEmpty else { return (table, false) }
+        let readings = await tableCellReadings(image: image, table: table, cells: empty)
+        return mergeEmptyCellReadings(table: table, cells: empty, readings: readings)
+    }
+
+    static func mergeEmptyCellReadings(table: ScreenshotTable, cells: [TableCell],
+                                       readings: [String?]) -> (table: ScreenshotTable, needsTextReview: Bool) {
         var rows = table.rows
-        for (cell, value) in zip(empty, contents) { rows[cell.row][cell.column] = value }
-        return ScreenshotTable(rows: rows, normalizedBox: table.normalizedBox, hasMergedCells: table.hasMergedCells,
-                               cellRects: table.cellRects, leadingTitle: table.leadingTitle, spans: table.spans)
+        var needsTextReview = cells.count != readings.count
+        for (cell, reading) in zip(cells, readings) {
+            guard rows.indices.contains(cell.row), rows[cell.row].indices.contains(cell.column),
+                  rows[cell.row][cell.column].isEmpty, !table.isCovered(row: cell.row, column: cell.column),
+                  let value = reading else {
+                needsTextReview = true
+                continue
+            }
+            rows[cell.row][cell.column] = value
+        }
+        let result = ScreenshotTable(rows: rows, normalizedBox: table.normalizedBox, hasMergedCells: table.hasMergedCells,
+                                     cellRects: table.cellRects, leadingTitle: table.leadingTitle, spans: table.spans)
+        return (result, needsTextReview)
     }
 
     struct TableCell: Hashable, Sendable {
@@ -165,31 +180,30 @@ enum OCRService {
         let column: Int
     }
 
-    static func tableCellContents(image: NSImage, table: ScreenshotTable, cells: [TableCell]) async -> [String]? {
-        guard cells.count <= 16, let cg = cgImage(from: image) else { return nil }
+    static func tableCellReadings(image: NSImage, table: ScreenshotTable, cells: [TableCell]) async -> [String?] {
+        guard cells.count <= 16, let cg = cgImage(from: image) else { return Array(repeating: nil, count: cells.count) }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let context = CIContext(options: [.useSoftwareRenderer: true])
-                var output: [String] = []
-                for cell in cells {
+                let output: [String?] = cells.map { cell in
                     guard table.cellRects.indices.contains(cell.row), table.cellRects[cell.row].indices.contains(cell.column),
-                          let rect = table.cellRects[cell.row][cell.column] else { continuation.resume(returning: nil); return }
+                          let rect = table.cellRects[cell.row][cell.column] else { return nil }
                     let pixels = CGRect(x: rect.minX * CGFloat(cg.width), y: (1 - rect.maxY) * CGFloat(cg.height),
                                         width: rect.width * CGFloat(cg.width), height: rect.height * CGFloat(cg.height)).integral
                     guard let crop = cg.cropping(to: pixels), crop.width >= 4, crop.height >= 4 else {
-                        continuation.resume(returning: nil); return
+                        return nil
                     }
                     let scale = min(4, max(1, 1_200 / CGFloat(max(crop.width, crop.height))))
                     let enlarged = CIImage(cgImage: crop).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
                     guard let processed = context.createCGImage(enlarged, from: enlarged.extent) else {
-                        continuation.resume(returning: nil); return
+                        return nil
                     }
                     let request = VNRecognizeTextRequest()
                     request.recognitionLevel = .accurate
                     request.usesLanguageCorrection = false
                     request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR"]
                     guard (try? VNImageRequestHandler(cgImage: processed).perform([request])) != nil else {
-                        continuation.resume(returning: nil); return
+                        return nil
                     }
                     var found: [(CGRect, String)] = []
                     for observation in request.results ?? [] {
@@ -200,7 +214,7 @@ enum OCRService {
                         guard candidate.confidence >= 0.95, value.count <= 128,
                               value.rangeOfCharacter(from: .alphanumerics) != nil,
                               box.minX >= 0.03, box.maxX <= 0.97, box.minY >= 0.03, box.maxY <= 0.97 else {
-                            continuation.resume(returning: nil); return
+                            return nil
                         }
                         found.append((box, value))
                     }
@@ -216,7 +230,7 @@ enum OCRService {
                         lines.append([value])
                     }
                     let ordered = lines.flatMap { $0.sorted { $0.0.minX < $1.0.minX } }
-                    output.append(ordered.map(\.1).reduce("") { ScreenshotPlainText.join($0, $1) })
+                    return ordered.map(\.1).reduce("") { ScreenshotPlainText.join($0, $1) }
                 }
                 continuation.resume(returning: output)
             }

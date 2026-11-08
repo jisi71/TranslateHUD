@@ -1,4 +1,5 @@
 import XCTest
+import Network
 @testable import TranslateHUD
 
 @MainActor
@@ -883,6 +884,102 @@ final class TranslationReliabilityTests: XCTestCase {
         XCTAssertEqual(result, "你好")
     }
 
+    func testStreamStillJoinsMultilineSSEData() async throws {
+        let body = "data: {\"choices\":\n" +
+                   "data: [{\"delta\":{\"content\":\"你好\"},\"finish_reason\":\"stop\"}]}\n\n"
+        let result = try await collect(mockTranslator(responses: [.init(body: body)]))
+        XCTAssertEqual(result, "你好")
+    }
+
+    func testOwnKeyStreamFinishesOnStopWhenConnectionStaysOpen() async throws {
+        let variants = [
+            "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n" +
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n" +
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n"
+        ]
+        for body in variants {
+            let server = try HoldingSSEServer(body: body)
+            defer { server.stop() }
+            await fulfillment(of: [server.ready], timeout: 5)
+            let port = try XCTUnwrap(server.port)
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.connectionProxyDictionary = [:]
+            let session = URLSession(configuration: configuration)
+            let translator = OpenAICompatibleTranslator(
+                config: ProviderConfig(baseURL: "http://127.0.0.1:\(port)/v1", model: "test", apiKey: "key"), session: session
+            )
+            let progress = TranslationProgress(timeoutSeconds: 10)
+            progress.startStreaming(translator: translator, original: "Hello", target: .chinese)
+            var sawPartial = false
+            for _ in 0..<200 {
+                if case .success = progress.state { break }
+                if case .failed = progress.state { break }
+                if case .streaming = progress.state { sawPartial = true }
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            if case .success(let pairs) = progress.state {
+                XCTAssertEqual(pairs.first?.translated, "你好")
+            } else {
+                XCTFail("A stop event should finish a self-hosted stream without waiting for the connection to close")
+            }
+            XCTAssertTrue(sawPartial || { if case .success = progress.state { return true }; return false }(),
+                          "The test server must deliver the text while its connection is open")
+            XCTAssertFalse(server.didFinish)
+            progress.cancel()
+            server.stop()
+            session.invalidateAndCancel()
+        }
+    }
+
+    func testTrialStreamWaitsAfterStopForSettlementAndDone() async throws {
+        let body = "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n" +
+                   "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
+        let server = try HoldingSSEServer(body: body)
+        defer { server.stop() }
+        await fulfillment(of: [server.ready], timeout: 5)
+        let port = try XCTUnwrap(server.port)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = [:]
+        let session = URLSession(configuration: configuration)
+        let settlements = SettlementCollector()
+        let translator = OpenAICompatibleTranslator(
+            config: ProviderConfig(baseURL: "http://127.0.0.1:\(port)/v1", model: "trial", apiKey: "key"),
+            session: session, onTrialSettlement: { await settlements.add($0) }
+        )
+        let progress = TranslationProgress(timeoutSeconds: 10)
+        progress.startStreaming(translator: translator, original: "Hello", target: .chinese)
+        for _ in 0..<200 {
+            if case .streaming = progress.state { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        try? await Task.sleep(for: .milliseconds(100))
+        if case .streaming(let partial) = progress.state {
+            XCTAssertEqual(partial, "你好")
+        } else {
+            XCTFail("A trial stream must stay streaming before settlement, got \(progress.state)")
+        }
+        server.end(with:
+            "data: {\"choices\":[],\"translatehud_trial\":{\"costMicroYuan\":10,\"chargedMicroYuan\":0,\"balanceMicroYuan\":100}}\n\n" +
+            "data: [DONE]\n\n"
+        )
+        for _ in 0..<200 {
+            if case .success = progress.state { break }
+            if case .failed = progress.state { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        if case .success(let pairs) = progress.state {
+            XCTAssertEqual(pairs.first?.translated, "你好")
+        } else {
+            XCTFail("Trial stream did not finish after settlement and terminal event")
+        }
+        let received = await settlements.values
+        XCTAssertEqual(received.count, 1)
+        progress.cancel()
+        server.stop()
+        session.invalidateAndCancel()
+    }
+
     func testStreamRejectsTruncatedConnection() async {
         let translator = mockTranslator(responses: [.init(body: "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n")])
         do { _ = try await collect(translator); XCTFail("Expected incomplete stream error") }
@@ -910,6 +1007,151 @@ final class TranslationReliabilityTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(150))
         guard case .success(let pairs) = progress.state else { return XCTFail("Old request overwrote new state") }
         XCTAssertEqual(pairs.first?.translated, "你好")
+    }
+
+    func testTrialStreamWaitsForSettlementButNotSlowBalanceRefresh() async {
+        let generation = UUID()
+        let settlement = TrialStreamGate()
+        let refresh = TrialStreamGate()
+        defer { Task { await settlement.release(); await refresh.release() } }
+        let translator = trialStreamTranslator(body: settledTrialStream, generation: generation,
+                                               settlement: settlement, refresh: refresh)
+        let progress = TranslationProgress(timeoutSeconds: 10)
+        progress.startStreaming(translator: translator, original: "Hello", target: .chinese)
+
+        for _ in 0..<500 {
+            if await settlement.started { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        let settlementStarted = await settlement.started
+        XCTAssertTrue(settlementStarted)
+        guard case .streaming(let partial) = progress.state else {
+            return XCTFail("An unsettled stream must not report completion")
+        }
+        XCTAssertEqual(partial, "你好")
+        let refreshStartedBeforeSettlement = await refresh.started
+        XCTAssertFalse(refreshStartedBeforeSettlement)
+
+        await settlement.release()
+        for _ in 0..<500 {
+            if case .success = progress.state, await refresh.started { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        guard case .success(let pairs) = progress.state else {
+            return XCTFail("Completed translation must not wait for the account refresh")
+        }
+        XCTAssertEqual(pairs.first?.translated, "你好")
+        let refreshStarted = await refresh.started
+        let refreshFinished = await refresh.finished
+        let refreshGeneration = await refresh.generation
+        let refreshWasCancelled = await refresh.wasCancelled
+        XCTAssertTrue(refreshStarted)
+        XCTAssertFalse(refreshFinished)
+        XCTAssertEqual(refreshGeneration, generation)
+        XCTAssertFalse(refreshWasCancelled)
+        await refresh.release()
+        for _ in 0..<500 {
+            if await refresh.finished { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        let refreshed = await refresh.finished
+        XCTAssertTrue(refreshed)
+    }
+
+    func testTrialStreamFailureDoesNotWaitForSlowBalanceRefresh() async {
+        let settlement = TrialStreamGate()
+        let refresh = TrialStreamGate()
+        defer { Task { await settlement.release(); await refresh.release() } }
+        let truncated = "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n"
+        let translator = trialStreamTranslator(body: truncated, generation: UUID(), settlement: settlement, refresh: refresh)
+        let progress = TranslationProgress(timeoutSeconds: 10)
+        progress.startStreaming(translator: translator, original: "Hello", target: .chinese)
+        for _ in 0..<500 {
+            if case .failed = progress.state, await refresh.started { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        guard case .failed = progress.state else {
+            return XCTFail("A truncated stream must fail without waiting for account refresh")
+        }
+        let refreshStarted = await refresh.started
+        let refreshFinished = await refresh.finished
+        XCTAssertTrue(refreshStarted)
+        XCTAssertFalse(refreshFinished)
+        await refresh.release()
+        for _ in 0..<500 {
+            if await refresh.finished { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        let refreshed = await refresh.finished
+        XCTAssertTrue(refreshed)
+    }
+
+    func testCancelledTrialStreamCannotOverwriteNewRequestOrRefreshOldAccount() async {
+        let settlement = TrialStreamGate()
+        let refresh = TrialStreamGate()
+        defer { Task { await settlement.release(); await refresh.release() } }
+        let translator = trialStreamTranslator(body: settledTrialStream, generation: UUID(),
+                                               settlement: settlement, refresh: refresh)
+        let progress = TranslationProgress(timeoutSeconds: 10)
+        progress.startStreaming(translator: translator, original: "Hello", target: .chinese)
+        for _ in 0..<500 {
+            if await settlement.started { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        let settlementStarted = await settlement.started
+        XCTAssertTrue(settlementStarted)
+        progress.start(translator: FixedTranslator(), originals: ["New"], target: .chinese)
+        await settlement.release()
+        for _ in 0..<500 {
+            if case .success = progress.state { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        try? await Task.sleep(for: .milliseconds(100))
+        guard case .success(let pairs) = progress.state else {
+            return XCTFail("Cancelled old request replaced the new result")
+        }
+        XCTAssertEqual(pairs.first?.original, "New")
+        let refreshStarted = await refresh.started
+        XCTAssertFalse(refreshStarted)
+    }
+
+    func testBackgroundBalanceRefreshIsCancelledAtDeadline() async {
+        let refresh = CancellableTrialRefresh()
+        let account = TrialStreamingAccount(
+            accessToken: { throw CancellationError() },
+            applySettlement: { _, _ in },
+            refreshBalance: { _ in await refresh.run() }
+        )
+        account.refreshInBackground(generation: UUID(), timeoutSeconds: 0.05)
+        for _ in 0..<500 {
+            if await refresh.cancelled { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        let started = await refresh.started
+        let cancelled = await refresh.cancelled
+        XCTAssertTrue(started)
+        XCTAssertTrue(cancelled)
+    }
+
+    private var settledTrialStream: String {
+        "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n" +
+        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+        "data: {\"choices\":[],\"translatehud_trial\":{\"costMicroYuan\":10,\"chargedMicroYuan\":0,\"balanceMicroYuan\":100}}\n\n" +
+        "data: [DONE]\n\n"
+    }
+
+    private func trialStreamTranslator(body: String, generation: UUID, settlement: TrialStreamGate,
+                                       refresh: TrialStreamGate) -> TrialProxyTranslator {
+        TranslationURLProtocol.reset([.init(body: body)])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let account = TrialStreamingAccount(
+            accessToken: { TrialActor.Credential(token: "unit-test-token", generation: generation) },
+            applySettlement: { _, generation in await settlement.wait(generation: generation) },
+            refreshBalance: { generation in await refresh.wait(generation: generation) }
+        )
+        return TrialProxyTranslator(proxyBaseURL: "https://example.com/v1",
+                                    session: URLSession(configuration: configuration), streamingAccount: account)
     }
 
     func testStreamingOutputRenewsIdleTimeout() async throws {
@@ -1043,6 +1285,42 @@ private actor SettlementCollector {
     func add(_ value: TrialSettlement) { values.append(value) }
 }
 
+private actor TrialStreamGate {
+    private(set) var started = false
+    private(set) var finished = false
+    private(set) var wasCancelled = false
+    private(set) var generation: UUID?
+    private var released = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func wait(generation: UUID) async {
+        started = true
+        wasCancelled = Task.isCancelled
+        self.generation = generation
+        if !released {
+            await withCheckedContinuation { continuation = $0 }
+        }
+        finished = true
+    }
+
+    func release() {
+        released = true
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
+private actor CancellableTrialRefresh {
+    private(set) var started = false
+    private(set) var cancelled = false
+
+    func run() async {
+        started = true
+        do { try await Task.sleep(for: .seconds(5)) }
+        catch { cancelled = Task.isCancelled }
+    }
+}
+
 private struct FixedTranslator: Translator {
     func translate(
         _ texts: [String],
@@ -1130,4 +1408,71 @@ private final class TranslationURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override func stopLoading() {}
+}
+
+private final class HoldingSSEServer: @unchecked Sendable {
+    let ready = XCTestExpectation(description: "local SSE listener ready")
+    private let listener: NWListener
+    private let queue = DispatchQueue(label: "translatehud.sse-test")
+    private let lock = NSLock()
+    private var connection: NWConnection?
+    private var finished = false
+
+    var port: UInt16? { listener.port?.rawValue }
+    var didFinish: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return finished
+    }
+
+    init(body: String) throws {
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host("127.0.0.1"), port: .any)
+        listener = try NWListener(using: parameters)
+        listener.stateUpdateHandler = { [ready] state in
+            if case .ready = state { ready.fulfill() }
+        }
+        listener.newConnectionHandler = { [weak self] connection in
+            guard let self else { connection.cancel(); return }
+            self.lock.lock()
+            self.connection = connection
+            self.lock.unlock()
+            connection.start(queue: self.queue)
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { _, _, _, _ in
+                let headers = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n"
+                var bytes = Data(headers.utf8)
+                // Keep-alive comments also fill URLSession's receive buffer without ending the stream.
+                bytes.append(Self.chunk(body + String(repeating: ": keepalive\n", count: 8_192)))
+                connection.send(content: bytes, completion: .contentProcessed { _ in })
+            }
+        }
+        listener.start(queue: queue)
+    }
+
+    func end(with body: String) {
+        lock.lock()
+        finished = true
+        let connection = connection
+        lock.unlock()
+        var bytes = Self.chunk(body)
+        bytes.append(Data("0\r\n\r\n".utf8))
+        connection?.send(content: bytes, completion: .contentProcessed { _ in })
+    }
+
+    func stop() {
+        lock.lock()
+        let connection = connection
+        self.connection = nil
+        lock.unlock()
+        connection?.cancel()
+        listener.cancel()
+    }
+
+    private static func chunk(_ text: String) -> Data {
+        let bytes = Data(text.utf8)
+        var chunk = Data("\(String(bytes.count, radix: 16))\r\n".utf8)
+        chunk.append(bytes)
+        chunk.append(Data("\r\n".utf8))
+        return chunk
+    }
 }

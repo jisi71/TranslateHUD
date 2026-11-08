@@ -108,6 +108,91 @@ final class TrialSessionRaceTests: XCTestCase {
         XCTAssertEqual(store.balanceMicroYuan, 190)
     }
 
+    func testOlderRefreshCannotOverwriteLaterSettlementOrRefresh() async throws {
+        let name = "TrialSameAccountRace.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let keychain = RaceKeychain()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RaceURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let server = RaceServer()
+        RaceURLProtocol.handler = { server.handle($0) }
+        defer { RaceURLProtocol.handler = nil; session.invalidateAndCancel() }
+        let store = TrialAccountStore(networkSession: session, defaults: defaults, defaultsDomain: name,
+                                      keychain: keychain, gatewayURL: URL(string: "https://auth.example")!,
+                                      proxyBaseURL: "https://proxy.example/v1", deviceID: "test", startsQuotaRefresh: false)
+        try save("A", defaults: defaults, keychain: keychain)
+        store.restore(refreshAccount: false)
+        await store.refreshFromServer()
+
+        let beforeSettlement = expectation(description: "older refresh pending before settlement")
+        server.holdNextPath("/v1/trial/account", beforeSettlement)
+        let staleBeforeSettlement = Task { await store.refreshFromServer() }
+        await fulfillment(of: [beforeSettlement], timeout: 5)
+        let quota = DailyTranslationQuota(used: 77, limit: 2000, resetsAt: .distantFuture)
+        store.applySettlement(TrialSettlement(costMicroYuan: 1, chargedMicroYuan: 0, balanceMicroYuan: 75,
+                                              promptTokens: 1, completionTokens: 1, dailyQuota: quota),
+                              generation: store.sessionGeneration)
+        server.releaseA()
+        await staleBeforeSettlement.value
+        XCTAssertEqual(store.balanceMicroYuan, 75)
+        XCTAssertEqual(store.dailyQuota?.used, 77)
+        XCTAssertEqual(store.balanceState, .loaded)
+
+        let beforeRefresh = expectation(description: "older refresh pending before newer refresh")
+        server.holdNextPath("/v1/trial/account", beforeRefresh)
+        let staleBeforeRefresh = Task { await store.refreshFromServer() }
+        await fulfillment(of: [beforeRefresh], timeout: 5)
+        await store.refreshFromServer()
+        server.releasePath(status: 200, body: "{\"userId\":\"A\",\"balanceMicroYuan\":7,\"dailyTokens\":5,\"dailyLimit\":2000,\"dailyResetsAt\":4102444800000}")
+        await staleBeforeRefresh.value
+        XCTAssertEqual(store.balanceMicroYuan, 100)
+        XCTAssertEqual(store.dailyQuota?.used, 10)
+        XCTAssertEqual(store.balanceState, .loaded)
+
+        let beforeFailure = expectation(description: "older refresh pending before newer failure")
+        server.holdNextPath("/v1/trial/account", beforeFailure)
+        let staleBeforeFailure = Task { await store.refreshFromServer() }
+        await fulfillment(of: [beforeFailure], timeout: 5)
+        RaceURLProtocol.handler = { $0.respond(status: 503, body: "{}") }
+        await store.refreshFromServer()
+        XCTAssertEqual(store.balanceState, .failed)
+        server.releaseA()
+        await staleBeforeFailure.value
+        XCTAssertEqual(store.balanceMicroYuan, 100)
+        XCTAssertEqual(store.balanceState, .failed)
+    }
+
+    func testCancellingLatestRefreshDoesNotLeaveBalanceLoading() async throws {
+        let name = "TrialRefreshCancel.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let keychain = RaceKeychain()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RaceURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let server = RaceServer()
+        RaceURLProtocol.handler = { server.handle($0) }
+        defer { RaceURLProtocol.handler = nil; session.invalidateAndCancel() }
+        let store = TrialAccountStore(networkSession: session, defaults: defaults, defaultsDomain: name,
+                                      keychain: keychain, gatewayURL: URL(string: "https://auth.example")!,
+                                      proxyBaseURL: "https://proxy.example/v1", deviceID: "test", startsQuotaRefresh: false)
+        try save("A", defaults: defaults, keychain: keychain)
+        store.restore(refreshAccount: false)
+        await store.refreshFromServer()
+        XCTAssertEqual(store.balanceState, .loaded)
+        let pending = expectation(description: "latest refresh pending")
+        server.holdNextPath("/v1/trial/account", pending)
+        let refresh = Task { await store.refreshFromServer() }
+        await fulfillment(of: [pending], timeout: 5)
+        refresh.cancel()
+        await refresh.value
+        XCTAssertEqual(store.balanceState, .loaded)
+        XCTAssertEqual(store.balanceMicroYuan, 100)
+        server.releaseA()
+    }
+
     func testLateTokenRefreshCannotRestoreOrLogOutAnotherAccount() async throws {
         for status in [200, 401] {
             let name = "TrialRefreshRace.\(UUID().uuidString)"
@@ -206,7 +291,8 @@ private final class RaceServer: @unchecked Sendable {
         let path = request.request.url?.path ?? ""
         lock.lock()
         if (id == "A" && holdA) || heldPath == path {
-            holdA = false; pending = request; let expectation = seen; lock.unlock(); expectation?.fulfill(); return
+            holdA = false; heldPath = nil; pending = request; let expectation = seen; seen = nil
+            lock.unlock(); expectation?.fulfill(); return
         }
         lock.unlock()
         if path == "/auth/v1/verification" { request.respond(status: 200, body: "{\"verification_id\":\"ticket\",\"is_user\":true}"); return }

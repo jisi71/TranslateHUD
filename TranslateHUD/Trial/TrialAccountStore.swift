@@ -19,6 +19,8 @@ final class TrialAccountStore: ObservableObject {
     @Published private(set) var balanceMicroYuan: Int?
     @Published private(set) var dailyQuota: DailyTranslationQuota?
     private(set) var sessionGeneration = UUID()
+    private var accountDataRevision = UUID()
+    private var latestAccountRefresh = UUID()
     /// Fen shown in the UI. Half-up from the micro-yuan ledger, display only.
     var balanceFen: Int? {
         balanceMicroYuan.map { TrialPricing.displayFen(microYuan: $0) }
@@ -232,6 +234,7 @@ final class TrialAccountStore: ObservableObject {
                 session: networkSession
             )
             guard sessionGeneration == generation else { return }
+            accountDataRevision = UUID()
             dailyQuota = snapshot.dailyQuota
             balanceMicroYuan = snapshot.balanceMicroYuan
             balanceState = .loaded
@@ -305,6 +308,7 @@ final class TrialAccountStore: ObservableObject {
 
     func applySettlement(_ settlement: TrialSettlement, generation: UUID) {
         guard isLoggedIn, sessionGeneration == generation else { return }
+        accountDataRevision = UUID()
         dailyQuota = settlement.dailyQuota ?? dailyQuota
         balanceMicroYuan = settlement.balanceMicroYuan
         balanceState = .loaded
@@ -323,13 +327,22 @@ final class TrialAccountStore: ObservableObject {
             statusMessage = TrialCopy.needProxy
             return
         }
+        let refreshID = UUID()
+        latestAccountRefresh = refreshID
+        let revision = accountDataRevision
+        func isCurrent() -> Bool {
+            sessionGeneration == generation && latestAccountRefresh == refreshID && accountDataRevision == revision
+        }
         balanceState = .loading
         canRedeemInvite = nil
         do {
             let token = try await validAccessToken()
-            guard sessionGeneration == generation else { return }
+            try Task.checkCancellation()
+            guard isCurrent() else { return }
             let snapshot = try await TrialProxyClient.syncAccount(proxyBase: proxy, accessToken: token, session: networkSession)
-            guard sessionGeneration == generation else { return }
+            try Task.checkCancellation()
+            guard isCurrent() else { return }
+            accountDataRevision = UUID()
             dailyQuota = snapshot.dailyQuota
             balanceMicroYuan = snapshot.balanceMicroYuan
             balanceState = .loaded
@@ -351,11 +364,15 @@ final class TrialAccountStore: ObservableObject {
                 statusMessage = ""
             }
         } catch is CancellationError {
-            guard sessionGeneration == generation else { return }
-            if balanceFen == nil { balanceState = .failed }
+            guard isCurrent() else { return }
+            balanceState = balanceFen == nil ? .failed : .loaded
             return
         } catch {
-            guard sessionGeneration == generation else { return }
+            guard isCurrent() else { return }
+            if Task.isCancelled {
+                balanceState = balanceFen == nil ? .failed : .loaded
+                return
+            }
             let text = (error as? LocalizedError)?.errorDescription ?? TrialCopy.store
             if text == TrialCopy.authExpired || text == TrialCopy.envMismatch {
                 logout(message: text)

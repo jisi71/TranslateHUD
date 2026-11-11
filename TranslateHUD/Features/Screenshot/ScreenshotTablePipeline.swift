@@ -9,47 +9,43 @@ enum ScreenshotTablePipeline {
         }.value
         guard mayContainTable else { return plainPlan(lines, rejected: false) }
 
-        var candidates: [ScreenshotTable] = []
-        var rejected = false
         if #available(macOS 26.0, *) {
-            do {
-                let documents = try await OCRService.recognizeDocuments(cgImage: imageData)
-                if documents.contains(where: { !$0.document.tables.isEmpty }) {
-                    let recognized = documents.map { ScreenshotVisionTable.tables(from: $0.document) }
-                    let rawRegions = documents.flatMap { $0.document.tables.map { $0.boundingRegion.boundingBox.cgRect } }
-                    var tables = ScreenshotVisionTable.uniqueTables(recognized.flatMap(\.tables))
-                    let recovered = await ScreenshotRegionRecovery.findCandidates(image: imageData, lines: lines,
-                        rawRegions: rawRegions, existing: tables)
-                    tables = ScreenshotVisionTable.uniqueTables(tables + recovered)
-                    return await visionPlan(image: image, lines: lines, tables: tables,
-                                            rejected: recognized.contains { $0.rejected })
-                }
-                let hasDocuments = !documents.isEmpty
-                let fallback = await Task.detached(priority: .userInitiated) {
-                    let assessment = ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
-                    let supported = hasDocuments
-                        ? assessment.tables.filter { ScreenshotTableRecognizer.supportsAutomaticCandidate($0, image: imageData) }
-                        : assessment.tables
-                    return (tables: supported,
-                            rejected: !assessment.rejected.isEmpty || supported.count != assessment.tables.count)
-                }.value
-                candidates = fallback.tables
-                rejected = fallback.rejected
-            } catch {
-                AppLog.info("文档结构识别不可用，使用文字行识别结果")
-                let fallback = await Task.detached(priority: .userInitiated) {
-                    ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
-                }.value
-                candidates = fallback.tables
-                rejected = !fallback.rejected.isEmpty
+            return await documentPlan(image: image, imageData: imageData, lines: lines) {
+                try await OCRService.recognizeDocuments(cgImage: imageData)
             }
-        } else {
-            let fallback = await Task.detached(priority: .userInitiated) {
-                ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
-            }.value
-            candidates = fallback.tables
-            rejected = !fallback.rejected.isEmpty
         }
+        return await legacyPlan(image: image, imageData: imageData, lines: lines)
+    }
+
+    @available(macOS 26.0, *)
+    static func documentPlan(image: NSImage, imageData: CGImage, lines: [OCRService.Line],
+                             recognize: () async throws -> [DocumentObservation]) async -> ScreenshotAutoPlan.Outcome {
+        do {
+            let documents = try await recognize()
+            guard documents.contains(where: { !$0.document.tables.isEmpty }) else {
+                return plainPlan(lines, rejected: false)
+            }
+            let recognized = documents.map { ScreenshotVisionTable.tables(from: $0.document) }
+            let rawRegions = documents.flatMap { $0.document.tables.map { $0.boundingRegion.boundingBox.cgRect } }
+            var tables = ScreenshotVisionTable.uniqueTables(recognized.flatMap(\.tables))
+            let recovered = await ScreenshotRegionRecovery.findCandidates(image: imageData, lines: lines,
+                rawRegions: rawRegions, existing: tables)
+            tables = ScreenshotVisionTable.uniqueTables(tables + recovered)
+            return await visionPlan(image: image, lines: lines, tables: tables,
+                                    rejected: recognized.contains { $0.rejected })
+        } catch {
+            AppLog.info("文档结构识别不可用，使用文字行识别结果")
+            return plainPlan(lines, rejected: false)
+        }
+    }
+
+    static func legacyPlan(image: NSImage, imageData: CGImage,
+                           lines: [OCRService.Line]) async -> ScreenshotAutoPlan.Outcome {
+        let fallback = await Task.detached(priority: .userInitiated) {
+            ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
+        }.value
+        let candidates = fallback.tables
+        var rejected = !fallback.rejected.isEmpty
 
         var splitIndices: Set<Int> = []
         for table in candidates {

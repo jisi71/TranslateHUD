@@ -118,4 +118,33 @@ final class ScreenshotTablePreflightTests: XCTestCase {
             }
         }
     }
+
+    func testDocumentMissUsesPlainTextEvenWhenLegacyCanBuildTable() async throws {
+        guard #available(macOS 26, *) else { throw XCTSkip("Document recognition requires macOS 26") }
+        let cg = try fixture("ruled")
+        let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        let lines = ScreenshotTextLayout.deduplicatedLines(try await OCRService.recognizePlain(image: image))
+        guard case .ready(let legacy) = await ScreenshotTablePipeline.legacyPlan(image: image, imageData: cg, lines: lines) else {
+            return XCTFail("Expected a legacy table")
+        }
+        XCTAssertTrue(legacy.plan.blocks.contains { if case .table = $0 { return true }; return false })
+        let outcome = await ScreenshotTablePipeline.documentPlan(image: image, imageData: cg, lines: lines) { [] }
+        guard case .ready(let plain) = outcome else { return XCTFail("Expected plain OCR") }
+        XCTAssertFalse(plain.plan.blocks.contains { if case .table = $0 { return true }; return false })
+        XCTAssertEqual(plain.plan.sourceTexts, ScreenshotPlainText.plan(from: lines).sourceTexts)
+    }
+
+    func testDocumentFailureKeepsPlainOCRWithoutLegacyInference() async throws {
+        guard #available(macOS 26, *) else { throw XCTSkip("Document recognition requires macOS 26") }
+        enum Failure: Error { case unavailable }
+        let cg = try fixture("ruled")
+        let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        let lines = ScreenshotTextLayout.deduplicatedLines(try await OCRService.recognizePlain(image: image))
+        let outcome = await ScreenshotTablePipeline.documentPlan(image: image, imageData: cg, lines: lines) {
+            throw Failure.unavailable
+        }
+        guard case .ready(let plain) = outcome else { return XCTFail("Expected plain OCR") }
+        XCTAssertFalse(plain.plan.blocks.contains { if case .table = $0 { return true }; return false })
+        XCTAssertEqual(plain.plan.sourceTexts, ScreenshotPlainText.plan(from: lines).sourceTexts)
+    }
 }

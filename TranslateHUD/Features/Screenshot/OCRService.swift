@@ -201,6 +201,7 @@ enum OCRService {
                     let request = VNRecognizeTextRequest()
                     request.recognitionLevel = .accurate
                     request.usesLanguageCorrection = false
+                    request.automaticallyDetectsLanguage = true
                     request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR"]
                     guard (try? VNImageRequestHandler(cgImage: processed).perform([request])) != nil else {
                         return nil
@@ -237,10 +238,11 @@ enum OCRService {
         }
     }
 
-    private static func textRequest() -> VNRecognizeTextRequest {
+    static func textRequest() -> VNRecognizeTextRequest {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
+        request.automaticallyDetectsLanguage = true
         request.recognitionLanguages = [
             "zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR",
             "fr-FR", "de-DE", "es-ES", "it-IT", "pt-BR", "ru-RU"

@@ -124,7 +124,8 @@ final class ScreenshotTablePreflightTests: XCTestCase {
         let cg = try fixture("ruled")
         let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
         let lines = ScreenshotTextLayout.deduplicatedLines(try await OCRService.recognizePlain(image: image))
-        guard case .ready(let legacy) = await ScreenshotTablePipeline.legacyPlan(image: image, imageData: cg, lines: lines) else {
+        guard case .ready(let legacy) = await ScreenshotTablePipeline.legacyPlan(image: image, imageData: cg,
+                                                                              lines: lines, plainLines: lines) else {
             return XCTFail("Expected a legacy table")
         }
         XCTAssertTrue(legacy.plan.blocks.contains { if case .table = $0 { return true }; return false })
@@ -146,5 +147,45 @@ final class ScreenshotTablePreflightTests: XCTestCase {
         guard case .ready(let plain) = outcome else { return XCTFail("Expected plain OCR") }
         XCTAssertFalse(plain.plan.blocks.contains { if case .table = $0 { return true }; return false })
         XCTAssertEqual(plain.plan.sourceTexts, ScreenshotPlainText.plan(from: lines).sourceTexts)
+    }
+
+    func testTextAndTableOCRUseSeparateLanguageSettings() {
+        let plain = OCRService.textRequest()
+        let table = OCRService.textRequest(automaticallyDetectsLanguage: false)
+        XCTAssertTrue(plain.automaticallyDetectsLanguage)
+        XCTAssertFalse(table.automaticallyDetectsLanguage)
+        XCTAssertEqual(plain.recognitionLanguages, table.recognitionLanguages)
+        XCTAssertTrue(plain.usesLanguageCorrection)
+        XCTAssertTrue(table.usesLanguageCorrection)
+    }
+
+    func testTableTextDoesNotUsePlainOCRButSurroundingTextDoes() async throws {
+        guard #available(macOS 26, *) else { throw XCTSkip("Document recognition requires macOS 26") }
+        let cg = try fixture("ruled")
+        let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        let documents = try await OCRService.recognizeDocuments(cgImage: cg)
+        let table = try XCTUnwrap(documents.flatMap { ScreenshotVisionTable.tables(from: $0.document).tables }.first)
+        XCTAssertGreaterThan(table.normalizedBox.minY, 0.01)
+        let tableLines = ScreenshotTextLayout.deduplicatedLines(try await OCRService.recognizeTableText(image: image))
+        let plainLines = tableLines.map {
+            let inside = table.normalizedBox.contains(CGPoint(x: $0.normalizedBox.midX, y: $0.normalizedBox.midY))
+            return OCRService.Line(text: inside ? "PLAIN_CELL_MARKER" : "AUTO_TITLE",
+                                   normalizedBox: $0.normalizedBox, confidence: 1)
+        } + [OCRService.Line(text: "OUTSIDE_TEXT", normalizedBox: CGRect(x: 0.1, y: 0, width: 0.3, height: 0.005), confidence: 1)]
+        let outcomes = [
+            await ScreenshotTablePipeline.documentPlan(image: image, imageData: cg, lines: plainLines) { documents },
+            await ScreenshotTablePipeline.legacyPlan(image: image, imageData: cg, lines: tableLines, plainLines: plainLines)
+        ]
+        for outcome in outcomes {
+            guard case .ready(let ready) = outcome else { return XCTFail("Expected a table and surrounding text") }
+            let rows = ready.plan.blocks.compactMap { block -> [[String]]? in
+                if case .table(let rows, _, _) = block { return rows }; return nil
+            }
+            XCTAssertEqual(rows, [[["Product", "Quarter", "Revenue"], ["Alpha", "Q1", "100"],
+                                   ["Beta", "", "200"], ["Gamma", "Q3", "300"]]])
+            XCTAssertFalse(ready.plan.sourceForQuota.contains("PLAIN_CELL_MARKER"))
+            XCTAssertEqual(ready.plan.sourceTexts.filter { $0 == "OUTSIDE_TEXT" }.count, 1)
+            XCTAssertEqual(ready.plan.sourceTexts.filter { $0 == "AUTO_TITLE" }.count, 1)
+        }
     }
 }

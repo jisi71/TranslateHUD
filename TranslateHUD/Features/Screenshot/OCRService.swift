@@ -94,6 +94,10 @@ enum OCRService {
         try await recognize(image: image, detectStyles: false).lines
     }
 
+    static func recognizeTableText(image: NSImage) async throws -> [Line] {
+        try await recognize(image: image, detectStyles: false, automaticallyDetectsLanguage: false).lines
+    }
+
     struct Recognition {
         let lines: [Line]
         let styleUnavailable: Bool
@@ -109,7 +113,7 @@ enum OCRService {
         guard !targets.isEmpty, let cg = cgImage(from: image) else { return targets.map { _ in nil } }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                let request = textRequest()
+                let request = textRequest(automaticallyDetectsLanguage: false)
                 guard (try? VNImageRequestHandler(cgImage: cg, options: [:]).perform([request])) != nil else {
                     continuation.resume(returning: targets.map { _ in nil })
                     return
@@ -201,7 +205,7 @@ enum OCRService {
                     let request = VNRecognizeTextRequest()
                     request.recognitionLevel = .accurate
                     request.usesLanguageCorrection = false
-                    request.automaticallyDetectsLanguage = true
+                    request.automaticallyDetectsLanguage = false
                     request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR"]
                     guard (try? VNImageRequestHandler(cgImage: processed).perform([request])) != nil else {
                         return nil
@@ -238,11 +242,11 @@ enum OCRService {
         }
     }
 
-    static func textRequest() -> VNRecognizeTextRequest {
+    static func textRequest(automaticallyDetectsLanguage: Bool = true) -> VNRecognizeTextRequest {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
-        request.automaticallyDetectsLanguage = true
+        request.automaticallyDetectsLanguage = automaticallyDetectsLanguage
         request.recognitionLanguages = [
             "zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR",
             "fr-FR", "de-DE", "es-ES", "it-IT", "pt-BR", "ru-RU"
@@ -251,12 +255,13 @@ enum OCRService {
         return request
     }
 
-    private static func recognize(image: NSImage, detectStyles: Bool) async throws -> Recognition {
+    private static func recognize(image: NSImage, detectStyles: Bool,
+                                  automaticallyDetectsLanguage: Bool = true) async throws -> Recognition {
         guard let cg = cgImage(from: image) else { throw OCRError.noCGImage }
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Recognition, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                let request = textRequest()
+                let request = textRequest(automaticallyDetectsLanguage: automaticallyDetectsLanguage)
 
                 let handler = VNImageRequestHandler(cgImage: cg, options: [:])
                 do {

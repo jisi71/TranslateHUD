@@ -14,7 +14,11 @@ enum ScreenshotTablePipeline {
                 try await OCRService.recognizeDocuments(cgImage: imageData)
             }
         }
-        return await legacyPlan(image: image, imageData: imageData, lines: lines)
+        guard let tableLines = try? await OCRService.recognizeTableText(image: image) else {
+            return plainPlan(lines, rejected: true)
+        }
+        return await legacyPlan(image: image, imageData: imageData,
+                                lines: ScreenshotTextLayout.deduplicatedLines(tableLines), plainLines: lines)
     }
 
     @available(macOS 26.0, *)
@@ -25,22 +29,23 @@ enum ScreenshotTablePipeline {
             guard documents.contains(where: { !$0.document.tables.isEmpty }) else {
                 return plainPlan(lines, rejected: false)
             }
+            let tableLines = ScreenshotTextLayout.deduplicatedLines(try await OCRService.recognizeTableText(image: image))
             let recognized = documents.map { ScreenshotVisionTable.tables(from: $0.document) }
             let rawRegions = documents.flatMap { $0.document.tables.map { $0.boundingRegion.boundingBox.cgRect } }
             var tables = ScreenshotVisionTable.uniqueTables(recognized.flatMap(\.tables))
-            let recovered = await ScreenshotRegionRecovery.findCandidates(image: imageData, lines: lines,
+            let recovered = await ScreenshotRegionRecovery.findCandidates(image: imageData, lines: tableLines,
                 rawRegions: rawRegions, existing: tables)
             tables = ScreenshotVisionTable.uniqueTables(tables + recovered)
-            return await visionPlan(image: image, lines: lines, tables: tables,
+            return await visionPlan(image: image, lines: tableLines, plainLines: lines, tables: tables,
                                     rejected: recognized.contains { $0.rejected })
         } catch {
-            AppLog.info("文档结构识别不可用，使用文字行识别结果")
+            AppLog.info("表格识别不可用，使用普通文字识别结果")
             return plainPlan(lines, rejected: false)
         }
     }
 
     static func legacyPlan(image: NSImage, imageData: CGImage,
-                           lines: [OCRService.Line]) async -> ScreenshotAutoPlan.Outcome {
+                           lines: [OCRService.Line], plainLines: [OCRService.Line]) async -> ScreenshotAutoPlan.Outcome {
         let fallback = await Task.detached(priority: .userInitiated) {
             ScreenshotTableRecognizer.assessFallback(from: imageData, lines: lines)
         }.value
@@ -85,14 +90,16 @@ enum ScreenshotTablePipeline {
         let unique = ScreenshotTableReconciler.dropOverlaps(mapped)
         rejected = rejected || unique.dropped
         let safeTables = unique.tables.map(\.table)
-        let consumed = unique.tables.reduce(into: Set<Int>()) { $0.formUnion($1.consumed) }
-        guard !safeTables.isEmpty else { return plainPlan(lines, rejected: rejected) }
+        let consumed = safeTables.reduce(into: Set<Int>()) {
+            $0.formUnion(ScreenshotVisionTable.consumedLines(plainLines, by: $1))
+        }
+        guard !safeTables.isEmpty else { return plainPlan(plainLines, rejected: rejected) }
         let needsTextReview = unique.tables.contains { $0.needsTextReview }
-        return ScreenshotAutoPlan.makeReconciled(lines: lines, tables: safeTables, consumed: consumed,
+        return ScreenshotAutoPlan.makeReconciled(lines: plainLines, tables: safeTables, consumed: consumed,
                                                  hasRejectedTable: rejected, needsTextReview: needsTextReview)
     }
 
-    private static func visionPlan(image: NSImage, lines: [OCRService.Line], tables: [ScreenshotTable],
+    private static func visionPlan(image: NSImage, lines: [OCRService.Line], plainLines: [OCRService.Line], tables: [ScreenshotTable],
                                    rejected: Bool) async -> ScreenshotAutoPlan.Outcome {
         var mapped: [ScreenshotTable] = []
         var consumed: Set<Int> = []
@@ -125,10 +132,10 @@ enum ScreenshotTablePipeline {
             let merged = ScreenshotVisionTable.mergeRecovered(recovered.table, into: chosen)
             mapped.append(merged.table)
             needsTextReview = needsTextReview || recovered.needsTextReview || merged.needsTextReview
-            consumed.formUnion(ScreenshotVisionTable.consumedLines(lines, by: table))
+            consumed.formUnion(ScreenshotVisionTable.consumedLines(plainLines, by: table))
         }
-        guard !mapped.isEmpty else { return plainPlan(lines, rejected: rejected) }
-        return ScreenshotAutoPlan.makeReconciled(lines: lines, tables: mapped, consumed: consumed,
+        guard !mapped.isEmpty else { return plainPlan(plainLines, rejected: rejected) }
+        return ScreenshotAutoPlan.makeReconciled(lines: plainLines, tables: mapped, consumed: consumed,
                                                  hasRejectedTable: rejected, needsTextReview: needsTextReview)
     }
 

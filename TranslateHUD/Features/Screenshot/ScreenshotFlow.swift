@@ -29,7 +29,7 @@ enum ScreenshotFlow {
             return
         }
 
-        // Ordinary OCR is the single source of text for both output paths.
+        // Keep ordinary text separate from the OCR used to correct table cells.
         let lines: [OCRService.Line]
         do {
             let recognized = try await OCRService.recognizePlain(image: image)

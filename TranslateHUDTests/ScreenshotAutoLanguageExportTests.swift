@@ -15,7 +15,7 @@ final class ScreenshotAutoLanguageExportTests: XCTestCase {
         [rect.minX, rect.minY, rect.width, rect.height].map(Double.init)
     }
 
-    func testExportThreeModesWithAutomaticLanguage() async throws {
+    func testExportThreeModesWithSplitLanguageSettings() async throws {
         guard #available(macOS 26, *) else { throw XCTSkip("Document recognition requires macOS 26") }
         let env = ProcessInfo.processInfo.environment
         guard let input = env["TRANSLATEHUD_DATASET_INPUT"],
@@ -91,6 +91,8 @@ final class ScreenshotAutoLanguageExportTests: XCTestCase {
                 }
             }
             let record: [String: Any] = ["index": sample.index, "file": sample.file, "sha256": hash,
+                                        "configuration": ["plainAutomaticLanguage": true, "tableOCRAutomaticLanguage": false,
+                                                          "documentAutomaticLanguage": true],
                                         "width": cg.width, "height": cg.height, "plain": plain,
                                         "documents": documentRecords, "mixed": mixed]
             let result = try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys])

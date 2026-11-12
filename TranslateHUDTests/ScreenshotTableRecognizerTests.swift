@@ -130,7 +130,7 @@ final class ScreenshotTableRecognizerTests: XCTestCase {
         }
     }
 
-    func testFullWidthMergedRowWithOuterBordersIsRejected() async throws {
+    func testFalseSpansAcrossVisibleDividersAreRejected() async throws {
         let image = try fixture("merged-fullwidth-framed")
         let lines = try recognizeLines(image)
         XCTAssertTrue(ScreenshotTableRecognizer.inferredTables(from: image, lines: lines).isEmpty)
@@ -138,7 +138,9 @@ final class ScreenshotTableRecognizerTests: XCTestCase {
             let documents = try await RecognizeDocumentsRequest().perform(on: image)
             let assessment = try XCTUnwrap(documents.map { ScreenshotTableRecognizer.assess(from: $0.document, image: image, lines: lines) }.first)
             XCTAssertTrue(assessment.tables.isEmpty)
-            XCTAssertTrue(assessment.rejected.contains(.mergedCells))
+            XCTAssertTrue(assessment.reviewRequired.allSatisfy {
+                !ScreenshotTableRecognizer.supportsAutomaticCandidate($0, image: image)
+            })
         }
     }
 

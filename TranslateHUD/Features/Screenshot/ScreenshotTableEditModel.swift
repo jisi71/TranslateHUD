@@ -44,6 +44,7 @@ struct ScreenshotTableEditModel: Sendable {
     private var history: [HistoryEntry] = []
     private var historyBytes = 0
     private let normalizedBox: CGRect
+    let spans: [ScreenshotCellSpan]
 
     var rowCount: Int { cells.count }
     var columnCount: Int { cells.first?.count ?? 0 }
@@ -51,7 +52,7 @@ struct ScreenshotTableEditModel: Sendable {
     var canUndo: Bool { !history.isEmpty }
 
     init(table: ScreenshotTable, cellRuns: [[[ScreenshotTextRun]]] = []) throws {
-        guard !table.hasMergedCells else { throw EditError.mergedCellsNeedReconstruction }
+        guard table.hasValidSpans else { throw EditError.mergedCellsNeedReconstruction }
         guard Self.validSize(rows: table.rows.count, columns: table.rows.first?.count ?? 0),
               let columns = table.rows.first?.count, table.rows.allSatisfy({ $0.count == columns }),
               table.cellRects.count == table.rows.count,
@@ -75,6 +76,7 @@ struct ScreenshotTableEditModel: Sendable {
         guard Self.textBytes(result) <= Self.maxTextBytes, Self.runCount(result) <= Self.maxRuns else { throw EditError.sizeLimit }
         self.cells = result
         self.normalizedBox = table.normalizedBox
+        self.spans = table.spans
     }
 
     /// A fresh grid lets the user reconstruct a merged table explicitly.
@@ -82,6 +84,7 @@ struct ScreenshotTableEditModel: Sendable {
         guard Self.validSize(rows: rows, columns: columns) else { throw EditError.invalidGrid }
         self.cells = Array(repeating: Array(repeating: Self.emptyCell(), count: columns), count: rows)
         self.normalizedBox = normalizedBox
+        self.spans = []
     }
 
     mutating func setText(_ text: String, at position: Position) throws {
@@ -131,6 +134,7 @@ struct ScreenshotTableEditModel: Sendable {
     }
 
     mutating func insertRow(at index: Int) throws {
+        guard spans.isEmpty else { throw EditError.mergedCellsNeedReconstruction }
         guard (0...rowCount).contains(index) else { throw EditError.invalidPosition }
         guard Self.validSize(rows: rowCount + 1, columns: columnCount) else { throw EditError.sizeLimit }
         saveUndo()
@@ -138,6 +142,7 @@ struct ScreenshotTableEditModel: Sendable {
     }
 
     mutating func insertColumn(at index: Int) throws {
+        guard spans.isEmpty else { throw EditError.mergedCellsNeedReconstruction }
         guard (0...columnCount).contains(index) else { throw EditError.invalidPosition }
         guard Self.validSize(rows: rowCount, columns: columnCount + 1) else { throw EditError.sizeLimit }
         saveUndo()
@@ -145,6 +150,7 @@ struct ScreenshotTableEditModel: Sendable {
     }
 
     mutating func deleteRow(at index: Int, discardContent: Bool = false) throws {
+        guard spans.isEmpty else { throw EditError.mergedCellsNeedReconstruction }
         guard (0..<rowCount).contains(index) else { throw EditError.invalidPosition }
         guard rowCount > 1 else { throw EditError.invalidGrid }
         guard discardContent || cells[index].allSatisfy({ $0.text.isEmpty }) else { throw EditError.wouldDiscardContent }
@@ -153,6 +159,7 @@ struct ScreenshotTableEditModel: Sendable {
     }
 
     mutating func deleteColumn(at index: Int, discardContent: Bool = false) throws {
+        guard spans.isEmpty else { throw EditError.mergedCellsNeedReconstruction }
         guard (0..<columnCount).contains(index) else { throw EditError.invalidPosition }
         guard columnCount > 2 else { throw EditError.invalidGrid }
         guard discardContent || cells.allSatisfy({ $0[index].text.isEmpty }) else { throw EditError.wouldDiscardContent }
@@ -170,7 +177,7 @@ struct ScreenshotTableEditModel: Sendable {
 
     func validatedTable() -> ScreenshotTable {
         ScreenshotTable(rows: cells.map { $0.map(\.text) }, normalizedBox: normalizedBox,
-                        hasMergedCells: false, cellRects: cells.map { $0.map(\.sourceRect) })
+                        hasMergedCells: !spans.isEmpty, cellRects: cells.map { $0.map(\.sourceRect) }, spans: spans)
     }
 
     /// Table and style runs are captured from the same value-state.
@@ -178,6 +185,8 @@ struct ScreenshotTableEditModel: Sendable {
 
     private func check(_ position: Position) throws {
         guard (0..<rowCount).contains(position.row), (0..<columnCount).contains(position.column) else { throw EditError.invalidPosition }
+        guard !spans.contains(where: { $0.covers(row: position.row, column: position.column) &&
+            ($0.row != position.row || $0.column != position.column) }) else { throw EditError.invalidPosition }
     }
 
     private mutating func saveUndo() {

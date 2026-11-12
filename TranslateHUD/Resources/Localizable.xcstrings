@@ -1,6 +1,11 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "编辑原文": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "编辑原文" } }, "en": { "stringUnit": { "state": "translated", "value": "Edit original" } } } },
+    "保存并重新翻译": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "保存并重新翻译" } }, "en": { "stringUnit": { "state": "translated", "value": "Save and retranslate" } } } },
+    "无法编辑识别内容，请重新截图。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法编辑识别内容，请重新截图。" } }, "en": { "stringUnit": { "state": "translated", "value": "Could not edit the recognized text. Please take the screenshot again." } } } },
+    "部分文字样式无法保留，已按普通文字翻译。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "部分文字样式无法保留，已按普通文字翻译。" } }, "en": { "stringUnit": { "state": "translated", "value": "Some text formatting could not be retained and was translated as plain text." } } } },
+    "截图结构无法可靠保留，已按文字翻译。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "截图结构无法可靠保留，已按文字翻译。" } }, "en": { "stringUnit": { "state": "translated", "value": "The screenshot layout could not be retained reliably and was translated as text." } } } },
     "左右滚动查看表格": {
       "extractionState": "manual",
       "localizations": {
@@ -91,6 +96,8 @@
     "只能与下一段文字合并。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "只能与下一段文字合并。" } }, "en": { "stringUnit": { "state": "translated", "value": "Only the next paragraph can be merged." } } } },
     "截图表格内容与粗体位置不一致，请核对。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "截图表格内容与粗体位置不一致，请核对。" } }, "en": { "stringUnit": { "state": "translated", "value": "The table text and bold formatting do not match. Please check them." } } } },
     "部分表格需要手动核对，请以截图为准。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "部分表格需要手动核对，请以截图为准。" } }, "en": { "stringUnit": { "state": "translated", "value": "Some tables require manual checking against the screenshot." } } } },
+    "部分表格文字可能有误，可点击铅笔编辑原文。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "部分表格文字可能有误，可点击铅笔编辑原文。" } }, "en": { "stringUnit": { "state": "translated", "value": "Some table text may be incorrect. Click the pencil to edit the original." } } } },
+    "部分表格未完整识别，文字也可能有误，可点击铅笔编辑原文。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "部分表格未完整识别，文字也可能有误，可点击铅笔编辑原文。" } }, "en": { "stringUnit": { "state": "translated", "value": "Some tables were not fully recognized, and some text may be incorrect. Click the pencil to edit the original." } } } },
     "截图文字或粗体无法在浮窗中可靠显示，请重新截图后重试。": {
       "extractionState": "manual",
       "localizations": {

@@ -26,13 +26,37 @@ struct ScreenshotTextBlock: Equatable, Sendable {
 }
 
 enum ScreenshotTextLayout {
+    /// Keep separate repeated words, but drop the same OCR observation at the same position.
+    static func deduplicatedLines(_ lines: [OCRService.Line]) -> [OCRService.Line] {
+        var result: [OCRService.Line] = []
+        var byText: [String: [Int]] = [:]
+        for line in lines {
+            let box = line.normalizedBox.standardized
+            let duplicate = byText[line.text, default: []].first { index in
+                let other = result[index].normalizedBox.standardized
+                let overlap = box.intersection(other)
+                guard !overlap.isNull, box.width > 0, box.height > 0, other.width > 0, other.height > 0 else { return false }
+                let area = overlap.width * overlap.height
+                let union = box.width * box.height + other.width * other.height - area
+                return union > 0 && area / union >= 0.9
+            }
+            if let duplicate {
+                if line.confidence > result[duplicate].confidence { result[duplicate] = line }
+            } else {
+                byText[line.text, default: []].append(result.count)
+                result.append(line)
+            }
+        }
+        return result
+    }
+
     /// Only treat unusually large short blocks as subheadings when the image
     /// also contains enough ordinary text to establish a body-size baseline.
     static func markHeadings(_ blocks: [ScreenshotTextBlock]) -> [ScreenshotTextBlock] {
         let heights = blocks.filter { $0.style == .paragraph && $0.lineHeight > 0 }
             .map(\.lineHeight).sorted()
         guard heights.count >= 3 else { return blocks }
-        let bodyHeight = heights[heights.count / 2]
+        let bodyHeight = heights[(heights.count - 1) / 2]
         return blocks.map { block in
             let text = block.text.trimmingCharacters(in: .whitespacesAndNewlines)
             let cjkCount = text.unicodeScalars.filter { (0x3400...0x9fff).contains($0.value) }.count
@@ -84,6 +108,17 @@ enum ScreenshotTextLayout {
             }
         }
         finish()
-        return markHeadings(blocks)
+        return markPrimaryTitle(markHeadings(blocks))
+    }
+
+    private static func markPrimaryTitle(_ blocks: [ScreenshotTextBlock]) -> [ScreenshotTextBlock] {
+        guard let first = blocks.first, first.style == .heading(2),
+              !blocks.contains(where: { $0.style == .heading(1) }) else { return blocks }
+        let bodyHeights = blocks.filter { $0.style == .paragraph && $0.lineHeight > 0 }.map(\.lineHeight).sorted()
+        guard bodyHeights.count >= 2, first.lineHeight >= bodyHeights[(bodyHeights.count - 1) / 2] * 1.25 else { return blocks }
+        var result = blocks
+        result[0] = ScreenshotTextBlock(text: first.text, box: first.box, lineHeight: first.lineHeight,
+                                        style: .heading(1), runs: first.runs)
+        return result
     }
 }

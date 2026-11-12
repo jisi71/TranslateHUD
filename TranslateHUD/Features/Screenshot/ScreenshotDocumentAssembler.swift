@@ -1,6 +1,20 @@
 import Foundation
 
 enum ScreenshotDocumentAssembler {
+    static func makePlanFromReconciledLines(_ lines: [OCRService.Line], tables: [ScreenshotTable],
+                                            consumed: Set<Int>) -> ScreenshotTranslationPlan {
+        let outside = lines.enumerated().compactMap { consumed.contains($0.offset) ? nil : $0.element }
+        return assemble(textBlocks: ScreenshotPlainText.blocks(from: outside), tables: tables, lines: [], detectStyles: false)
+    }
+
+    static func makePlanFromLines(_ lines: [OCRService.Line], tables: [ScreenshotTable]) -> ScreenshotTranslationPlan {
+        let safeTables = tables.filter { !hasCrossingLine(lines, tables: [$0]) }
+        let outside = lines.filter { line in
+            !safeTables.contains { $0.normalizedBox.contains(line.normalizedBox) }
+        }
+        return assemble(textBlocks: ScreenshotTextLayout.fromLines(outside), tables: safeTables, lines: lines)
+    }
+
     /// Never remove a line that crosses the inferred table boundary. This can
     /// contain both a cell and non-table content even when its midpoint is inside.
     static func hasCrossingLine(_ lines: [OCRService.Line], tables: [ScreenshotTable]) -> Bool {
@@ -17,16 +31,16 @@ enum ScreenshotDocumentAssembler {
 
     static func makePlan(textBlocks: [ScreenshotTextBlock], lines: [OCRService.Line],
                          tables: [ScreenshotTable], hasRejectedTable: Bool = false,
-                         reviewedTables: [ScreenshotTable] = []) -> ScreenshotTranslationPlan {
+                         tentativeTables: [ScreenshotTable] = []) -> ScreenshotTranslationPlan {
         // Document paragraphs may omit an ambiguous table entirely. Preserve
         // all legacy OCR lines whenever any table cannot be verified.
         // A crossing OCR line invalidates only its own independently accepted
-        // table. User-reviewed candidates retain the line for manual checking.
+        // table. Tentative tables retain crossing lines so text is not lost.
         let rejectedTables = tables.filter { table in
-            !reviewedTables.contains(table) && hasCrossingLine(lines, tables: [table])
+            !tentativeTables.contains(table) && hasCrossingLine(lines, tables: [table])
         }
         let tables = tables.filter { !rejectedTables.contains($0) }
-        let reviewedTables = reviewedTables.filter { tables.contains($0) }
+        let tentativeTables = tentativeTables.filter { tables.contains($0) }
         let representedByDocument = representedLineIndices(lines, inBlocks: textBlocks)
         let missingLine = lines.enumerated().contains { index, line in
             if tables.contains(where: { $0.normalizedBox.contains(line.normalizedBox) }) { return false }
@@ -34,9 +48,9 @@ enum ScreenshotDocumentAssembler {
         }
         let documentBlocks = textBlocks
         var textBlocks = hasRejectedTable || missingLine || !rejectedTables.isEmpty ? ScreenshotTextLayout.fromLines(lines) : textBlocks
-        if !reviewedTables.isEmpty || hasRejectedTable || missingLine || !rejectedTables.isEmpty {
-            let represented = representedLineIndices(lines, in: reviewedTables)
-            let strictTables = tables.filter { !reviewedTables.contains($0) }
+        if !tentativeTables.isEmpty || hasRejectedTable || missingLine || !rejectedTables.isEmpty {
+            let represented = representedLineIndices(lines, in: tentativeTables)
+            let strictTables = tables.filter { !tentativeTables.contains($0) }
             // Each OCR source must independently account for the whole cell.
             let representedBlocks = representedBlockIndices(documentBlocks, in: tables)
             let retainedBlocks = documentBlocks.enumerated().compactMap { index, block in
@@ -73,6 +87,11 @@ enum ScreenshotDocumentAssembler {
             }
         }
 
+        return assemble(textBlocks: textBlocks, tables: tables, lines: lines)
+    }
+
+    private static func assemble(textBlocks: [ScreenshotTextBlock], tables: [ScreenshotTable],
+                                 lines: [OCRService.Line], detectStyles: Bool = true) -> ScreenshotTranslationPlan {
         var positioned: [(CGRect, ScreenshotTranslationPlan.Block)] = textBlocks.map { block in
             let heading: Int?
             if case .heading(let level) = block.style { heading = level } else { heading = nil }
@@ -86,13 +105,17 @@ enum ScreenshotDocumentAssembler {
                 positioned.append((title.normalizedBox, .text(runs: [.init(text: title.text, isStrong: false)], heading: nil)))
             }
             let cellRuns: [[[ScreenshotTextRun]]]
-            switch ScreenshotTableStyleMapper.map(table: table, lines: lines) {
-            case .success(let mapping): cellRuns = mapping.cellRuns
-            case .failure:
+            if detectStyles {
+                switch ScreenshotTableStyleMapper.map(table: table, lines: lines) {
+                case .success(let mapping): cellRuns = mapping.cellRuns
+                case .failure:
+                    cellRuns = []
+                    tableStylesNeedReview = true
+                }
+            } else {
                 cellRuns = []
-                tableStylesNeedReview = true
             }
-            positioned.append((table.normalizedBox, .table(rows: table.rows, cellRuns: cellRuns)))
+            positioned.append((table.normalizedBox, .table(rows: table.rows, cellRuns: cellRuns, spans: table.spans)))
         }
         positioned.sort { a, b in
             if abs(a.0.maxY - b.0.maxY) > 0.005 { return a.0.maxY > b.0.maxY }

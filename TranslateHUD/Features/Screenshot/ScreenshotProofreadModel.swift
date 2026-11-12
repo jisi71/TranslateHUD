@@ -26,8 +26,8 @@ struct ScreenshotProofreadModel {
                 let normalized = ScreenshotRunEditing.normalizedRuns(runs, text: text)
                 if normalized == nil { droppedStyles = true }
                 return Item(content: .text(runs: normalized ?? (text.isEmpty ? [] : [.init(text: text, isStrong: false)]), heading: heading))
-            case .table(let rows, let runs):
-                let table = ScreenshotTable(rows: rows, normalizedBox: .zero, hasMergedCells: false)
+            case .table(let rows, let runs, let spans):
+                let table = ScreenshotTable(rows: rows, normalizedBox: .zero, hasMergedCells: !spans.isEmpty, spans: spans)
                 return Item(content: .table(try ScreenshotTableEditModel(table: table, cellRuns: runs)))
             }
         }
@@ -125,7 +125,7 @@ struct ScreenshotProofreadModel {
                 return runs.map(\.text).joined().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : .text(runs: runs, heading: heading)
             case .table(let table):
                 let snapshot = table.snapshot()
-                return .table(rows: snapshot.table.rows, cellRuns: snapshot.cellRuns)
+                return .table(rows: snapshot.table.rows, cellRuns: snapshot.cellRuns, spans: snapshot.table.spans)
             }
         }
         let result = ScreenshotTranslationPlan(blocks: blocks)

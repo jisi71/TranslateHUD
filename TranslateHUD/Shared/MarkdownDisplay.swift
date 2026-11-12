@@ -1,4 +1,5 @@
 import AppKit
+import ExyteGrid
 import SwiftUI
 
 /// Markdown rendering helpers for the translation popover.
@@ -75,7 +76,8 @@ enum MarkdownDisplay {
         role: Role,
         colors: PanelColors,
         width: CGFloat,
-        maxLines: Int?
+        maxLines: Int?,
+        tableSpans: [[ScreenshotCellSpan]] = []
     ) -> CGFloat {
         let segs = segments(from: markdown)
         let hasPipeTable = segs.contains { seg in
@@ -107,6 +109,7 @@ enum MarkdownDisplay {
 
         var total: CGFloat = 0
         let paraGap = quoteParagraphSpacing(for: role)
+        var tableIndex = 0
         for (index, seg) in segs.enumerated() {
             if index > 0 {
                 total += spacing(before: seg, after: segs[index - 1])
@@ -149,7 +152,9 @@ enum MarkdownDisplay {
                         }
                     case .table(let rows):
                         // tableHeight already includes the BlocksView outer vertical pad.
-                        total += tableHeight(rows: rows, role: role, colors: colors, width: bodyWidth)
+                        let spans = tableIndex < tableSpans.count ? tableSpans[tableIndex] : []
+                        total += tableHeight(rows: rows, role: role, colors: colors, width: bodyWidth, spans: spans)
+                        tableIndex += 1
                     }
                 }
                 total += blankLineSpacerHeight(count: edges.trailing, role: role)
@@ -758,31 +763,35 @@ enum MarkdownDisplay {
     /// Estimated height for a rendered pipe table — must match `BlocksView.tableView`.
     /// Borders are overlays (no layout height). Cell pad is 6×2 horizontal / 5×2 vertical;
     /// the grid also has `.padding(.vertical, 4)` outside the stroke.
-    static func tableHeight(rows: [[String]], role: Role, colors: PanelColors, width: CGFloat) -> CGFloat {
+    static func tableHeight(rows: [[String]], role: Role, colors: PanelColors, width: CGFloat,
+                            spans: [ScreenshotCellSpan] = []) -> CGFloat {
         guard !rows.isEmpty else { return 0 }
         let cols = max(rows[0].count, 1)
         let cellWidth = tableColumnWidth(columns: cols, viewportWidth: width)
         let horizontalPad: CGFloat = 12
         let verticalPad: CGFloat = 10
         let outerVerticalPad: CGFloat = 8
-        var total: CGFloat = 0
-        for row in rows {
-            var rowHeight: CGFloat = role.basePointSize + role.lineSpacing
-            for cell in row {
-                let cellMD = cell.isEmpty ? " " : cell
-                let h = TextBlockMetrics.height(
-                    attributed: styled(cellMD, role: role, colors: colors),
+        let cells = ScreenshotGridLayout.cells(rows: rows, spans: spans)
+        func measure(_ text: String, columns: Int) -> CGFloat {
+            TextBlockMetrics.height(
+                    attributed: styled(text.isEmpty ? " " : text, role: role, colors: colors),
                     lineSpacing: role.lineSpacing,
-                    width: max(cellWidth - horizontalPad, 1),
+                    width: max(cellWidth * CGFloat(columns) - horizontalPad, 1),
                     maxLines: nil
-                )
-                rowHeight = max(rowHeight, h + verticalPad)
+                ) + verticalPad
+        }
+        let heights: [CGFloat]
+        if !spans.isEmpty && !cells.isEmpty {
+            heights = ScreenshotGridLayout.rowHeights(rows: rows, cells: cells,
+                minimum: role.basePointSize + role.lineSpacing) { measure($0, columns: $1) }
+        } else {
+            heights = rows.map { row in
+                max(role.basePointSize + role.lineSpacing, row.map { measure($0, columns: 1) }.max() ?? 0)
             }
-            total += rowHeight
         }
         let scrollSpace = tableNeedsHorizontalScroll(columns: cols, viewportWidth: width)
             ? tableScrollHintHeight + tableScrollbarReserve : 0
-        return total + outerVerticalPad + scrollSpace
+        return heights.reduce(0, +) + outerVerticalPad + scrollSpace
     }
 
     /// Contiguous quote segments share one cluster (0 spacing) so outer/inner rails abut.
@@ -817,16 +826,17 @@ enum MarkdownDisplay {
         let role: Role
         let colors: PanelColors
         let width: CGFloat
+        var tableSpans: [[ScreenshotCellSpan]] = []
 
         var body: some View {
             let segs = MarkdownDisplay.segments(from: markdown)
             let clusters = MarkdownDisplay.clusters(from: segs)
             // spacing 0 — blank-line gaps come from prose edge spacers / quote paragraph gaps.
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(clusters.enumerated()), id: \.offset) { _, cluster in
+                ForEach(Array(clusters.enumerated()), id: \.offset) { index, cluster in
                     switch cluster {
                     case .prose(let seg):
-                        proseClusterView(seg)
+                        proseClusterView(seg, tableOffset: tableCount(in: Array(clusters.prefix(index))))
                     case .quotes(let quoteSegs):
                         // spacing 0 — outer/inner rails must meet with no gap.
                         VStack(alignment: .leading, spacing: 0) {
@@ -840,10 +850,18 @@ enum MarkdownDisplay {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
 
-        /// Paint leading/trailing empty lines as blank-line-tall spacers (Text drops edge `\n`).
-        /// GFM pipe tables are pulled out of the Text pass and drawn as a simple grid.
+        private func tableCount(in clusters: [SegmentCluster]) -> Int {
+            clusters.reduce(0) { count, cluster in
+                guard case .prose(let segment) = cluster else { return count }
+                return count + MarkdownDisplay.prosePieces(from: segment.markdown).filter {
+                    if case .table = $0 { return true }; return false
+                }.count
+            }
+        }
+
+        /// Paint blank edges and draw pipe tables as native grids.
         @ViewBuilder
-        private func proseClusterView(_ seg: Segment) -> some View {
+        private func proseClusterView(_ seg: Segment, tableOffset: Int) -> some View {
             let edges = MarkdownDisplay.proseEdgeBlankCounts(seg.markdown)
             let lineGap = MarkdownDisplay.blankLineSpacing(for: role)
             let pieces = MarkdownDisplay.prosePieces(from: edges.body)
@@ -851,14 +869,17 @@ enum MarkdownDisplay {
                 if edges.leading > 0 {
                     Color.clear.frame(height: CGFloat(edges.leading) * lineGap)
                 }
-                ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
+                ForEach(Array(pieces.enumerated()), id: \.offset) { index, piece in
                     switch piece {
                     case .markdown(let md):
                         if !md.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             textBlock(md)
                         }
                     case .table(let rows):
-                        tableView(rows)
+                        let prior = pieces.prefix(index).filter { if case .table = $0 { return true }; return false }.count
+                        let number = tableOffset + prior
+                        let spans = number < tableSpans.count ? tableSpans[number] : []
+                        tableView(rows, spans: spans)
                     }
                 }
                 if edges.trailing > 0 {
@@ -869,14 +890,14 @@ enum MarkdownDisplay {
         }
 
         @ViewBuilder
-        private func tableView(_ rows: [[String]]) -> some View {
+        private func tableView(_ rows: [[String]], spans: [ScreenshotCellSpan]) -> some View {
             let cols = max(rows.first?.count ?? 0, 1)
             let cellWidth = MarkdownDisplay.tableColumnWidth(columns: cols, viewportWidth: width)
             let gridWidth = cellWidth * CGFloat(cols)
             if MarkdownDisplay.tableNeedsHorizontalScroll(columns: cols, viewportWidth: width) {
                 VStack(alignment: .leading, spacing: 2) {
                     ScrollView(.horizontal, showsIndicators: true) {
-                        tableGrid(rows, columns: cols, cellWidth: cellWidth)
+                        tableGrid(rows, columns: cols, cellWidth: cellWidth, spans: spans)
                             .frame(width: gridWidth, alignment: .leading)
                             .padding(.bottom, MarkdownDisplay.tableScrollbarReserve)
                     }
@@ -891,13 +912,49 @@ enum MarkdownDisplay {
                 }
                 .padding(.vertical, 4)
             } else {
-                tableGrid(rows, columns: cols, cellWidth: cellWidth)
+                tableGrid(rows, columns: cols, cellWidth: cellWidth, spans: spans)
                     .frame(width: gridWidth, alignment: .leading)
                     .padding(.vertical, 4)
             }
         }
 
-        private func tableGrid(_ rows: [[String]], columns: Int, cellWidth: CGFloat) -> some View {
+        @ViewBuilder
+        private func tableGrid(_ rows: [[String]], columns: Int, cellWidth: CGFloat, spans: [ScreenshotCellSpan]) -> some View {
+            let cells = ScreenshotGridLayout.cells(rows: rows, spans: spans)
+            if !spans.isEmpty && !cells.isEmpty {
+                mergedGrid(rows, cells: cells, columns: columns, cellWidth: cellWidth)
+            } else {
+                regularGrid(rows, columns: columns, cellWidth: cellWidth)
+            }
+        }
+
+        private func mergedGrid(_ rows: [[String]], cells: [ScreenshotGridLayout.Cell], columns: Int, cellWidth: CGFloat) -> some View {
+            let heights = ScreenshotGridLayout.rowHeights(rows: rows, cells: cells,
+                minimum: role.basePointSize + role.lineSpacing) { text, count in
+                TextBlockMetrics.height(attributed: MarkdownDisplay.styled(text.isEmpty ? " " : text, role: role, colors: colors),
+                    lineSpacing: role.lineSpacing, width: max(cellWidth * CGFloat(count) - 12, 1), maxLines: nil) + 10
+            }
+            let tracks = heights.map { ExyteGrid.GridTrack.pt($0) }
+            return ExyteGrid.Grid(cells, tracks: tracks, contentMode: .fill, flow: .columns, spacing: 0) { cell in
+                let width = cellWidth * CGFloat(cell.columnCount)
+                let height = heights[cell.row..<(cell.row + cell.rowCount)].reduce(0, +)
+                let value = rows[cell.row][cell.column]
+                Text(MarkdownDisplay.styled(value.isEmpty ? " " : value, role: role, colors: colors))
+                    .lineSpacing(role.lineSpacing)
+                    .textSelection(.enabled)
+                    .frame(width: max(width - 12, 1), height: max(height - 10, 1), alignment: .topLeading)
+                    .padding(.horizontal, 6).padding(.vertical, 5)
+                    .background(cell.row == 0 ? colors.border.opacity(0.12) : Color.clear)
+                    .border(colors.border, width: 0.5)
+                    .gridStart(column: cell.column, row: cell.row)
+                    .gridSpan(column: cell.columnCount, row: cell.rowCount)
+            }
+            .frame(width: cellWidth * CGFloat(columns), height: heights.reduce(0, +))
+            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(colors.border, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        }
+
+        private func regularGrid(_ rows: [[String]], columns: Int, cellWidth: CGFloat) -> some View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, row in
                     HStack(alignment: .top, spacing: 0) {
@@ -941,7 +998,7 @@ enum MarkdownDisplay {
         private func segmentView(_ seg: Segment) -> some View {
             switch seg.kind {
             case .prose:
-                proseClusterView(seg)
+                proseClusterView(seg, tableOffset: 0)
             case .quote(let depth):
                 let bars = max(depth, 1)
                 let paragraphs = MarkdownDisplay.quoteBodyParagraphs(seg.markdown)

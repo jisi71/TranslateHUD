@@ -272,48 +272,64 @@
           <div class="feature-text">
             <p class="tag"><span class="lang-zh">表格</span><span class="lang-en">Table</span></p>
             <h2>
-              <span class="lang-zh">截图表格，<br>按格子翻译</span>
-              <span class="lang-en">Translate tables<br>cell by cell</span>
+              <span class="lang-zh">截图识别表格内容，<br>保持表格结构</span>
+              <span class="lang-en">Recognize table content<br>from a screenshot<br>and keep the structure</span>
             </h2>
             <p>
-              <span class="lang-zh">框选屏幕上的表格，能认出行和列，按格子翻译，译文也按表格显示。宽表可以左右滑动；空格子会保留，部分合并的格子也能跟着显示。认错了可以在浮窗里改原文再译。</span>
-              <span class="lang-en">Capture a table on screen: it recognizes rows and columns, translates cell by cell, and shows the translation as a table. Wide tables scroll sideways; empty cells are kept, and some merged cells are shown too. If recognition is off, you can edit the source in the panel and translate again.</span>
+              <span class="lang-zh">框选屏幕上的表格，能认出行和列，译文也按原来的表格结构显示。空格子会保留，部分合并的格子也能跟着显示；宽表可以左右滑动。认错了可以在浮窗里改原文再译。</span>
+              <span class="lang-en">Capture a table on screen: it recognizes rows and columns, and shows the translation with the same table structure. Empty cells are kept, and some merged cells are shown too. Wide tables scroll sideways. If recognition is off, you can edit the source in the panel and translate again.</span>
             </p>
           </div>
           <figure
             class="feature-stage stage-linen stage-table"
-            aria-label="蓝色选框圈住的价目表与浮窗原文相同。表里有一个空格子，周六和周日有一处并成一格。原文和译文都按表格显示，最右一列被裁掉一点，表示宽表可以横滑。"
-            data-aria-zh="蓝色选框圈住的价目表与浮窗原文相同。表里有一个空格子，周六和周日有一处并成一格。原文和译文都按表格显示，最右一列被裁掉一点，表示宽表可以横滑。"
-            data-aria-en="The boxed price table matches the panel source. One cell is empty, and two day columns are merged into one. Source and translation are both tables, with the last column slightly cut off so a wide table can scroll.">
+            aria-label="蓝色选框圈住一张一周课程表，和浮窗原文是同一张。有空着的课，编程实验跨了周二和周三。原文和译文都按表格显示，最右边的周五被裁掉一点，表示宽表可以横滑。"
+            data-aria-zh="蓝色选框圈住一张一周课程表，和浮窗原文是同一张。有空着的课，编程实验跨了周二和周三。原文和译文都按表格显示，最右边的周五被裁掉一点，表示宽表可以横滑。"
+            data-aria-en="A blue box frames a week schedule that matches the panel source. A class cell is empty, and Programming Lab spans Tuesday and Wednesday. Source and translation stay tables, and Friday is slightly cut off so a wide table can scroll.">
             <div class="table-sheet" aria-hidden="true">
               <div class="table-marquee">
                 <div class="table-clip">
                   <table class="mini-grid paper-grid">
                     <colgroup>
-                      <col class="col-item">
+                      <col class="col-time">
                       <col class="col-day">
                       <col class="col-day">
-                      <col class="col-stall">
+                      <col class="col-day">
+                      <col class="col-day">
+                      <col class="col-day">
                     </colgroup>
                     <thead>
                       <tr>
-                        <th scope="col"><span class="pair-src-en">Item</span><span class="pair-src-zh">品名</span></th>
-                        <th scope="col"><span class="pair-src-en">Sat</span><span class="pair-src-zh">周六</span></th>
-                        <th scope="col"><span class="pair-src-en">Sun</span><span class="pair-src-zh">周日</span></th>
-                        <th scope="col"><span class="pair-src-en">Stall</span><span class="pair-src-zh">摊位</span></th>
+                        <th scope="col"><span class="pair-src-en">Time</span><span class="pair-src-zh">时间</span></th>
+                        <th scope="col"><span class="pair-src-en">Mon</span><span class="pair-src-zh">周一</span></th>
+                        <th scope="col"><span class="pair-src-en">Tue</span><span class="pair-src-zh">周二</span></th>
+                        <th scope="col"><span class="pair-src-en">Wed</span><span class="pair-src-zh">周三</span></th>
+                        <th scope="col"><span class="pair-src-en">Thu</span><span class="pair-src-zh">周四</span></th>
+                        <th scope="col"><span class="pair-src-en">Fri</span><span class="pair-src-zh">周五</span></th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td><span class="pair-src-en">Apples</span><span class="pair-src-zh">苹果</span></td>
-                        <td>3</td>
+                        <td>08:00</td>
+                        <td><span class="pair-src-en">Calculus</span><span class="pair-src-zh">微积分</span></td>
+                        <td><span class="pair-src-en">Academic Writing</span><span class="pair-src-zh">学术写作</span></td>
                         <td class="is-empty">&nbsp;</td>
-                        <td><span class="pair-src-en">East</span><span class="pair-src-zh">东边</span></td>
+                        <td><span class="pair-src-en">Calculus</span><span class="pair-src-zh">微积分</span></td>
+                        <td><span class="pair-src-en">Academic Writing</span><span class="pair-src-zh">学术写作</span></td>
                       </tr>
                       <tr>
-                        <td><span class="pair-src-en">Honey</span><span class="pair-src-zh">蜂蜜</span></td>
-                        <td colspan="2"><span class="pair-src-en">sold out</span><span class="pair-src-zh">售罄</span></td>
-                        <td><span class="pair-src-en">West</span><span class="pair-src-zh">西边</span></td>
+                        <td>10:00</td>
+                        <td class="is-empty">&nbsp;</td>
+                        <td colspan="2"><span class="pair-src-en">Programming Lab</span><span class="pair-src-zh">编程实验</span></td>
+                        <td><span class="pair-src-en">Academic Writing</span><span class="pair-src-zh">学术写作</span></td>
+                        <td class="is-empty">&nbsp;</td>
+                      </tr>
+                      <tr>
+                        <td>14:00</td>
+                        <td><span class="pair-src-en">Academic Writing</span><span class="pair-src-zh">学术写作</span></td>
+                        <td><span class="pair-src-en">Calculus</span><span class="pair-src-zh">微积分</span></td>
+                        <td class="is-empty">&nbsp;</td>
+                        <td><span class="pair-src-en">Calculus</span><span class="pair-src-zh">微积分</span></td>
+                        <td class="is-empty">&nbsp;</td>
                       </tr>
                     </tbody>
                   </table>
@@ -344,30 +360,46 @@
                 <div class="hud-table-scroll">
                   <table class="mini-grid hud-grid">
                     <colgroup>
-                      <col class="col-item">
+                      <col class="col-time">
                       <col class="col-day">
                       <col class="col-day">
-                      <col class="col-stall">
+                      <col class="col-day">
+                      <col class="col-day">
+                      <col class="col-day">
                     </colgroup>
                     <thead>
                       <tr>
-                        <th scope="col"><span class="pair-src-en">Item</span><span class="pair-src-zh">品名</span></th>
-                        <th scope="col"><span class="pair-src-en">Sat</span><span class="pair-src-zh">周六</span></th>
-                        <th scope="col"><span class="pair-src-en">Sun</span><span class="pair-src-zh">周日</span></th>
-                        <th scope="col"><span class="pair-src-en">Stall</span><span class="pair-src-zh">摊位</span></th>
+                        <th scope="col"><span class="pair-src-en">Time</span><span class="pair-src-zh">时间</span></th>
+                        <th scope="col"><span class="pair-src-en">Mon</span><span class="pair-src-zh">周一</span></th>
+                        <th scope="col"><span class="pair-src-en">Tue</span><span class="pair-src-zh">周二</span></th>
+                        <th scope="col"><span class="pair-src-en">Wed</span><span class="pair-src-zh">周三</span></th>
+                        <th scope="col"><span class="pair-src-en">Thu</span><span class="pair-src-zh">周四</span></th>
+                        <th scope="col"><span class="pair-src-en">Fri</span><span class="pair-src-zh">周五</span></th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td><span class="pair-src-en">Apples</span><span class="pair-src-zh">苹果</span></td>
-                        <td>3</td>
+                        <td>08:00</td>
+                        <td><span class="pair-src-en">Calculus</span><span class="pair-src-zh">微积分</span></td>
+                        <td><span class="pair-src-en">Academic Writing</span><span class="pair-src-zh">学术写作</span></td>
                         <td class="is-empty">&nbsp;</td>
-                        <td><span class="pair-src-en">East</span><span class="pair-src-zh">东边</span></td>
+                        <td><span class="pair-src-en">Calculus</span><span class="pair-src-zh">微积分</span></td>
+                        <td><span class="pair-src-en">Academic Writing</span><span class="pair-src-zh">学术写作</span></td>
                       </tr>
                       <tr>
-                        <td><span class="pair-src-en">Honey</span><span class="pair-src-zh">蜂蜜</span></td>
-                        <td colspan="2"><span class="pair-src-en">sold out</span><span class="pair-src-zh">售罄</span></td>
-                        <td><span class="pair-src-en">West</span><span class="pair-src-zh">西边</span></td>
+                        <td>10:00</td>
+                        <td class="is-empty">&nbsp;</td>
+                        <td colspan="2"><span class="pair-src-en">Programming Lab</span><span class="pair-src-zh">编程实验</span></td>
+                        <td><span class="pair-src-en">Academic Writing</span><span class="pair-src-zh">学术写作</span></td>
+                        <td class="is-empty">&nbsp;</td>
+                      </tr>
+                      <tr>
+                        <td>14:00</td>
+                        <td><span class="pair-src-en">Academic Writing</span><span class="pair-src-zh">学术写作</span></td>
+                        <td><span class="pair-src-en">Calculus</span><span class="pair-src-zh">微积分</span></td>
+                        <td class="is-empty">&nbsp;</td>
+                        <td><span class="pair-src-en">Calculus</span><span class="pair-src-zh">微积分</span></td>
+                        <td class="is-empty">&nbsp;</td>
                       </tr>
                     </tbody>
                   </table>
@@ -382,30 +414,46 @@
                 <div class="hud-table-scroll">
                   <table class="mini-grid hud-grid">
                     <colgroup>
-                      <col class="col-item">
+                      <col class="col-time">
                       <col class="col-day">
                       <col class="col-day">
-                      <col class="col-stall">
+                      <col class="col-day">
+                      <col class="col-day">
+                      <col class="col-day">
                     </colgroup>
                     <thead>
                       <tr>
-                        <th scope="col"><span class="pair-src-en">品名</span><span class="pair-src-zh">Item</span></th>
-                        <th scope="col"><span class="pair-src-en">周六</span><span class="pair-src-zh">Sat</span></th>
-                        <th scope="col"><span class="pair-src-en">周日</span><span class="pair-src-zh">Sun</span></th>
-                        <th scope="col"><span class="pair-src-en">摊位</span><span class="pair-src-zh">Stall</span></th>
+                        <th scope="col"><span class="pair-src-en">时间</span><span class="pair-src-zh">Time</span></th>
+                        <th scope="col"><span class="pair-src-en">周一</span><span class="pair-src-zh">Mon</span></th>
+                        <th scope="col"><span class="pair-src-en">周二</span><span class="pair-src-zh">Tue</span></th>
+                        <th scope="col"><span class="pair-src-en">周三</span><span class="pair-src-zh">Wed</span></th>
+                        <th scope="col"><span class="pair-src-en">周四</span><span class="pair-src-zh">Thu</span></th>
+                        <th scope="col"><span class="pair-src-en">周五</span><span class="pair-src-zh">Fri</span></th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td><span class="pair-src-en">苹果</span><span class="pair-src-zh">Apples</span></td>
-                        <td>3</td>
+                        <td>08:00</td>
+                        <td><span class="pair-src-en">微积分</span><span class="pair-src-zh">Calculus</span></td>
+                        <td><span class="pair-src-en">学术写作</span><span class="pair-src-zh">Academic Writing</span></td>
                         <td class="is-empty">&nbsp;</td>
-                        <td><span class="pair-src-en">东边</span><span class="pair-src-zh">East</span></td>
+                        <td><span class="pair-src-en">微积分</span><span class="pair-src-zh">Calculus</span></td>
+                        <td><span class="pair-src-en">学术写作</span><span class="pair-src-zh">Academic Writing</span></td>
                       </tr>
                       <tr>
-                        <td><span class="pair-src-en">蜂蜜</span><span class="pair-src-zh">Honey</span></td>
-                        <td colspan="2"><span class="pair-src-en">售罄</span><span class="pair-src-zh">sold out</span></td>
-                        <td><span class="pair-src-en">西边</span><span class="pair-src-zh">West</span></td>
+                        <td>10:00</td>
+                        <td class="is-empty">&nbsp;</td>
+                        <td colspan="2"><span class="pair-src-en">编程实验</span><span class="pair-src-zh">Programming Lab</span></td>
+                        <td><span class="pair-src-en">学术写作</span><span class="pair-src-zh">Academic Writing</span></td>
+                        <td class="is-empty">&nbsp;</td>
+                      </tr>
+                      <tr>
+                        <td>14:00</td>
+                        <td><span class="pair-src-en">学术写作</span><span class="pair-src-zh">Academic Writing</span></td>
+                        <td><span class="pair-src-en">微积分</span><span class="pair-src-zh">Calculus</span></td>
+                        <td class="is-empty">&nbsp;</td>
+                        <td><span class="pair-src-en">微积分</span><span class="pair-src-zh">Calculus</span></td>
+                        <td class="is-empty">&nbsp;</td>
                       </tr>
                     </tbody>
                   </table>

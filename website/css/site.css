@@ -1042,20 +1042,28 @@ html[data-lang="en"] .pair-src-en {
   max-width: 12em;
 }
 
+#feature-table h2 .lang-en {
+  font-size: 0.8em;
+  letter-spacing: -0.03em;
+}
+
 .stage-table.feature-stage {
-  height: auto;
-  padding: 22px 18px 20px;
+  height: 680px;
 }
 
 .stage-table .table-sheet {
-  position: relative;
+  position: absolute;
   z-index: 1;
-  width: min(468px, 96%);
-  margin: 0 auto 14px;
-  padding: 12px;
+  left: 16px;
+  top: 26px;
+  width: min(486px, 80%);
+  margin: 0;
+  padding: 16px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 16px 36px rgba(29, 42, 68, 0.12);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow:
+    0 22px 46px rgba(29, 42, 68, 0.18),
+    0 2px 8px rgba(29, 42, 68, 0.08);
 }
 
 .table-marquee {
@@ -1078,17 +1086,23 @@ html[data-lang="en"] .pair-src-en {
   overflow: hidden;
 }
 
-.table-marquee .capture-cursor {
+.stage-table .table-marquee .capture-cursor {
   z-index: 2;
-  right: -8px;
-  bottom: -14px;
+  top: -12px;
+  right: -9px;
+  bottom: auto;
+  left: auto;
 }
 
 .stage-table .hud-panel {
-  position: relative;
-  inset: auto;
-  width: min(468px, 96%);
-  margin: 0 auto;
+  position: absolute;
+  z-index: 2;
+  top: 168px;
+  right: 14px;
+  bottom: auto;
+  left: auto;
+  width: min(420px, 68%);
+  margin: 0;
 }
 
 .stage-table .hud-source-row {
@@ -1129,22 +1143,22 @@ html[data-lang="en"] .pair-src-en {
 }
 
 .mini-grid {
-  width: 114%;
+  width: 110%;
   border-collapse: collapse;
   table-layout: fixed;
   font: inherit;
   font-size: 12px;
-  line-height: 1.35;
+  line-height: 1.3;
 }
 
-.col-item { width: 28%; }
-.col-day { width: 22%; }
-.col-stall { width: 28%; }
+.col-time { width: 15%; }
+.col-day { width: 17%; }
 
 .mini-grid th,
 .mini-grid td {
-  height: 28px;
-  padding: 4px 7px;
+  height: 26px;
+  padding: 5px 6px;
+  overflow: hidden;
   text-align: left;
   vertical-align: middle;
   font-weight: 500;
@@ -1152,6 +1166,15 @@ html[data-lang="en"] .pair-src-en {
 
 .mini-grid th {
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.stage-table .paper-grid {
+  font-size: 13px;
+}
+
+.stage-table .paper-grid td {
+  height: 46px;
 }
 
 .paper-grid th,
@@ -1185,6 +1208,7 @@ html[data-lang="en"] .pair-src-en {
 
 .mini-grid td[colspan] {
   text-align: center;
+  white-space: nowrap;
 }
 
 .hud-panel {
@@ -1753,10 +1777,13 @@ html[data-lang="en"] .pair-src-en {
     height: 380px;
   }
 
-  .stage-terms.feature-stage,
-  .stage-table.feature-stage {
+  .stage-terms.feature-stage {
     height: auto;
     min-height: 0;
+  }
+
+  .stage-table.feature-stage {
+    height: 680px;
   }
 
   .hero {
@@ -1855,21 +1882,37 @@ html[data-lang="en"] .pair-src-en {
 
   .stage-poster.feature-stage,
   .stage-speech,
-  .stage-terms,
-  .stage-table.feature-stage {
+  .stage-terms {
     display: block;
     height: auto;
     min-height: 0;
     padding: 16px 12px 18px;
   }
 
+  .stage-table.feature-stage {
+    height: 560px;
+    padding: 0;
+  }
+
   .stage-table .table-sheet {
-    display: none;
+    display: block;
+    left: 0;
+    top: 10px;
+    width: 460px;
+    padding: 10px;
+    transform: scale(0.66);
+    transform-origin: top left;
   }
 
   .stage-table .hud-panel {
-    width: min(420px, 100%);
-    margin: 0 auto;
+    top: 78px;
+    right: 6px;
+    bottom: auto;
+    width: calc(100% - 12px);
+  }
+
+  .stage-table .hud-grid {
+    min-width: 430px;
   }
 
   .page-sheet {

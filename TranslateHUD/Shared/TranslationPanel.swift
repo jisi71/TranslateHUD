@@ -13,8 +13,13 @@ struct TranslationPanel: View {
     @ObservedObject private var appearance = PanelAppearance.shared
     @Environment(\.colorScheme) private var systemScheme
     var heightBudget: PanelHeightBudget = PopoverContent.heightBudget(visibleHeight: 2_000)
+    var panelWidth: CGFloat = PopoverContent.fixedWidth
+    var isUserSized = false
     var recognitionNotice: String? = nil
     var screenshotSource: ScreenshotSourceState? = nil
+    // Pass editing values so SwiftUI sees changes within the shared source object.
+    var sourceEditor: ScreenshotProofreadState? = nil
+    var sourceEditError: String? = nil
     var onClose: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
     var onPin: @MainActor (Bool) -> Void
@@ -42,10 +47,10 @@ struct TranslationPanel: View {
         VStack(spacing: 0) {
             header
             separator
-            if let source = screenshotSource, let editor = source.editor {
+            if let source = screenshotSource, let editor = sourceEditor {
                 screenshotEditor(source: source, editor: editor)
             } else {
-                if let notice = screenshotSource?.editError ?? recognitionNotice {
+                if let notice = sourceEditError ?? recognitionNotice {
                     Text(interfaceLanguage.text(notice))
                         .font(.caption)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,14 +71,14 @@ struct TranslationPanel: View {
                     if showsContext, image != nil { contextSection }
                 }
                 .padding(18)
-                .frame(maxHeight: heightBudget.bodyMax, alignment: .top)
+                .frame(maxHeight: isUserSized ? .infinity : heightBudget.bodyMax, alignment: .top)
                 .clipped()
             }
             separator
             footer
-                .disabled(screenshotSource?.editor != nil)
+                .disabled(sourceEditor != nil)
         }
-        .fixedSize(horizontal: false, vertical: true)
+        .fixedSize(horizontal: false, vertical: !isUserSized)
         .foregroundStyle(colors.primaryText)
         .background(colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -122,7 +127,7 @@ struct TranslationPanel: View {
             isOriginalExpanded ? "source-open" : "source-closed",
             showsContext ? "context-open" : "context-closed",
             termProgress.isExpanded ? "terms-open" : "terms-closed",
-            screenshotSource?.editor == nil ? "source-view" : "source-edit"
+            sourceEditor == nil ? "source-view" : "source-edit"
         ].joined(separator: "\u{1e}")
     }
 
@@ -164,8 +169,10 @@ struct TranslationPanel: View {
 
     private func sourceTextWidth(showsExpand: Bool) -> CGFloat {
         let column = showsExpand ? Self.sourceExpandSide : Self.sourceSpeechSide
-        return max(PopoverContent.translationTextWidth - Self.sourceControlGap - column, 1)
+        return max(translationTextWidth - Self.sourceControlGap - column, 1)
     }
+
+    private var translationTextWidth: CGFloat { max(panelWidth - PopoverContent.bodyPadding, 1) }
 
     private var sourceSection: some View {
         let layout = sourceLayout
@@ -220,7 +227,7 @@ struct TranslationPanel: View {
     }
 
     private var translationSection: some View {
-        let width = max(PopoverContent.translationTextWidth, 1)
+        let width = translationTextWidth
         let textHeight = MarkdownDisplay.height(
             translated,
             role: .translation,
@@ -254,7 +261,7 @@ struct TranslationPanel: View {
     private func screenshotEditor(source: ScreenshotSourceState, editor: ScreenshotProofreadState) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(interfaceLanguage.text("编辑原文")).font(.headline)
-            ScreenshotInlineSourceEditor(state: editor, width: PopoverContent.fixedWidth - 48)
+            ScreenshotInlineSourceEditor(state: editor, width: panelWidth - 48)
             HStack {
                 Button(interfaceLanguage.text("取消")) { source.cancelEditing() }
                 Spacer()
@@ -263,7 +270,7 @@ struct TranslationPanel: View {
             }
         }
         .padding(12)
-        .frame(height: max(180, min(520, heightBudget.bodyMax)), alignment: .top)
+        .frame(height: isUserSized ? heightBudget.bodyMax : max(180, min(520, heightBudget.bodyMax)), alignment: .top)
     }
 
     private var header: some View {
@@ -273,6 +280,7 @@ struct TranslationPanel: View {
                 .foregroundStyle(colors.muted)
             Text("TranslateHUD")
                 .font(.system(size: 17, weight: .semibold))
+                .lineLimit(1)
             Spacer(minLength: 10)
             Menu {
                 ForEach(TargetLanguage.allCases) { language in
@@ -300,7 +308,7 @@ struct TranslationPanel: View {
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
-            .disabled(screenshotSource?.editor != nil)
+            .disabled(sourceEditor != nil)
             .help("目标语言")
             .accessibilityLabel(interfaceLanguage.format("目标语言：%@", interfaceLanguage.text(languageName)))
             iconButton(isPinned ? "pin.fill" : "pin", help: isPinned ? "取消置顶" : "置顶窗口", active: isPinned) {

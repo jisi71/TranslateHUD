@@ -27,7 +27,7 @@ final class FloatingScreenshotWindow {
         let initialSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
         window = DraggableWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -37,6 +37,8 @@ final class FloatingScreenshotWindow {
         window.level = .normal
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.hidesOnDeactivate = false
+        window.title = "TranslateHUD"
+        window.identifier = NSUserInterfaceItemIdentifier("screenshot-translation-panel")
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
@@ -59,6 +61,8 @@ final class FloatingScreenshotWindow {
             onLayoutChange: { layoutRef?() }
         )
         let host = NSHostingController(rootView: view)
+        // The fitter owns the window size, including manual changes.
+        host.sizingOptions = [.intrinsicContentSize]
         host.view.frame = NSRect(origin: .zero, size: initialSize)
         window.contentView = host.view
         hostingController = host
@@ -186,14 +190,18 @@ private struct ResultView: View {
             termProgress: source.termProgress,
             speech: speech,
             heightBudget: sizeBudget.budget,
+            panelWidth: sizeBudget.width,
+            isUserSized: sizeBudget.userSize != nil,
             recognitionNotice: recognitionNotice,
             screenshotSource: source,
+            sourceEditor: source.editor,
+            sourceEditError: source.editError,
             onClose: onClose,
             onRetry: onRetry,
             onPin: onPin,
             onLayoutChange: onLayoutChange
         )
-        .frame(width: PopoverContent.fixedWidth, alignment: .topLeading)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: sizeBudget.width, height: sizeBudget.userSize?.height, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: sizeBudget.userSize == nil)
     }
 }

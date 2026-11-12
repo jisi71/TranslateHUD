@@ -37,7 +37,7 @@ final class FloatingTranslationPopover {
 
         window = PopoverWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -48,6 +48,8 @@ final class FloatingTranslationPopover {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isReleasedWhenClosed = false
         window.hidesOnDeactivate = false
+        window.title = "TranslateHUD"
+        window.identifier = NSUserInterfaceItemIdentifier("selection-translation-panel")
         window.isMovableByWindowBackground = true
         window.minSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
         window.maxSize = NSSize(width: PopoverContent.fixedWidth, height: budget.budget.panelMax)
@@ -69,6 +71,8 @@ final class FloatingTranslationPopover {
             onLayoutChange: { layoutRef?() }
         )
         let host = NSHostingController(rootView: view)
+        // The fitter owns the window size, including manual changes.
+        host.sizingOptions = [.intrinsicContentSize]
         host.view.frame = NSRect(origin: .zero, size: initialSize)
         window.contentView = host.view
         self.hostingController = host
@@ -167,6 +171,7 @@ final class FloatingTranslationPopover {
 private final class PopoverWindow: NSWindow {
     var escapeHandler: (() -> Void)?
     override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
 
     override func keyDown(with event: NSEvent) {
         if FloatingPanelDismissPolicy.shouldCloseOnKeyDown(keyCode: event.keyCode) {
@@ -208,18 +213,21 @@ struct PopoverContent: View {
             termProgress: termProgress,
             speech: speech,
             heightBudget: sizeBudget.budget,
+            panelWidth: sizeBudget.width,
+            isUserSized: sizeBudget.userSize != nil,
             onClose: onCancel,
             onRetry: onRetry,
             onPin: onPin,
             onLayoutChange: onLayoutChange
         )
-        .frame(width: Self.fixedWidth, alignment: .topLeading)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: sizeBudget.width, height: sizeBudget.userSize?.height, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: sizeBudget.userSize == nil)
     }
 
-    static func heightBudget(visibleHeight: CGFloat) -> PanelHeightBudget {
+    static func heightBudget(visibleHeight: CGFloat, requestedHeight: CGFloat? = nil) -> PanelHeightBudget {
         let visible = (visibleHeight.isFinite && visibleHeight > 0) ? visibleHeight : (maxHeight + 16)
-        let panelMax = min(maxHeight, max(minHeight, visible - 16))
+        let preferred = requestedHeight.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? maxHeight
+        let panelMax = min(preferred, max(minHeight, visible - 16))
         let bodyMax = max(minBodyHeight, panelMax - verticalChrome)
         let contentMax = max(48, bodyMax - bodyPadding)
         let sourceMax = min(200, max(72, (contentMax * 0.36).rounded(.down)))

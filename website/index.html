@@ -268,7 +268,167 @@
           </figure>
         </article>
 
-        <article class="feature feature-flip">
+        <article class="feature feature-flip" id="feature-table">
+          <div class="feature-text">
+            <p class="tag"><span class="lang-zh">表格</span><span class="lang-en">Table</span></p>
+            <h2>
+              <span class="lang-zh">截图表格，<br>按格子翻译</span>
+              <span class="lang-en">Translate tables<br>cell by cell</span>
+            </h2>
+            <p>
+              <span class="lang-zh">框选屏幕上的表格，能认出行和列，按格子翻译，译文也按表格显示。宽表可以左右滑动；空格子会保留，部分合并的格子也能跟着显示。认错了可以在浮窗里改原文再译。</span>
+              <span class="lang-en">Capture a table on screen: it recognizes rows and columns, translates cell by cell, and shows the translation as a table. Wide tables scroll sideways; empty cells are kept, and some merged cells are shown too. If recognition is off, you can edit the source in the panel and translate again.</span>
+            </p>
+          </div>
+          <figure
+            class="feature-stage stage-linen stage-table"
+            aria-label="蓝色选框圈住的价目表与浮窗原文相同。表里有一个空格子，周六和周日有一处并成一格。原文和译文都按表格显示，最右一列被裁掉一点，表示宽表可以横滑。"
+            data-aria-zh="蓝色选框圈住的价目表与浮窗原文相同。表里有一个空格子，周六和周日有一处并成一格。原文和译文都按表格显示，最右一列被裁掉一点，表示宽表可以横滑。"
+            data-aria-en="The boxed price table matches the panel source. One cell is empty, and two day columns are merged into one. Source and translation are both tables, with the last column slightly cut off so a wide table can scroll.">
+            <div class="table-sheet" aria-hidden="true">
+              <div class="table-marquee">
+                <div class="table-clip">
+                  <table class="mini-grid paper-grid">
+                    <colgroup>
+                      <col class="col-item">
+                      <col class="col-day">
+                      <col class="col-day">
+                      <col class="col-stall">
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th scope="col"><span class="pair-src-en">Item</span><span class="pair-src-zh">品名</span></th>
+                        <th scope="col"><span class="pair-src-en">Sat</span><span class="pair-src-zh">周六</span></th>
+                        <th scope="col"><span class="pair-src-en">Sun</span><span class="pair-src-zh">周日</span></th>
+                        <th scope="col"><span class="pair-src-en">Stall</span><span class="pair-src-zh">摊位</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><span class="pair-src-en">Apples</span><span class="pair-src-zh">苹果</span></td>
+                        <td>3</td>
+                        <td class="is-empty">&nbsp;</td>
+                        <td><span class="pair-src-en">East</span><span class="pair-src-zh">东边</span></td>
+                      </tr>
+                      <tr>
+                        <td><span class="pair-src-en">Honey</span><span class="pair-src-zh">蜂蜜</span></td>
+                        <td colspan="2"><span class="pair-src-en">sold out</span><span class="pair-src-zh">售罄</span></td>
+                        <td><span class="pair-src-en">West</span><span class="pair-src-zh">西边</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <svg class="capture-cursor" viewBox="0 0 32 32" aria-hidden="true">
+                  <path stroke="#fff" stroke-width="4.2" stroke-linecap="round" d="M16 3v8M16 21v8M3 16h8M21 16h8"/>
+                  <path stroke="#1d1d1f" stroke-width="1.7" stroke-linecap="round" d="M16 3.6v6.6M16 21.8v6.6M3.6 16h6.6M21.8 16h6.6"/>
+                  <circle cx="16" cy="16" r="1.5" fill="#1d1d1f"/>
+                </svg>
+              </div>
+            </div>
+            <div class="hud-panel" aria-hidden="true">
+              <div class="hud-head">
+                <svg class="hud-logo" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#translate"/></svg>
+                <span class="hud-title">TranslateHUD</span>
+                <span class="hud-lang">
+                  <span class="pair-src-en">简体中文</span>
+                  <span class="pair-src-zh">English</span>
+                  <svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg>
+                </span>
+                <span class="hud-tools" aria-hidden="true">
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#pin"/></svg>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#settings"/></svg>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#close"/></svg>
+                </span>
+              </div>
+              <div class="hud-source-row">
+                <div class="hud-table-scroll">
+                  <table class="mini-grid hud-grid">
+                    <colgroup>
+                      <col class="col-item">
+                      <col class="col-day">
+                      <col class="col-day">
+                      <col class="col-stall">
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th scope="col"><span class="pair-src-en">Item</span><span class="pair-src-zh">品名</span></th>
+                        <th scope="col"><span class="pair-src-en">Sat</span><span class="pair-src-zh">周六</span></th>
+                        <th scope="col"><span class="pair-src-en">Sun</span><span class="pair-src-zh">周日</span></th>
+                        <th scope="col"><span class="pair-src-en">Stall</span><span class="pair-src-zh">摊位</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><span class="pair-src-en">Apples</span><span class="pair-src-zh">苹果</span></td>
+                        <td>3</td>
+                        <td class="is-empty">&nbsp;</td>
+                        <td><span class="pair-src-en">East</span><span class="pair-src-zh">东边</span></td>
+                      </tr>
+                      <tr>
+                        <td><span class="pair-src-en">Honey</span><span class="pair-src-zh">蜂蜜</span></td>
+                        <td colspan="2"><span class="pair-src-en">sold out</span><span class="pair-src-zh">售罄</span></td>
+                        <td><span class="pair-src-en">West</span><span class="pair-src-zh">西边</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#speaker"/></svg>
+              </div>
+              <p class="hud-status">
+                <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#check"/></svg>
+                <span class="lang-zh">翻译完成</span><span class="lang-en">Translation complete</span>
+              </p>
+              <div class="hud-out">
+                <div class="hud-table-scroll">
+                  <table class="mini-grid hud-grid">
+                    <colgroup>
+                      <col class="col-item">
+                      <col class="col-day">
+                      <col class="col-day">
+                      <col class="col-stall">
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th scope="col"><span class="pair-src-en">品名</span><span class="pair-src-zh">Item</span></th>
+                        <th scope="col"><span class="pair-src-en">周六</span><span class="pair-src-zh">Sat</span></th>
+                        <th scope="col"><span class="pair-src-en">周日</span><span class="pair-src-zh">Sun</span></th>
+                        <th scope="col"><span class="pair-src-en">摊位</span><span class="pair-src-zh">Stall</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><span class="pair-src-en">苹果</span><span class="pair-src-zh">Apples</span></td>
+                        <td>3</td>
+                        <td class="is-empty">&nbsp;</td>
+                        <td><span class="pair-src-en">东边</span><span class="pair-src-zh">East</span></td>
+                      </tr>
+                      <tr>
+                        <td><span class="pair-src-en">蜂蜜</span><span class="pair-src-zh">Honey</span></td>
+                        <td colspan="2"><span class="pair-src-en">售罄</span><span class="pair-src-zh">sold out</span></td>
+                        <td><span class="pair-src-en">西边</span><span class="pair-src-zh">West</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="hud-foot" aria-hidden="true">
+                <span class="hud-foot-tools">
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#copy"/></svg>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#terms"/></svg>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#speaker"/></svg>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#refresh"/></svg>
+                </span>
+                <span class="hud-provider">
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chip"/></svg>
+                  DeepSeek
+                  <svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg>
+                </span>
+              </div>
+            </div>
+          </figure>
+        </article>
+
+        <article class="feature">
           <div class="feature-text">
             <p class="tag"><span class="lang-zh">朗读</span><span class="lang-en">Speech</span></p>
             <h2>
@@ -333,7 +493,7 @@
           </figure>
         </article>
 
-        <article class="feature">
+        <article class="feature feature-flip">
           <div class="feature-text">
             <p class="tag"><span class="lang-zh">名词</span><span class="lang-en">Terms</span></p>
             <h2>

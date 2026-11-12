@@ -1,7 +1,6 @@
 (function () {
-  // v0.4.5 notarized Developer ID DMG for first-time installation.
-  // Version 0.4.5, build 15. macOS 14 or later. Apple silicon and Intel. Asset: TranslateHUD-0.4.5.dmg
-  var DOWNLOAD_URL = "https://github.com/jisi71/TranslateHUD/releases/download/v0.4.5/TranslateHUD-0.4.5.dmg";
+  // Notarized 0.4.6 / build 16 DMG for macOS 14+, Apple silicon and Intel.
+  var DOWNLOAD_URL = "https://github.com/jisi71/TranslateHUD/releases/download/v0.4.6/TranslateHUD-0.4.6.dmg";
 
   var INVITE_STATUS_URL = "https://translatehud-d4gl951eo8bef4702-1445578102.ap-shanghai.app.tcloudbase.com/v1/trial/invite-status";
   var DEFAULT_INVITE_CODE = "translatehud-200";

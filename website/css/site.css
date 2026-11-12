@@ -691,6 +691,22 @@ html[data-lang="en"] .lang-zh {
   opacity: 0.7;
 }
 
+.stage-linen {
+  background:
+    radial-gradient(420px 260px at 18% 0%, rgba(255, 236, 214, 0.9), transparent 68%),
+    radial-gradient(380px 240px at 92% 100%, rgba(186, 216, 245, 0.75), transparent 72%),
+    linear-gradient(165deg, #e7f3fb 0%, #f7f4ef 52%, #f6e7da 100%);
+}
+
+.stage-linen::before {
+  background: #d5e8fb;
+}
+
+.stage-linen::after {
+  background: #f6dcc8;
+  opacity: 0.8;
+}
+
 .feature-stage .hud {
   position: absolute;
   z-index: 1;
@@ -1020,6 +1036,155 @@ html[data-lang="en"] .lang-zh {
 html[data-lang="zh"] .pair-src-zh,
 html[data-lang="en"] .pair-src-en {
   display: none !important;
+}
+
+#feature-table h2 {
+  max-width: 12em;
+}
+
+.stage-table.feature-stage {
+  height: auto;
+  padding: 22px 18px 20px;
+}
+
+.stage-table .table-sheet {
+  position: relative;
+  z-index: 1;
+  width: min(468px, 96%);
+  margin: 0 auto 14px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 36px rgba(29, 42, 68, 0.12);
+}
+
+.table-marquee {
+  position: relative;
+  border: 2px solid #007aff;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.table-marquee::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: rgba(0, 122, 255, 0.16);
+  pointer-events: none;
+}
+
+.table-clip {
+  overflow: hidden;
+}
+
+.table-marquee .capture-cursor {
+  z-index: 2;
+  right: -8px;
+  bottom: -14px;
+}
+
+.stage-table .hud-panel {
+  position: relative;
+  inset: auto;
+  width: min(468px, 96%);
+  margin: 0 auto;
+}
+
+.stage-table .hud-source-row {
+  align-items: flex-start;
+  margin: 12px 0 10px;
+  padding-bottom: 12px;
+}
+
+.stage-table .hud-source-row > .hud-glyph {
+  margin-top: 6px;
+}
+
+.stage-table .hud-out {
+  margin: 10px 0 14px;
+}
+
+.hud-table-scroll {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.38) transparent;
+}
+
+.hud-table-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.hud-table-scroll::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.hud-table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mini-grid {
+  width: 114%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.col-item { width: 28%; }
+.col-day { width: 22%; }
+.col-stall { width: 28%; }
+
+.mini-grid th,
+.mini-grid td {
+  height: 28px;
+  padding: 4px 7px;
+  text-align: left;
+  vertical-align: middle;
+  font-weight: 500;
+}
+
+.mini-grid th {
+  font-weight: 600;
+}
+
+.paper-grid th,
+.paper-grid td {
+  border: 1px solid #d3dae3;
+  background: rgba(255, 255, 255, 0.55);
+  color: #1d1d1d;
+}
+
+.paper-grid th {
+  background: rgba(241, 245, 248, 0.86);
+}
+
+.hud-grid th,
+.hud-grid td {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.hud-source-row .hud-grid {
+  color: #c8c8c8;
+}
+
+.hud-out .hud-grid {
+  color: #f0f0f0;
+  font-size: 13px;
+}
+
+.hud-grid th {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mini-grid td[colspan] {
+  text-align: center;
 }
 
 .hud-panel {
@@ -1588,7 +1753,8 @@ html[data-lang="en"] .pair-src-en {
     height: 380px;
   }
 
-  .stage-terms.feature-stage {
+  .stage-terms.feature-stage,
+  .stage-table.feature-stage {
     height: auto;
     min-height: 0;
   }
@@ -1689,11 +1855,21 @@ html[data-lang="en"] .pair-src-en {
 
   .stage-poster.feature-stage,
   .stage-speech,
-  .stage-terms {
+  .stage-terms,
+  .stage-table.feature-stage {
     display: block;
     height: auto;
     min-height: 0;
     padding: 16px 12px 18px;
+  }
+
+  .stage-table .table-sheet {
+    display: none;
+  }
+
+  .stage-table .hud-panel {
+    width: min(420px, 100%);
+    margin: 0 auto;
   }
 
   .page-sheet {

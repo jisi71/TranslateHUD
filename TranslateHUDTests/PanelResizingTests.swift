@@ -90,6 +90,18 @@ final class PanelResizingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(small[3], 72)
     }
 
+    func testShortSourceCanUseBlankSpaceInThePanel() {
+        let sections: [PanelSectionMeasurement] = [
+            .init(role: .source, idealHeight: 24), .init(role: .divider, idealHeight: 12),
+            .init(role: .status, idealHeight: 34), .init(role: .translation, idealHeight: 28)
+        ]
+        let heights = PanelSectionSizer.resolve(sections: sections, limit: 400,
+                                                sourceCap: 160, spacing: 14, sourceHeight: 150)
+        XCTAssertEqual(heights[0], 150)
+        XCTAssertEqual(heights[3], 28)
+        XCTAssertLessThanOrEqual(PanelSectionSizer.stackedHeight(heights, spacing: 14), 400)
+    }
+
     func testDraggingSourceDividerKeepsWindowSizeAndDoesNotTranslate() async throws {
         let oldWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
         var requests = 0
@@ -124,32 +136,80 @@ final class PanelResizingTests: XCTestCase {
         let beforeRequests = requests
         let beforeHeight = handle.sourceHeight
         XCTAssertGreaterThan(beforeHeight, 50)
-        let beforeSize = window.frame.size
-        let start = handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.midY), to: nil)
+        let beforeFrame = window.frame
+        let start = handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.maxY + 4), to: nil)
         func event(_ type: NSEvent.EventType, y: CGFloat) -> NSEvent {
             NSEvent.mouseEvent(with: type, location: NSPoint(x: start.x, y: y), modifierFlags: [],
                                timestamp: 0, windowNumber: window.windowNumber, context: nil,
                                eventNumber: 1, clickCount: 1, pressure: 1)!
         }
-        handle.mouseDown(with: event(.leftMouseDown, y: start.y))
-        handle.mouseDragged(with: event(.leftMouseDragged, y: start.y - 100))
+        window.sendEvent(event(.leftMouseDown, y: start.y))
+        XCTAssertFalse(window.isMovableByWindowBackground)
+        window.sendEvent(event(.leftMouseDragged, y: start.y - 100))
         for _ in 0..<100 {
             if handle.sourceHeight > beforeHeight + 50 { break }
             try await Task.sleep(for: .milliseconds(20))
         }
-        handle.mouseUp(with: event(.leftMouseUp, y: start.y - 100))
+        window.sendEvent(event(.leftMouseUp, y: start.y - 100))
+        XCTAssertTrue(window.isMovableByWindowBackground)
         XCTAssertGreaterThan(handle.sourceHeight, beforeHeight + 50)
-        XCTAssertEqual(window.frame.size, beforeSize)
+        XCTAssertEqual(window.frame, beforeFrame)
         XCTAssertEqual(requests, beforeRequests)
-        handle.mouseDown(with: event(.leftMouseDown, y: start.y - 100))
-        handle.mouseDragged(with: event(.leftMouseDragged, y: start.y))
+        window.sendEvent(event(.leftMouseDown, y: start.y - 100))
+        window.sendEvent(event(.leftMouseDragged, y: start.y))
         for _ in 0..<100 {
             if abs(handle.sourceHeight - beforeHeight) < 2 { break }
             try await Task.sleep(for: .milliseconds(20))
         }
-        handle.mouseUp(with: event(.leftMouseUp, y: start.y))
+        window.sendEvent(event(.leftMouseUp, y: start.y))
         XCTAssertEqual(handle.sourceHeight, beforeHeight, accuracy: 2)
-        XCTAssertEqual(window.frame.size, beforeSize)
+        XCTAssertEqual(window.frame, beforeFrame)
+    }
+
+    func testShortSourceDividerKeepsItsHeightAcrossTwoWindowDrags() async throws {
+        let oldWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
+        let progress = TranslationProgress()
+        progress.start(translator: ResizeShortTranslator(), originals: ["完成测试"], target: .english)
+        let panel = FloatingTranslationPopover(original: "完成测试", progress: progress,
+            termProgress: TermExplanationProgress(explainer: ResizeNoTerms(), texts: []),
+            rectTopLeft: nil, fallbackPoint: NSPoint(x: 500, y: 800))
+        panel.show()
+        defer { panel.close() }
+        let window = try XCTUnwrap(NSApp.windows.first {
+            !oldWindows.contains(ObjectIdentifier($0)) && $0.identifier?.rawValue == "selection-translation-panel"
+        })
+        func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+        let content = try XCTUnwrap(window.contentView)
+        var divider: SourceResizeView?
+        for _ in 0..<100 {
+            divider = descendants(content).compactMap { $0 as? SourceResizeView }.first
+            if let divider, divider.sourceHeight > 0, case .success = progress.state { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let handle = try XCTUnwrap(divider)
+        window.setFrame(NSRect(origin: window.frame.origin, size: NSSize(width: 500, height: 500)), display: true)
+        let frame = window.frame
+        var expected = handle.sourceHeight
+        for _ in 0..<2 {
+            let point = handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.midY), to: nil)
+            func event(_ type: NSEvent.EventType, offset: CGFloat) -> NSEvent {
+                NSEvent.mouseEvent(with: type, location: NSPoint(x: point.x, y: point.y - offset), modifierFlags: [],
+                                   timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                   eventNumber: 1, clickCount: 1, pressure: 1)!
+            }
+            expected += 50
+            window.sendEvent(event(.leftMouseDown, offset: 0))
+            XCTAssertFalse(window.isMovableByWindowBackground)
+            window.sendEvent(event(.leftMouseDragged, offset: 50))
+            window.sendEvent(event(.leftMouseUp, offset: 50))
+            XCTAssertTrue(window.isMovableByWindowBackground)
+            for _ in 0..<100 {
+                if abs(handle.sourceHeight - expected) < 2 { break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTAssertEqual(handle.sourceHeight, expected, accuracy: 2)
+            XCTAssertEqual(window.frame, frame)
+        }
     }
 
     func testManualHeightCanUseMoreRoomThanTheAutomaticCap() {

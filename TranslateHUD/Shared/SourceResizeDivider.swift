@@ -36,6 +36,15 @@ final class SourceResizeView: NSView {
     var onDrag: (@MainActor (CGFloat) -> Void)?
     private var startY: CGFloat?
 
+    static func at(_ point: NSPoint, in view: NSView) -> SourceResizeView? {
+        guard !view.isHiddenOrHasHiddenAncestor else { return nil }
+        if let divider = view as? SourceResizeView, !divider.bounds.isEmpty {
+            let hitArea = divider.convert(divider.bounds, to: nil).insetBy(dx: 0, dy: -8)
+            if hitArea.contains(point) { return divider }
+        }
+        return view.subviews.lazy.compactMap { at(point, in: $0) }.first
+    }
+
     var sourceHeight: CGFloat {
         func find(_ view: NSView) -> SourceAreaView? {
             if let source = view as? SourceAreaView { return source }

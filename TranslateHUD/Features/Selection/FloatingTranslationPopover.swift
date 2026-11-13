@@ -5,7 +5,7 @@ import SwiftUI
 /// 自动消失：ESC、未置顶时点窗口外、用户点取消。已置顶点外不关闭。
 @MainActor
 final class FloatingTranslationPopover {
-    private let window: PopoverWindow
+    private let window: TranslationPanelWindow
     private let progress: TranslationProgress
     private let termProgress: TermExplanationProgress
     private let speech = SpeechController()
@@ -35,7 +35,7 @@ final class FloatingTranslationPopover {
 
         let initialSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
 
-        window = PopoverWindow(
+        window = TranslationPanelWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.borderless, .resizable],
             backing: .buffered,
@@ -165,20 +165,6 @@ final class FloatingTranslationPopover {
         if let m = localMonitor  { NSEvent.removeMonitor(m) }
         if let m = keyMonitor    { NSEvent.removeMonitor(m) }
         globalMonitor = nil; localMonitor = nil; keyMonitor = nil
-    }
-}
-
-private final class PopoverWindow: NSWindow {
-    var escapeHandler: (() -> Void)?
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-
-    override func keyDown(with event: NSEvent) {
-        if FloatingPanelDismissPolicy.shouldCloseOnKeyDown(keyCode: event.keyCode) {
-            escapeHandler?()
-            return
-        }
-        super.keyDown(with: event)
     }
 }
 

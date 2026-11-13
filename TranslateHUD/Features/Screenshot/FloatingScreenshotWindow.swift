@@ -6,7 +6,7 @@ import SwiftUI
 @MainActor
 final class FloatingScreenshotWindow {
     private enum CloseReason: String { case explicit, outside, escape }
-    private let window: DraggableWindow
+    private let window: TranslationPanelWindow
     private let source: ScreenshotSourceState
     private let speech = SpeechController()
     private var globalMonitor: Any?
@@ -25,7 +25,7 @@ final class FloatingScreenshotWindow {
 
         let budget = PanelSizeBudget(visibleHeight: PanelScreenPicker.visibleHeight(placement: nil))
         let initialSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
-        window = DraggableWindow(
+        window = TranslationPanelWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.borderless, .resizable],
             backing: .buffered,
@@ -154,20 +154,6 @@ final class FloatingScreenshotWindow {
         globalMonitor = nil
         localMonitor = nil
         keyMonitor = nil
-    }
-}
-
-private final class DraggableWindow: NSWindow {
-    var escapeHandler: (() -> Void)?
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-
-    override func keyDown(with event: NSEvent) {
-        if FloatingPanelDismissPolicy.shouldCloseOnKeyDown(keyCode: event.keyCode) {
-            escapeHandler?()
-            return
-        }
-        super.keyDown(with: event)
     }
 }
 

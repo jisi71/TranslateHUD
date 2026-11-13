@@ -68,6 +68,7 @@ struct TranslationPanel: View {
                     sourceHeight: sourceHeight
                 ) {
                     sourceSection
+                        .frame(maxHeight: sourceHeight == nil ? nil : .infinity, alignment: .top)
                         .background(SourceAreaMarker())
                     SourceResizeDivider(
                         color: NSColor(colors.border),

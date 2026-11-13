@@ -70,7 +70,7 @@ enum PanelSectionSizer {
             switch section.role {
             case .source:
                 if let sourceHeight, sourceHeight.isFinite {
-                    return min(ideal, max(floor(role: .source, ideal: ideal), sourceHeight))
+                    return min(usableLimit, max(floor(role: .source, ideal: ideal), sourceHeight))
                 }
                 return min(ideal, cap)
             case .divider:

@@ -1,21 +1,49 @@
 import AppKit
 import Combine
 
-/// Keeps a borderless panel sized to its SwiftUI content, anchored by the top edge
-/// so streaming growth does not jump a window the user has dragged.
+/// Fits content until the user resizes, then keeps the chosen size.
+/// Automatic growth stays anchored to the top edge after the window is moved.
 @MainActor
-final class ContentFittingWindow {
+final class ContentFittingWindow: NSObject, NSWindowDelegate {
     private weak var window: NSWindow?
     private let sizeBudget: PanelSizeBudget
     private let placement: PopoverPlacementContext?
     private var hasPlaced = false
     private var scheduled = false
     private var pendingMeasure: (@MainActor (NSSize) -> NSSize?)?
+    private var minimumHeight: CGFloat = PopoverContent.minHeight
 
     init(window: NSWindow, sizeBudget: PanelSizeBudget, placement: PopoverPlacementContext?) {
         self.window = window
         self.sizeBudget = sizeBudget
         self.placement = placement
+        super.init()
+        window.delegate = self
+    }
+
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        guard let screen = PanelScreenPicker.screen(placement: nil, window: sender) else { return frameSize }
+        return clampedSize(frameSize, available: screen.visibleFrame.insetBy(dx: 8, dy: 8).size)
+    }
+
+    func windowWillStartLiveResize(_ notification: Notification) {
+        guard let window else { return }
+        sizeBudget.beginWindowResize(window.frame.size)
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        guard let window, sizeBudget.userSize != nil else { return }
+        sizeBudget.setUserSize(window.frame.size)
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        guard let window else { return }
+        sizeBudget.setUserSize(window.frame.size)
+        if let measure = pendingMeasure { scheduleApply(measure: measure) }
+    }
+
+    func windowDidChangeScreen(_ notification: Notification) {
+        if let measure = pendingMeasure { scheduleApply(measure: measure) }
     }
 
     func scheduleApply(measure: @escaping @MainActor (NSSize) -> NSSize?) {
@@ -37,6 +65,8 @@ final class ContentFittingWindow {
 
     private func apply() {
         guard let window, let measure = pendingMeasure else { return }
+        guard !window.inLiveResize else { return }
+        guard (window as? TranslationPanelWindow)?.isHandlingDrag != true else { return }
         if hasPlaced, NSEvent.pressedMouseButtons != 0 {
             // A frame change mid-drag fights the pointer. Retry after the drag.
             Task { @MainActor [weak self] in
@@ -57,13 +87,30 @@ final class ContentFittingWindow {
             return
         }
 
+        let available = screen.visibleFrame.insetBy(dx: 8, dy: 8).size
+        window.minSize = NSSize(width: min(420, available.width), height: min(minimumHeight, available.height))
+        window.maxSize = available
+
+        if let userSize = sizeBudget.userSize {
+            let frame = ContentFittingFrame.resized(
+                current: window.frame, newSize: clampedSize(userSize, available: available),
+                visible: screen.visibleFrame, margin: 8
+            )
+            if !nearlyEqual(window.frame, frame) {
+                window.setFrame(frame, display: true, animate: false)
+            }
+            sizeBudget.setUserSize(frame.size)
+            return
+        }
+
         let panelMax = sizeBudget.budget.panelMax
-        window.minSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
-        window.maxSize = NSSize(width: PopoverContent.fixedWidth, height: max(panelMax, PopoverContent.minHeight))
 
         let probe = NSSize(width: PopoverContent.fixedWidth, height: panelMax)
         guard var height = measure(probe)?.height, height.isFinite, !height.isNaN else { return }
         height = min(max(height.rounded(.up), PopoverContent.minHeight), panelMax)
+        // A short panel must be able to return to its automatically fitted height.
+        minimumHeight = min(320, height)
+        window.minSize.height = min(minimumHeight, available.height)
         let size = NSSize(width: PopoverContent.fixedWidth, height: height)
         let frame = nextFrame(for: window, size: size, screen: screen)
         let contentSize = window.contentRect(forFrameRect: frame).size
@@ -72,6 +119,11 @@ final class ContentFittingWindow {
         }
         window.contentView?.frame = NSRect(origin: .zero, size: contentSize)
         hasPlaced = true
+    }
+
+    private func clampedSize(_ size: NSSize, available: NSSize) -> NSSize {
+        NSSize(width: min(max(size.width, 420), available.width),
+               height: min(max(size.height, minimumHeight), available.height))
     }
 
     private func nextFrame(for window: NSWindow, size: NSSize, screen: NSScreen) -> NSRect {
@@ -114,7 +166,7 @@ final class ContentFittingWindow {
     private func nearlyEqual(_ lhs: NSRect, _ rhs: NSRect) -> Bool {
         abs(lhs.minX - rhs.minX) < 0.5
             && abs(lhs.minY - rhs.minY) < 0.5
-            &&         abs(lhs.width - rhs.width) < 0.5
+            && abs(lhs.width - rhs.width) < 0.5
             && abs(lhs.height - rhs.height) < 1
     }
 }
@@ -174,13 +226,33 @@ enum ContentFittingFrame {
 
 final class PanelSizeBudget: ObservableObject {
     @Published private(set) var visibleHeight: CGFloat
+    @Published private(set) var userSize: NSSize?
+    @Published private(set) var translationHeight: CGFloat?
 
     init(visibleHeight: CGFloat) {
         self.visibleHeight = visibleHeight
     }
 
     var budget: PanelHeightBudget {
-        PopoverContent.heightBudget(visibleHeight: visibleHeight)
+        PopoverContent.heightBudget(visibleHeight: visibleHeight, requestedHeight: userSize?.height)
+    }
+
+    var width: CGFloat { userSize?.width ?? PopoverContent.fixedWidth }
+
+    func beginSourceResize(_ size: NSSize, translationHeight: CGFloat) {
+        self.translationHeight = translationHeight.isFinite && translationHeight > 0 ? translationHeight : nil
+        setUserSize(size)
+    }
+
+    func beginWindowResize(_ size: NSSize) {
+        translationHeight = nil
+        setUserSize(size)
+    }
+
+    func setUserSize(_ size: NSSize) {
+        guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else { return }
+        guard userSize != size else { return }
+        userSize = size
     }
 
     @discardableResult

@@ -13,17 +13,26 @@ struct TranslationPanel: View {
     @ObservedObject private var appearance = PanelAppearance.shared
     @Environment(\.colorScheme) private var systemScheme
     var heightBudget: PanelHeightBudget = PopoverContent.heightBudget(visibleHeight: 2_000)
+    var panelWidth: CGFloat = PopoverContent.fixedWidth
+    var isUserSized = false
+    var translationHeight: CGFloat?
     var recognitionNotice: String? = nil
     var screenshotSource: ScreenshotSourceState? = nil
+    // Pass editing values so SwiftUI sees changes within the shared source object.
+    var sourceEditor: ScreenshotProofreadState? = nil
+    var sourceEditError: String? = nil
     var onClose: @MainActor () -> Void
     var onRetry: @MainActor () -> Void
     var onPin: @MainActor (Bool) -> Void
     var onLayoutChange: @MainActor () -> Void = {}
+    var onSourceResizeStart: @MainActor (NSSize, CGFloat) -> Void = { _, _ in }
 
     @State private var isPinned = false
     @State private var isOriginalExpanded = false
     @State private var showsContext = false
     @State private var hasCopied = false
+    @State private var sourceHeight: CGFloat?
+    @State private var sourceDragStart: CGFloat = 0
 
     private var colors: PanelColors {
         _ = appearance.changeID
@@ -41,11 +50,12 @@ struct TranslationPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+                .background(PanelAreaMarker(area: .header))
             separator
-            if let source = screenshotSource, let editor = source.editor {
+            if let source = screenshotSource, let editor = sourceEditor {
                 screenshotEditor(source: source, editor: editor)
             } else {
-                if let notice = screenshotSource?.editError ?? recognitionNotice {
+                if let notice = sourceEditError ?? recognitionNotice {
                     Text(interfaceLanguage.text(notice))
                         .font(.caption)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -56,24 +66,46 @@ struct TranslationPanel: View {
                 PanelSectionsLayout(
                     maxHeight: heightBudget.contentMax,
                     sourceCap: heightBudget.sourceMax,
-                    spacing: 14
+                    spacing: 14,
+                    sourceHeight: sourceHeight,
+                    translationHeight: translationHeight,
+                    fillTranslation: isUserSized
                 ) {
                     sourceSection
-                    separator.panelSectionRole(.divider)
+                        .frame(maxHeight: sourceHeight == nil ? nil : .infinity, alignment: .top)
+                        .background(PanelAreaMarker(area: .source))
+                    SourceResizeDivider(
+                        color: NSColor(colors.border),
+                        label: interfaceLanguage.text("调整原文显示高度"),
+                        minimumSourceHeight: sourceMinimumHeight,
+                        onStart: { size, height, translation in
+                            sourceDragStart = height
+                            onSourceResizeStart(size, translation)
+                        },
+                        onDrag: { delta in
+                            sourceHeight = max(0, sourceDragStart + delta)
+                        }
+                    )
+                    .frame(height: 12)
+                    .panelSectionRole(.divider)
                     statusSection
-                    if !translated.isEmpty { translationSection }
+                    if !translated.isEmpty {
+                        translationSection.background(PanelAreaMarker(area: .translation))
+                    }
                     if termProgress.isExpanded { termsSection }
                     if showsContext, image != nil { contextSection }
                 }
+                .background(PanelAreaMarker(area: .content))
                 .padding(18)
-                .frame(maxHeight: heightBudget.bodyMax, alignment: .top)
+                .frame(maxHeight: isUserSized ? .infinity : heightBudget.bodyMax, alignment: .top)
+                .background(PanelAreaMarker(area: .body))
                 .clipped()
             }
             separator
             footer
-                .disabled(screenshotSource?.editor != nil)
+                .disabled(sourceEditor != nil)
         }
-        .fixedSize(horizontal: false, vertical: true)
+        .fixedSize(horizontal: false, vertical: !isUserSized)
         .foregroundStyle(colors.primaryText)
         .background(colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -122,7 +154,7 @@ struct TranslationPanel: View {
             isOriginalExpanded ? "source-open" : "source-closed",
             showsContext ? "context-open" : "context-closed",
             termProgress.isExpanded ? "terms-open" : "terms-closed",
-            screenshotSource?.editor == nil ? "source-view" : "source-edit"
+            sourceEditor == nil ? "source-view" : "source-edit"
         ].joined(separator: "\u{1e}")
     }
 
@@ -156,7 +188,7 @@ struct TranslationPanel: View {
             role: .source,
             colors: colors,
             width: narrow,
-            maxLines: isOriginalExpanded ? nil : Self.collapsedSourceLines,
+            maxLines: isOriginalExpanded || sourceHeight != nil ? nil : Self.collapsedSourceLines,
             tableSpans: tableSpans
         )
         return (visible, true)
@@ -164,7 +196,17 @@ struct TranslationPanel: View {
 
     private func sourceTextWidth(showsExpand: Bool) -> CGFloat {
         let column = showsExpand ? Self.sourceExpandSide : Self.sourceSpeechSide
-        return max(PopoverContent.translationTextWidth - Self.sourceControlGap - column, 1)
+        return max(translationTextWidth - Self.sourceControlGap - column, 1)
+    }
+
+    private var translationTextWidth: CGFloat { max(panelWidth - PopoverContent.bodyPadding, 1) }
+
+    private var sourceMinimumHeight: CGFloat {
+        let layout = sourceLayout
+        let controls = Self.sourceSpeechSide
+            + (layout.showsExpand ? Self.sourceExpandSide + Self.sourceControlGap : 0)
+            + (screenshotSource != nil ? Self.sourceExpandSide + Self.sourceControlGap : 0)
+        return max(controls, PanelSectionSizer.floor(role: .source, ideal: layout.textHeight))
     }
 
     private var sourceSection: some View {
@@ -177,6 +219,7 @@ struct TranslationPanel: View {
                         isOriginalExpanded ? "chevron.up" : "chevron.down",
                         help: isOriginalExpanded ? "收起原文" : "展开原文"
                     ) {
+                        sourceHeight = nil
                         isOriginalExpanded.toggle()
                     }
                 }
@@ -193,25 +236,15 @@ struct TranslationPanel: View {
         .panelSectionRole(.source)
     }
 
-    /// The collapsed overflow keeps a fixed viewport so the panel stays six lines tall,
-    /// while the full text scrolls inside it. Buttons stay outside that scroller.
-    @ViewBuilder
+    /// Keep the scroll view's identity while its viewport changes during a drag.
     private func sourceText(_ layout: (textHeight: CGFloat, showsExpand: Bool)) -> some View {
         let label = MarkdownDisplay.BlocksView(markdown: sourceBody, role: .source, colors: colors,
                                                width: sourceTextWidth(showsExpand: layout.showsExpand), tableSpans: tableSpans)
-
-        if layout.showsExpand && !isOriginalExpanded {
-            // Propose the six-line cap so HeightFitting scrolls, instead of
-            // letting the full text become the section height.
-            MaxHeightLayout(maxHeight: layout.textHeight) {
-                HeightFitting { label }
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .clipped()
-        } else {
+        return MaxHeightLayout(maxHeight: layout.textHeight) {
             HeightFitting { label }
-                .frame(maxHeight: layout.textHeight, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .clipped()
     }
 
     private var statusSection: some View {
@@ -220,7 +253,7 @@ struct TranslationPanel: View {
     }
 
     private var translationSection: some View {
-        let width = max(PopoverContent.translationTextWidth, 1)
+        let width = translationTextWidth
         let textHeight = MarkdownDisplay.height(
             translated,
             role: .translation,
@@ -233,7 +266,8 @@ struct TranslationPanel: View {
         return HeightFitting {
             MarkdownDisplay.BlocksView(markdown: translated, role: .translation, colors: colors, width: width, tableSpans: tableSpans)
         }
-        .frame(maxHeight: textHeight, alignment: .topLeading)
+        .frame(maxHeight: translationHeight == nil ? (isUserSized ? .infinity : textHeight) : nil, alignment: .topLeading)
+        .frame(height: translationHeight, alignment: .topLeading)
         .panelSectionRole(.translation)
     }
 
@@ -254,7 +288,7 @@ struct TranslationPanel: View {
     private func screenshotEditor(source: ScreenshotSourceState, editor: ScreenshotProofreadState) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(interfaceLanguage.text("编辑原文")).font(.headline)
-            ScreenshotInlineSourceEditor(state: editor, width: PopoverContent.fixedWidth - 48)
+            ScreenshotInlineSourceEditor(state: editor, width: panelWidth - 48)
             HStack {
                 Button(interfaceLanguage.text("取消")) { source.cancelEditing() }
                 Spacer()
@@ -263,17 +297,22 @@ struct TranslationPanel: View {
             }
         }
         .padding(12)
-        .frame(height: max(180, min(520, heightBudget.bodyMax)), alignment: .top)
+        .frame(height: isUserSized ? heightBudget.bodyMax : max(180, min(520, heightBudget.bodyMax)), alignment: .top)
     }
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(systemName: "character.bubble")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(colors.muted)
-            Text("TranslateHUD")
-                .font(.system(size: 17, weight: .semibold))
-            Spacer(minLength: 10)
+            HStack(spacing: 10) {
+                Image(systemName: "character.bubble")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(colors.muted)
+                Text("TranslateHUD")
+                    .font(.system(size: 17, weight: .semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 10)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(PanelAreaMarker(area: .windowDrag))
             Menu {
                 ForEach(TargetLanguage.allCases) { language in
                     Button {
@@ -300,7 +339,7 @@ struct TranslationPanel: View {
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
-            .disabled(screenshotSource?.editor != nil)
+            .disabled(sourceEditor != nil)
             .help("目标语言")
             .accessibilityLabel(interfaceLanguage.format("目标语言：%@", interfaceLanguage.text(languageName)))
             iconButton(isPinned ? "pin.fill" : "pin", help: isPinned ? "取消置顶" : "置顶窗口", active: isPinned) {
@@ -789,6 +828,9 @@ private struct PanelSectionsLayout: Layout {
     var maxHeight: CGFloat
     var sourceCap: CGFloat
     var spacing: CGFloat
+    var sourceHeight: CGFloat?
+    var translationHeight: CGFloat?
+    var fillTranslation: Bool
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? (PopoverContent.fixedWidth - PopoverContent.bodyPadding)
@@ -826,7 +868,10 @@ private struct PanelSectionsLayout: Layout {
             sections: sections,
             limit: limit,
             sourceCap: sourceCap,
-            spacing: spacing
+            spacing: spacing,
+            sourceHeight: sourceHeight,
+            translationHeight: translationHeight,
+            fillTranslation: fillTranslation
         )
     }
 }

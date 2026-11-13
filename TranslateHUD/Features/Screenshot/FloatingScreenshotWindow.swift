@@ -2,11 +2,11 @@ import AppKit
 import SwiftUI
 
 /// 截图翻译结果浮窗：截图完成后立即显示（loading 状态），翻译完成 / 超时 / 失败 切换状态。
-/// 可拖动（背景任意处）。未置顶时点窗口外关闭；已置顶点外不关闭。右上 X、ESC、取消按钮始终可关。
+/// 从顶部标题区域拖动。未置顶时点窗口外关闭；已置顶点外不关闭。右上 X、ESC、取消按钮始终可关。
 @MainActor
 final class FloatingScreenshotWindow {
     private enum CloseReason: String { case explicit, outside, escape }
-    private let window: DraggableWindow
+    private let window: TranslationPanelWindow
     private let source: ScreenshotSourceState
     private let speech = SpeechController()
     private var globalMonitor: Any?
@@ -25,9 +25,9 @@ final class FloatingScreenshotWindow {
 
         let budget = PanelSizeBudget(visibleHeight: PanelScreenPicker.visibleHeight(placement: nil))
         let initialSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
-        window = DraggableWindow(
+        window = TranslationPanelWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -37,7 +37,11 @@ final class FloatingScreenshotWindow {
         window.level = .normal
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.hidesOnDeactivate = false
-        window.isMovableByWindowBackground = true
+        window.title = "TranslateHUD"
+        window.identifier = NSUserInterfaceItemIdentifier("screenshot-translation-panel")
+        // The header handles moving; native background dragging can steal divider events.
+        window.isMovable = false
+        window.isMovableByWindowBackground = false
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
         window.maxSize = NSSize(width: PopoverContent.fixedWidth, height: budget.budget.panelMax)
@@ -59,6 +63,8 @@ final class FloatingScreenshotWindow {
             onLayoutChange: { layoutRef?() }
         )
         let host = NSHostingController(rootView: view)
+        // The fitter owns the window size, including manual changes.
+        host.sizingOptions = [.intrinsicContentSize]
         host.view.frame = NSRect(origin: .zero, size: initialSize)
         window.contentView = host.view
         hostingController = host
@@ -153,20 +159,6 @@ final class FloatingScreenshotWindow {
     }
 }
 
-private final class DraggableWindow: NSWindow {
-    var escapeHandler: (() -> Void)?
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-
-    override func keyDown(with event: NSEvent) {
-        if FloatingPanelDismissPolicy.shouldCloseOnKeyDown(keyCode: event.keyCode) {
-            escapeHandler?()
-            return
-        }
-        super.keyDown(with: event)
-    }
-}
-
 private struct ResultView: View {
     let image: NSImage
     @ObservedObject var source: ScreenshotSourceState
@@ -186,14 +178,21 @@ private struct ResultView: View {
             termProgress: source.termProgress,
             speech: speech,
             heightBudget: sizeBudget.budget,
+            panelWidth: sizeBudget.width,
+            isUserSized: sizeBudget.userSize != nil,
+            translationHeight: sizeBudget.translationHeight,
             recognitionNotice: recognitionNotice,
             screenshotSource: source,
+            sourceEditor: source.editor,
+            sourceEditError: source.editError,
             onClose: onClose,
             onRetry: onRetry,
             onPin: onPin,
-            onLayoutChange: onLayoutChange
+            onLayoutChange: onLayoutChange,
+            onSourceResizeStart: { sizeBudget.beginSourceResize($0, translationHeight: $1) }
         )
-        .frame(width: PopoverContent.fixedWidth, alignment: .topLeading)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: sizeBudget.width, height: sizeBudget.userSize?.height, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: sizeBudget.userSize == nil)
+        .frame(maxHeight: sizeBudget.userSize == nil ? nil : .infinity, alignment: .topLeading)
     }
 }

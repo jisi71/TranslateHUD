@@ -4,6 +4,9 @@ final class TranslationPanelWindow: NSWindow {
     var escapeHandler: (() -> Void)?
     private var sourceDivider: SourceResizeView?
     private var backgroundWasMovable: Bool?
+    private var windowWasMovable: Bool?
+
+    var isResizingSource: Bool { sourceDivider != nil }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -17,7 +20,9 @@ final class TranslationPanelWindow: NSWindow {
                 // Handle this before AppKit starts dragging the window background.
                 sourceDivider = divider
                 backgroundWasMovable = isMovableByWindowBackground
+                windowWasMovable = isMovable
                 isMovableByWindowBackground = false
+                isMovable = false
                 makeKeyAndOrderFront(nil)
                 divider.mouseDown(with: event)
                 return
@@ -53,6 +58,10 @@ final class TranslationPanelWindow: NSWindow {
         if let backgroundWasMovable {
             isMovableByWindowBackground = backgroundWasMovable
             self.backgroundWasMovable = nil
+        }
+        if let windowWasMovable {
+            isMovable = windowWasMovable
+            self.windowWasMovable = nil
         }
     }
 }

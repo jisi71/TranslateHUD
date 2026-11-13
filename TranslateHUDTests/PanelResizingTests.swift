@@ -5,6 +5,79 @@ import XCTest
 
 @MainActor
 final class PanelResizingTests: XCTestCase {
+    func testQueuedDragEventsKeepTheirScreenPositionsWhileWindowGrows() throws {
+        let window = TranslationPanelWindow(contentRect: NSRect(x: 100, y: 300, width: 500, height: 400),
+                                            styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.isMovableByWindowBackground = true
+        let view = NSView(frame: NSRect(origin: .zero, size: window.frame.size))
+        let divider = SourceResizeView(frame: NSRect(x: 18, y: 200, width: 464, height: 12))
+        view.addSubview(divider); window.contentView = view
+        let frame = window.frame
+        var offsets: [CGFloat] = []
+        divider.onDrag = { offsets.append($0) }
+        func event(_ type: NSEvent.EventType, x: CGFloat, offset: CGFloat) throws -> NSEvent {
+            let e = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: 206 - offset),
+                modifierFlags: [], timestamp: 1, windowNumber: window.windowNumber, context: nil,
+                eventNumber: 1, clickCount: 1, pressure: 1))
+            let cg = try XCTUnwrap(e.cgEvent)
+            return type == .leftMouseDragged ? try XCTUnwrap(NSEvent(cgEvent: cg)) : e
+        }
+        let down = try event(.leftMouseDown, x: 250, offset: 0)
+        let queued = try [25.0, 50, 75, 100].enumerated().map {
+            try event(.leftMouseDragged, x: $0.offset.isMultiple(of: 2) ? 180 : 320, offset: $0.element)
+        }
+        window.sendEvent(down)
+        XCTAssertFalse(window.isMovable)
+        XCTAssertTrue(window.isResizingSource)
+        for e in queued { window.sendEvent(e) }
+        XCTAssertEqual(offsets, [25, 50, 75, 100])
+        XCTAssertEqual(window.frame.height, frame.height + 100, accuracy: 1)
+        XCTAssertEqual(window.frame.maxY, frame.maxY, accuracy: 1)
+        XCTAssertEqual(window.frame.minX, frame.minX, accuracy: 1)
+        XCTAssertEqual(window.frame.width, frame.width, accuracy: 1)
+        window.sendEvent(try event(.leftMouseUp, x: 320, offset: 100))
+        XCTAssertTrue(window.isMovable)
+        XCTAssertFalse(window.isResizingSource)
+    }
+
+    func testHorizontalSourceDragCannotMoveOrAutomaticallyRepositionTheWindow() throws {
+        let window = TranslationPanelWindow(contentRect: NSRect(x: 100, y: 300, width: 500, height: 400),
+                                            styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.isMovableByWindowBackground = true
+        let view = NSView(frame: NSRect(origin: .zero, size: window.frame.size))
+        let divider = SourceResizeView(frame: NSRect(x: 18, y: 200, width: 464, height: 12))
+        view.addSubview(divider); window.contentView = view
+        let budget = PanelSizeBudget(visibleHeight: PanelScreenPicker.visibleHeight(placement: nil))
+        let fitter = ContentFittingWindow(window: window, sizeBudget: budget, placement: nil)
+        fitter.applyNow { _ in NSSize(width: 500, height: 400) }
+        let visible = try XCTUnwrap(window.screen).visibleFrame
+        window.setFrameOrigin(NSPoint(x: visible.maxX - 200, y: visible.maxY - 500))
+        let frame = window.frame
+        divider.onStart = { size, _, height in budget.beginSourceResize(size, translationHeight: height) }
+        var delta: CGFloat?
+        divider.onDrag = { delta = $0 }
+        func event(_ type: NSEvent.EventType, x: CGFloat) throws -> NSEvent {
+            let e = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: 206),
+                modifierFlags: [], timestamp: 1, windowNumber: window.windowNumber, context: nil,
+                eventNumber: 1, clickCount: 1, pressure: 1))
+            return type == .leftMouseDragged ? try XCTUnwrap(NSEvent(cgEvent: XCTUnwrap(e.cgEvent))) : e
+        }
+        window.sendEvent(try event(.leftMouseDown, x: 100))
+        for x in [200.0, 300, 160, 80] {
+            window.sendEvent(try event(.leftMouseDragged, x: x))
+            fitter.applyNow { _ in NSSize(width: 600, height: 600) }
+            XCTAssertEqual(window.frame, frame)
+            XCTAssertEqual(delta, 0)
+        }
+        window.sendEvent(try event(.leftMouseUp, x: 80))
+        XCTAssertTrue(window.isMovable)
+        XCTAssertTrue(window.isMovableByWindowBackground)
+    }
+
     func testContentUpdatesKeepManualFrameWithoutMeasuringAgain() throws {
         let window = NSWindow(contentRect: NSRect(x: 100, y: 150, width: 500, height: 300),
                               styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
@@ -142,12 +215,18 @@ final class PanelResizingTests: XCTestCase {
         let beforeSource = handle.sourceHeight
         let beforeHeaderTop = try XCTUnwrap(handle.screenFrame(of: .header)).maxY
         let beforeSourceTop = try XCTUnwrap(handle.screenFrame(of: .source)).maxY
+        let beforeHeaderX = try XCTUnwrap(handle.screenFrame(of: .header)).minX
+        let beforeSourceX = try XCTUnwrap(handle.screenFrame(of: .source)).minX
+        let beforeSourceWidth = try XCTUnwrap(handle.screenFrame(of: .source)).width
         let translationHeight = try XCTUnwrap(handle.screenFrame(of: .translation)).height
         XCTAssertGreaterThan(translationHeight, 72)
         let beforeRequests = requests
         func checkAnchors() throws {
             XCTAssertEqual(try XCTUnwrap(handle.screenFrame(of: .header)).maxY, beforeHeaderTop, accuracy: 1)
             XCTAssertEqual(try XCTUnwrap(handle.screenFrame(of: .source)).maxY, beforeSourceTop, accuracy: 1)
+            XCTAssertEqual(try XCTUnwrap(handle.screenFrame(of: .header)).minX, beforeHeaderX, accuracy: 1)
+            XCTAssertEqual(try XCTUnwrap(handle.screenFrame(of: .source)).minX, beforeSourceX, accuracy: 1)
+            XCTAssertEqual(try XCTUnwrap(handle.screenFrame(of: .source)).width, beforeSourceWidth, accuracy: 1)
             XCTAssertEqual(try XCTUnwrap(handle.screenFrame(of: .translation)).height, translationHeight, accuracy: 1)
             XCTAssertEqual(window.frame.maxY, beforeFrame.maxY, accuracy: 1)
             XCTAssertEqual(window.frame.minX, beforeFrame.minX, accuracy: 1)
@@ -157,14 +236,17 @@ final class PanelResizingTests: XCTestCase {
             let point = handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.maxY + 4), to: nil)
             let screenY = point.y + window.frame.minY
             func event(_ type: NSEvent.EventType, offset: CGFloat) -> NSEvent {
-                NSEvent.mouseEvent(with: type, location: NSPoint(x: point.x, y: screenY - offset - window.frame.minY),
+                let e = NSEvent.mouseEvent(with: type, location: NSPoint(x: point.x + offset * 0.8, y: screenY - offset - window.frame.minY),
                                    modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
                                    eventNumber: 1, clickCount: 1, pressure: 1)!
+                return type == .leftMouseDragged ? NSEvent(cgEvent: e.cgEvent!)! : e
             }
+            let distances = [0.25, 0.5, 0.75, 1.0].map { distance * $0 }
+            let queued = distances.map { event(.leftMouseDragged, offset: $0) }
             window.sendEvent(event(.leftMouseDown, offset: 0))
             XCTAssertFalse(window.isMovableByWindowBackground)
-            for fraction in [0.25, 0.5, 0.75, 1.0] {
-                window.sendEvent(event(.leftMouseDragged, offset: distance * fraction))
+            for e in queued {
+                window.sendEvent(e)
                 content.layoutSubtreeIfNeeded()
                 try checkAnchors()
                 try await Task.sleep(for: .milliseconds(25))

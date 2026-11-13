@@ -81,7 +81,7 @@ final class SourceResizeView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard let window else { return }
-        startY = event.locationInWindow.y + window.frame.minY
+        startY = screenY(for: event, in: window)
         startFrame = window.frame
         let blank = max(0, areaHeight(.body) - PopoverContent.bodyPadding - areaHeight(.content))
         spareHeight = blank
@@ -92,8 +92,8 @@ final class SourceResizeView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         guard let startY, let window else { return }
-        // Use screen coordinates because the bottom edge may grow during this drag.
-        let delta = startY - (event.locationInWindow.y + window.frame.minY)
+        // Queued events retain the old window coordinates after its bottom edge moves.
+        let delta = startY - screenY(for: event, in: window)
         let height = min(maxHeight, startFrame.height + max(0, delta - spareHeight))
         let frame = NSRect(x: startFrame.minX, y: startFrame.maxY - height,
                            width: startFrame.width, height: height)
@@ -107,4 +107,11 @@ final class SourceResizeView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) { startY = nil }
+
+    private func screenY(for event: NSEvent, in window: NSWindow) -> CGFloat {
+        if let location = event.cgEvent?.location {
+            return (NSScreen.screens.first?.frame.maxY ?? 0) - location.y
+        }
+        return window.convertPoint(toScreen: event.locationInWindow).y
+    }
 }

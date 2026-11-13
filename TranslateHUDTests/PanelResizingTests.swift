@@ -187,7 +187,11 @@ final class PanelResizingTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
         }
         let handle = try XCTUnwrap(divider)
+        let fitter = try XCTUnwrap(window.delegate as? ContentFittingWindow)
+        fitter.windowWillStartLiveResize(Notification(name: NSWindow.willStartLiveResizeNotification, object: window))
         window.setFrame(NSRect(origin: window.frame.origin, size: NSSize(width: 500, height: 500)), display: true)
+        fitter.windowDidEndLiveResize(Notification(name: NSWindow.didEndLiveResizeNotification, object: window))
+        try await Task.sleep(for: .milliseconds(50))
         let frame = window.frame
         var expected = handle.sourceHeight
         for _ in 0..<2 {
@@ -210,6 +214,71 @@ final class PanelResizingTests: XCTestCase {
             XCTAssertEqual(handle.sourceHeight, expected, accuracy: 2)
             XCTAssertEqual(window.frame, frame)
         }
+    }
+
+    func testCompactErrorCanGrowSourceByDraggingDivider() async throws {
+        try await checkCompactDivider(fails: true)
+    }
+
+    func testCompactTranslationCanGrowSourceByDraggingDivider() async throws {
+        try await checkCompactDivider(fails: false)
+    }
+
+    private func checkCompactDivider(fails: Bool) async throws {
+        let oldWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
+        let translator = ResizeCountingTranslator(fails: fails)
+        let progress = TranslationProgress()
+        progress.start(translator: translator, originals: ["缩回原来的高度通过测试"], target: .english)
+        let panel = FloatingTranslationPopover(original: "缩回原来的高度通过测试", progress: progress,
+            termProgress: TermExplanationProgress(explainer: ResizeNoTerms(), texts: []),
+            rectTopLeft: nil, fallbackPoint: NSPoint(x: 500, y: 800))
+        panel.show()
+        defer { panel.close() }
+        let window = try XCTUnwrap(NSApp.windows.first {
+            !oldWindows.contains(ObjectIdentifier($0)) && $0.identifier?.rawValue == "selection-translation-panel"
+        })
+        let content = try XCTUnwrap(window.contentView)
+        func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+        var divider: SourceResizeView?
+        for _ in 0..<100 {
+            divider = descendants(content).compactMap { $0 as? SourceResizeView }.first
+            let ready: Bool
+            switch progress.state { case .success, .failed: ready = true; default: ready = false }
+            if let divider, divider.sourceHeight > 0, ready { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let handle = try XCTUnwrap(divider)
+        try await Task.sleep(for: .milliseconds(50))
+        let visible = try XCTUnwrap(window.screen).visibleFrame
+        window.setFrameOrigin(NSPoint(x: visible.minX + 100, y: visible.maxY - window.frame.height - 40))
+        let before = window.frame
+        let beforeSource = handle.sourceHeight
+        let calls = await translator.requestCount()
+        XCTAssertLessThan(before.height, 360)
+        let location = handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.midY), to: nil)
+        let screenY = location.y + window.frame.minY
+        func event(_ type: NSEvent.EventType, offset: CGFloat) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: NSPoint(x: location.x, y: screenY - offset - window.frame.minY),
+                               modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                               eventNumber: 1, clickCount: 1, pressure: 1)!
+        }
+        window.sendEvent(event(.leftMouseDown, offset: 0))
+        for step in [25.0, 50, 75, 100] {
+            window.sendEvent(event(.leftMouseDragged, offset: step))
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        window.sendEvent(event(.leftMouseUp, offset: 100))
+        for _ in 0..<100 {
+            if handle.sourceHeight > beforeSource + 90 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(handle.sourceHeight, beforeSource + 100, accuracy: 2)
+        XCTAssertGreaterThan(window.frame.height, before.height + 80)
+        XCTAssertEqual(window.frame.maxY, before.maxY, accuracy: 1)
+        XCTAssertEqual(window.frame.minX, before.minX, accuracy: 1)
+        XCTAssertEqual(window.frame.width, before.width)
+        let afterCalls = await translator.requestCount()
+        XCTAssertEqual(afterCalls, calls)
     }
 
     func testManualHeightCanUseMoreRoomThanTheAutomaticCap() {
@@ -271,4 +340,17 @@ private struct ResizeNoTerms: TermExplainer {
 private struct ResizeShortTranslator: Translator {
     func translate(_ texts: [String], to target: TargetLanguage,
                    context: SelectionFetcher.TextContext?) async throws -> [String] { texts.map { _ in "Test passed." } }
+}
+
+private actor ResizeCountingTranslator: Translator {
+    let fails: Bool
+    private var calls = 0
+    init(fails: Bool) { self.fails = fails }
+    func requestCount() -> Int { calls }
+    func translate(_ texts: [String], to target: TargetLanguage,
+                   context: SelectionFetcher.TextContext?) async throws -> [String] {
+        calls += 1
+        if fails { throw URLError(.networkConnectionLost) }
+        return texts.map { _ in "The test passed." }
+    }
 }

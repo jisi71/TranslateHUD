@@ -69,7 +69,7 @@ struct TranslationPanel: View {
                 ) {
                     sourceSection
                         .frame(maxHeight: sourceHeight == nil ? nil : .infinity, alignment: .top)
-                        .background(SourceAreaMarker())
+                        .background(PanelAreaMarker(area: .source))
                     SourceResizeDivider(
                         color: NSColor(colors.border),
                         label: interfaceLanguage.text("调整原文显示高度"),
@@ -78,18 +78,22 @@ struct TranslationPanel: View {
                             onSourceResizeStart(size)
                         },
                         onDrag: { delta in
-                            sourceHeight = min(max(0, sourceDragStart + delta), heightBudget.contentMax)
+                            sourceHeight = max(0, sourceDragStart + delta)
                         }
                     )
                     .frame(height: 12)
                     .panelSectionRole(.divider)
                     statusSection
-                    if !translated.isEmpty { translationSection }
+                    if !translated.isEmpty {
+                        translationSection.background(PanelAreaMarker(area: .translation))
+                    }
                     if termProgress.isExpanded { termsSection }
                     if showsContext, image != nil { contextSection }
                 }
+                .background(PanelAreaMarker(area: .content))
                 .padding(18)
                 .frame(maxHeight: isUserSized ? .infinity : heightBudget.bodyMax, alignment: .top)
+                .background(PanelAreaMarker(area: .body))
                 .clipped()
             }
             separator

@@ -17,9 +17,7 @@ enum HTMLToMarkdownConverter {
         var parser = Parser(input: cleaned)
         let nodes = parser.parseNodes()
         var blocks: [String] = []
-        for node in nodes {
-            appendBlocks(from: node, into: &blocks)
-        }
+        appendBlocks(from: nodes, into: &blocks)
         let markdown = finalize(blocks)
         let result = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
         return result.isEmpty ? nil : result
@@ -68,6 +66,26 @@ enum HTMLToMarkdownConverter {
 
     // MARK: - Blocks
 
+    private static func appendBlocks(from nodes: [Node], into blocks: inout [String]) {
+        var inline: [Node] = []
+        func flushInline() {
+            appendParagraph(inlineMarkdown(inline), into: &blocks)
+            inline.removeAll(keepingCapacity: true)
+        }
+        for node in nodes {
+            if case .element(let el) = node,
+               isBlockContainerName(el.name)
+                || ["br", "html", "body", "head", "fragment"].contains(el.name)
+                || hasDirectBlockChild(el.children) {
+                flushInline()
+                appendBlocks(from: node, into: &blocks)
+            } else {
+                inline.append(node)
+            }
+        }
+        flushInline()
+    }
+
     private static func appendBlocks(from node: Node, into blocks: inout [String]) {
         switch node {
         case .text(let raw):
@@ -94,9 +112,7 @@ enum HTMLToMarkdownConverter {
                 // 仅当直接子节点含块级元素时下钻；飞书 ace-line 内 strong/em/code 等行内标签
                 // 必须整段走 inlineMarkdown，否则会把「普通字，**粗体**」拆成多块多行。
                 if hasDirectBlockChild(el.children) {
-                    for child in el.children {
-                        appendBlocks(from: child, into: &blocks)
-                    }
+                    appendBlocks(from: el.children, into: &blocks)
                 } else if isBlankSpacerElement(el) {
                     // 飞书 `<div class=ace-line><br></div>`：故意空行，交给 finalize 保留一段空白。
                     blocks.append("")
@@ -129,15 +145,11 @@ enum HTMLToMarkdownConverter {
                 appendTable(el, into: &blocks)
             case "thead", "tbody", "tfoot", "tr", "td", "th", "colgroup", "col":
                 // 表格外偶然落到这些标签时下钻；正常路径由 appendTable 消化。
-                for child in el.children {
-                    appendBlocks(from: child, into: &blocks)
-                }
+                appendBlocks(from: el.children, into: &blocks)
             case "html", "body", "head", "fragment", "span", "a", "font", "label":
                 // span/a 在块级上下文：仅直接块级子节点才下钻；否则整段行内（保留 a/span 语义）
                 if hasDirectBlockChild(el.children) {
-                    for child in el.children {
-                        appendBlocks(from: child, into: &blocks)
-                    }
+                    appendBlocks(from: el.children, into: &blocks)
                 } else {
                     let body = inlineMarkdown([.element(el)]).trimmingCharacters(in: .whitespacesAndNewlines)
                     if !body.isEmpty { appendParagraph(body, into: &blocks) }
@@ -145,9 +157,7 @@ enum HTMLToMarkdownConverter {
             default:
                 // 未识别标签：有直接块级子节点才下钻，避免把 b/strong 等拆成独立段落
                 if hasDirectBlockChild(el.children) {
-                    for child in el.children {
-                        appendBlocks(from: child, into: &blocks)
-                    }
+                    appendBlocks(from: el.children, into: &blocks)
                 } else if isInlineEmphasisName(el.name) || el.name == "code" {
                     let body = inlineMarkdown([.element(el)]).trimmingCharacters(in: .whitespacesAndNewlines)
                     if !body.isEmpty { appendParagraph(body, into: &blocks) }

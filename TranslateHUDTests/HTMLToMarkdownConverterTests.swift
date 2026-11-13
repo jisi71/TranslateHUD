@@ -1,7 +1,51 @@
+import AppKit
 import XCTest
 @testable import TranslateHUD
 
 final class HTMLToMarkdownConverterTests: XCTestCase {
+    func testPartialInlineFragmentsStayInOneParagraph() throws {
+        for html in [
+            "并安装启动 <strong>0.4.6</strong>",
+            "<span>并安装启动 </span><strong>0.4.6</strong>",
+            "<span>并安装启动 </span><b>0.4.6</b>",
+            "<meta charset=\"utf-8\"><!--StartFragment--><span>并安装启动 </span><strong>0.4.6</strong><!--EndFragment-->"
+        ] {
+            let markdown = try XCTUnwrap(HTMLToMarkdownConverter.convert(html))
+            XCTAssertEqual(markdown, "并安装启动 **0.4.6**", html)
+            XCTAssertEqual(MarkdownDisplay.plainText(from: markdown), "并安装启动 0.4.6")
+        }
+    }
+
+    func testInlineFragmentsKeepOtherStylesAndSpaces() {
+        let html = "Read <em>this</em> <code>message</code> <a href=\"https://example.com\">here</a>."
+        XCTAssertEqual(HTMLToMarkdownConverter.convert(html), "Read *this* `message` [here](https://example.com).")
+    }
+
+    func testInlineRunsOnEitherSideOfBlockRemainSeparateParagraphs() {
+        let html = "<section>Before <strong>bold</strong><p>Next <em>paragraph</em></p>After <strong>bold</strong></section>"
+        XCTAssertEqual(HTMLToMarkdownConverter.convert(html), "Before **bold**\nNext *paragraph*\nAfter **bold**")
+    }
+
+    func testInlineGroupingKeepsExplicitBreaks() throws {
+        let markdown = try XCTUnwrap(HTMLToMarkdownConverter.convert("<span>Before</span><br><strong>After</strong>"))
+        XCTAssertTrue(markdown.contains("\n"))
+        XCTAssertTrue(markdown.contains("**After**"))
+    }
+
+    @MainActor
+    func testPrivateClipboardFragmentDisplaysInlineAndKeepsBold() throws {
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.declareTypes([.html, .string], owner: nil)
+        pasteboard.setString("<span>并安装启动 </span><strong>0.4.6</strong>", forType: .html)
+        pasteboard.setString("并安装启动 0.4.6", forType: .string)
+        let markdown = try XCTUnwrap(PasteboardRichTextReader.preferredReadableText(from: pasteboard))
+        XCTAssertEqual(markdown, "并安装启动 **0.4.6**")
+        let display = MarkdownDisplay.styled(markdown, role: .source, colors: .dark)
+        XCTAssertEqual(String(display.characters), "并安装启动 0.4.6")
+        XCTAssertTrue(display.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+    }
+
     func testFeishuClipboardSampleKeepsHeadingLevels() throws {
         let html = try Self.loadFixture("feishu-clip-sample.html")
         let markdown = try XCTUnwrap(HTMLToMarkdownConverter.convert(html))

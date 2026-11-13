@@ -34,6 +34,7 @@ enum PanelPointer {
 struct SourceResizeDivider: NSViewRepresentable {
     let color: NSColor
     let label: String
+    let minimumSourceHeight: CGFloat
     let onStart: @MainActor (NSSize, CGFloat, CGFloat) -> Void
     let onDrag: @MainActor (CGFloat) -> Void
 
@@ -41,6 +42,7 @@ struct SourceResizeDivider: NSViewRepresentable {
 
     func updateNSView(_ view: SourceResizeView, context: Context) {
         view.color = color
+        view.minimumSourceHeight = minimumSourceHeight
         view.onStart = onStart
         view.onDrag = onDrag
         view.setAccessibilityElement(true)
@@ -53,11 +55,12 @@ struct SourceResizeDivider: NSViewRepresentable {
 
 final class SourceResizeView: NSView {
     var color = NSColor.separatorColor
+    var minimumSourceHeight: CGFloat = 0
     var onStart: (@MainActor (NSSize, CGFloat, CGFloat) -> Void)?
     var onDrag: (@MainActor (CGFloat) -> Void)?
     private var startY: CGFloat?
     private var startFrame = NSRect.zero
-    private var spareHeight: CGFloat = 0
+    private var minHeight: CGFloat = 0
     private var maxHeight: CGFloat = 0
 
     static func at(_ point: NSPoint, in view: NSView) -> SourceResizeView? {
@@ -95,8 +98,9 @@ final class SourceResizeView: NSView {
         guard let window else { return }
         startY = PanelPointer.screenPoint(for: event, in: window).y
         startFrame = window.frame
-        let blank = max(0, areaHeight(.body) - PopoverContent.bodyPadding - areaHeight(.content))
-        spareHeight = blank
+        let sourceMinimum = min(sourceHeight, max(0, minimumSourceHeight))
+        minHeight = max(min(window.minSize.height, startFrame.height),
+                        startFrame.height - sourceHeight + sourceMinimum)
         let bottom = window.screen?.visibleFrame.minY ?? startFrame.minY
         maxHeight = max(startFrame.height, startFrame.maxY - bottom - 8)
         onStart?(window.frame.size, sourceHeight, areaHeight(.translation))
@@ -105,8 +109,9 @@ final class SourceResizeView: NSView {
     override func mouseDragged(with event: NSEvent) {
         guard let startY, let window else { return }
         // Queued events retain the old window coordinates after its bottom edge moves.
-        let delta = startY - PanelPointer.screenPoint(for: event, in: window).y
-        let height = min(maxHeight, startFrame.height + max(0, delta - spareHeight))
+        let requested = startY - PanelPointer.screenPoint(for: event, in: window).y
+        let height = min(maxHeight, max(minHeight, startFrame.height + requested))
+        let delta = height - startFrame.height
         let frame = NSRect(x: startFrame.minX, y: startFrame.maxY - height,
                            width: startFrame.width, height: height)
         var transaction = Transaction(animation: nil)
@@ -119,5 +124,4 @@ final class SourceResizeView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) { startY = nil }
-
 }

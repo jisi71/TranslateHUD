@@ -68,7 +68,8 @@ struct TranslationPanel: View {
                     sourceCap: heightBudget.sourceMax,
                     spacing: 14,
                     sourceHeight: sourceHeight,
-                    translationHeight: translationHeight
+                    translationHeight: translationHeight,
+                    fillTranslation: isUserSized
                 ) {
                     sourceSection
                         .frame(maxHeight: sourceHeight == nil ? nil : .infinity, alignment: .top)
@@ -76,6 +77,7 @@ struct TranslationPanel: View {
                     SourceResizeDivider(
                         color: NSColor(colors.border),
                         label: interfaceLanguage.text("调整原文显示高度"),
+                        minimumSourceHeight: sourceMinimumHeight,
                         onStart: { size, height, translation in
                             sourceDragStart = height
                             onSourceResizeStart(size, translation)
@@ -199,6 +201,14 @@ struct TranslationPanel: View {
 
     private var translationTextWidth: CGFloat { max(panelWidth - PopoverContent.bodyPadding, 1) }
 
+    private var sourceMinimumHeight: CGFloat {
+        let layout = sourceLayout
+        let controls = Self.sourceSpeechSide
+            + (layout.showsExpand ? Self.sourceExpandSide + Self.sourceControlGap : 0)
+            + (screenshotSource != nil ? Self.sourceExpandSide + Self.sourceControlGap : 0)
+        return max(controls, PanelSectionSizer.floor(role: .source, ideal: layout.textHeight))
+    }
+
     private var sourceSection: some View {
         let layout = sourceLayout
         return HStack(alignment: .top, spacing: Self.sourceControlGap) {
@@ -256,7 +266,7 @@ struct TranslationPanel: View {
         return HeightFitting {
             MarkdownDisplay.BlocksView(markdown: translated, role: .translation, colors: colors, width: width, tableSpans: tableSpans)
         }
-        .frame(maxHeight: translationHeight == nil ? textHeight : nil, alignment: .topLeading)
+        .frame(maxHeight: translationHeight == nil ? (isUserSized ? .infinity : textHeight) : nil, alignment: .topLeading)
         .frame(height: translationHeight, alignment: .topLeading)
         .panelSectionRole(.translation)
     }
@@ -820,6 +830,7 @@ private struct PanelSectionsLayout: Layout {
     var spacing: CGFloat
     var sourceHeight: CGFloat?
     var translationHeight: CGFloat?
+    var fillTranslation: Bool
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? (PopoverContent.fixedWidth - PopoverContent.bodyPadding)
@@ -859,7 +870,8 @@ private struct PanelSectionsLayout: Layout {
             sourceCap: sourceCap,
             spacing: spacing,
             sourceHeight: sourceHeight,
-            translationHeight: translationHeight
+            translationHeight: translationHeight,
+            fillTranslation: fillTranslation
         )
     }
 }

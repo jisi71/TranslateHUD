@@ -60,7 +60,8 @@ enum PanelSectionSizer {
         sourceCap: CGFloat,
         spacing: CGFloat,
         sourceHeight: CGFloat? = nil,
-        translationHeight: CGFloat? = nil
+        translationHeight: CGFloat? = nil,
+        fillTranslation: Bool = false
     ) -> [CGFloat] {
         guard !sections.isEmpty else { return [] }
         let usableLimit = (limit.isFinite && limit >= 0) ? limit : .greatestFiniteMagnitude
@@ -96,6 +97,10 @@ enum PanelSectionSizer {
         }
         correctOverflow(&heights, sections: sections, limit: usableLimit, spacing: spacing,
                         keepTranslation: fixedTranslation != nil)
+        if fillTranslation, fixedTranslation == nil, limit.isFinite, limit >= 0,
+           let translation = sections.firstIndex(where: { $0.role == .translation }) {
+            heights[translation] += max(0, usableLimit - stackedHeight(heights, spacing: spacing))
+        }
         return heights
     }
 

@@ -228,6 +228,21 @@ final class PanelResizingTests: XCTestCase {
         XCTAssertLessThanOrEqual(PanelSectionSizer.stackedHeight(heights, spacing: 14), 400)
     }
 
+    func testManualWindowGivesUnusedSpaceToTheWholeTranslationViewport() {
+        let sections: [PanelSectionMeasurement] = [
+            .init(role: .source, idealHeight: 24), .init(role: .divider, idealHeight: 12),
+            .init(role: .status, idealHeight: 34), .init(role: .translation, idealHeight: 28)
+        ]
+        let before = PanelSectionSizer.resolve(sections: sections, limit: 400, sourceCap: 160,
+                                               spacing: 14, fillTranslation: true)
+        XCTAssertEqual(before, [24, 12, 34, 288])
+        let after = PanelSectionSizer.resolve(sections: sections, limit: 500, sourceCap: 160,
+                                              spacing: 14, sourceHeight: 124, translationHeight: before[3],
+                                              fillTranslation: true)
+        XCTAssertEqual(after, [124, 12, 34, 288])
+        XCTAssertEqual(PanelSectionSizer.stackedHeight(after, spacing: 14), 500)
+    }
+
     func testDraggingSourceKeepsTranslationAndUpperPanelStable() async throws {
         let oldWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
         var requests = 0
@@ -321,6 +336,14 @@ final class PanelResizingTests: XCTestCase {
         XCTAssertEqual(handle.sourceHeight, beforeSource, accuracy: 2)
         try checkAnchors()
         XCTAssertEqual(requests, beforeRequests)
+        try await drag(10_000)
+        XCTAssertEqual(window.frame.minY, visible.minY + 8, accuracy: 1)
+        XCTAssertEqual(handle.sourceHeight, beforeSource + window.frame.height - beforeFrame.height, accuracy: 2)
+        try await drag(-10_000)
+        XCTAssertEqual(handle.sourceHeight, handle.minimumSourceHeight, accuracy: 2)
+        XCTAssertEqual(window.frame.height, beforeFrame.height + handle.sourceHeight - beforeSource, accuracy: 2)
+        try checkAnchors()
+        XCTAssertEqual(requests, beforeRequests)
     }
 
     func testFixedTranslationViewportCannotBeBorrowedBySource() {
@@ -340,7 +363,7 @@ final class PanelResizingTests: XCTestCase {
         XCTAssertNil(budget.translationHeight)
     }
 
-    func testShortSourceDividerKeepsItsHeightAcrossTwoWindowDrags() async throws {
+    func testShortSourceMovesWholeTranslationAreaWithTheDivider() async throws {
         let oldWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
         let progress = TranslationProgress()
         progress.start(translator: ResizeShortTranslator(), originals: ["完成测试"], target: .english)
@@ -368,26 +391,42 @@ final class PanelResizingTests: XCTestCase {
         fitter.windowDidEndLiveResize(Notification(name: NSWindow.didEndLiveResizeNotification, object: window))
         try await Task.sleep(for: .milliseconds(50))
         let frame = window.frame
-        var expected = handle.sourceHeight
-        for _ in 0..<2 {
+        let sourceBefore = handle.sourceHeight
+        let translation = try XCTUnwrap(handle.screenFrame(of: .translation))
+        let body = try XCTUnwrap(handle.screenFrame(of: .body))
+        let sourceTop = try XCTUnwrap(handle.screenFrame(of: .source)).maxY
+        XCTAssertEqual(translation.minY, body.minY + 18, accuracy: 1,
+                       "The translation viewport must include the blank space down to the footer")
+        var total: CGFloat = 0
+        for distance: CGFloat in [50, 50, -100] {
             let point = handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.midY), to: nil)
-            func event(_ type: NSEvent.EventType, offset: CGFloat) -> NSEvent {
-                NSEvent.mouseEvent(with: type, location: NSPoint(x: point.x, y: point.y - offset), modifierFlags: [],
-                                   timestamp: 0, windowNumber: window.windowNumber, context: nil,
-                                   eventNumber: 1, clickCount: 1, pressure: 1)!
+            let y = point.y + window.frame.minY
+            func event(_ type: NSEvent.EventType, delta: CGFloat) -> NSEvent {
+                let e = NSEvent.mouseEvent(with: type, location: NSPoint(x: point.x + delta * 0.5, y: y - delta - window.frame.minY),
+                    modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                    eventNumber: 1, clickCount: 1, pressure: 1)!
+                return type == .leftMouseDragged ? NSEvent(cgEvent: e.cgEvent!)! : e
             }
-            expected += 50
-            window.sendEvent(event(.leftMouseDown, offset: 0))
+            let drag = event(.leftMouseDragged, delta: distance)
+            window.sendEvent(event(.leftMouseDown, delta: 0))
+            window.sendEvent(drag)
+            window.sendEvent(event(.leftMouseUp, delta: distance))
+            total += distance
+            try await Task.sleep(for: .milliseconds(60))
+            let current = try XCTUnwrap(handle.screenFrame(of: .translation))
+            let currentBody = try XCTUnwrap(handle.screenFrame(of: .body))
+            XCTAssertEqual(handle.sourceHeight, sourceBefore + total, accuracy: 2)
+            XCTAssertEqual(current.height, translation.height, accuracy: 1)
+            XCTAssertEqual(current.width, translation.width, accuracy: 1)
+            XCTAssertEqual(current.maxY, translation.maxY - total, accuracy: 2)
+            XCTAssertEqual(currentBody.minY, body.minY - total, accuracy: 2)
+            XCTAssertEqual(current.minY, currentBody.minY + 18, accuracy: 1)
+            XCTAssertEqual(try XCTUnwrap(handle.screenFrame(of: .source)).maxY, sourceTop, accuracy: 1)
+            XCTAssertEqual(window.frame.height, frame.height + total, accuracy: 2)
+            XCTAssertEqual(window.frame.maxY, frame.maxY, accuracy: 1)
+            XCTAssertEqual(window.frame.minX, frame.minX, accuracy: 1)
+            XCTAssertEqual(window.frame.width, frame.width)
             XCTAssertFalse(window.isMovableByWindowBackground)
-            window.sendEvent(event(.leftMouseDragged, offset: 50))
-            window.sendEvent(event(.leftMouseUp, offset: 50))
-            XCTAssertFalse(window.isMovableByWindowBackground)
-            for _ in 0..<100 {
-                if abs(handle.sourceHeight - expected) < 2 { break }
-                try await Task.sleep(for: .milliseconds(20))
-            }
-            XCTAssertEqual(handle.sourceHeight, expected, accuracy: 2)
-            XCTAssertEqual(window.frame, frame)
         }
     }
 

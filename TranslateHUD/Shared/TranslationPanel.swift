@@ -15,6 +15,7 @@ struct TranslationPanel: View {
     var heightBudget: PanelHeightBudget = PopoverContent.heightBudget(visibleHeight: 2_000)
     var panelWidth: CGFloat = PopoverContent.fixedWidth
     var isUserSized = false
+    var translationHeight: CGFloat?
     var recognitionNotice: String? = nil
     var screenshotSource: ScreenshotSourceState? = nil
     // Pass editing values so SwiftUI sees changes within the shared source object.
@@ -24,7 +25,7 @@ struct TranslationPanel: View {
     var onRetry: @MainActor () -> Void
     var onPin: @MainActor (Bool) -> Void
     var onLayoutChange: @MainActor () -> Void = {}
-    var onSourceResizeStart: @MainActor (NSSize) -> Void = { _ in }
+    var onSourceResizeStart: @MainActor (NSSize, CGFloat) -> Void = { _, _ in }
 
     @State private var isPinned = false
     @State private var isOriginalExpanded = false
@@ -49,6 +50,7 @@ struct TranslationPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+                .background(PanelAreaMarker(area: .header))
             separator
             if let source = screenshotSource, let editor = sourceEditor {
                 screenshotEditor(source: source, editor: editor)
@@ -65,7 +67,8 @@ struct TranslationPanel: View {
                     maxHeight: heightBudget.contentMax,
                     sourceCap: heightBudget.sourceMax,
                     spacing: 14,
-                    sourceHeight: sourceHeight
+                    sourceHeight: sourceHeight,
+                    translationHeight: translationHeight
                 ) {
                     sourceSection
                         .frame(maxHeight: sourceHeight == nil ? nil : .infinity, alignment: .top)
@@ -73,9 +76,9 @@ struct TranslationPanel: View {
                     SourceResizeDivider(
                         color: NSColor(colors.border),
                         label: interfaceLanguage.text("调整原文显示高度"),
-                        onStart: { size, height in
+                        onStart: { size, height, translation in
                             sourceDragStart = height
-                            onSourceResizeStart(size)
+                            onSourceResizeStart(size, translation)
                         },
                         onDrag: { delta in
                             sourceHeight = max(0, sourceDragStart + delta)
@@ -223,25 +226,15 @@ struct TranslationPanel: View {
         .panelSectionRole(.source)
     }
 
-    /// The collapsed overflow keeps a fixed viewport so the panel stays six lines tall,
-    /// while the full text scrolls inside it. Buttons stay outside that scroller.
-    @ViewBuilder
+    /// Keep the scroll view's identity while its viewport changes during a drag.
     private func sourceText(_ layout: (textHeight: CGFloat, showsExpand: Bool)) -> some View {
         let label = MarkdownDisplay.BlocksView(markdown: sourceBody, role: .source, colors: colors,
                                                width: sourceTextWidth(showsExpand: layout.showsExpand), tableSpans: tableSpans)
-
-        if layout.showsExpand && !isOriginalExpanded && sourceHeight == nil {
-            // Propose the six-line cap so HeightFitting scrolls, instead of
-            // letting the full text become the section height.
-            MaxHeightLayout(maxHeight: layout.textHeight) {
-                HeightFitting { label }
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .clipped()
-        } else {
+        return MaxHeightLayout(maxHeight: layout.textHeight) {
             HeightFitting { label }
-                .frame(maxHeight: layout.textHeight, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .clipped()
     }
 
     private var statusSection: some View {
@@ -263,7 +256,8 @@ struct TranslationPanel: View {
         return HeightFitting {
             MarkdownDisplay.BlocksView(markdown: translated, role: .translation, colors: colors, width: width, tableSpans: tableSpans)
         }
-        .frame(maxHeight: textHeight, alignment: .topLeading)
+        .frame(maxHeight: translationHeight == nil ? textHeight : nil, alignment: .topLeading)
+        .frame(height: translationHeight, alignment: .topLeading)
         .panelSectionRole(.translation)
     }
 
@@ -821,6 +815,7 @@ private struct PanelSectionsLayout: Layout {
     var sourceCap: CGFloat
     var spacing: CGFloat
     var sourceHeight: CGFloat?
+    var translationHeight: CGFloat?
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? (PopoverContent.fixedWidth - PopoverContent.bodyPadding)
@@ -859,7 +854,8 @@ private struct PanelSectionsLayout: Layout {
             limit: limit,
             sourceCap: sourceCap,
             spacing: spacing,
-            sourceHeight: sourceHeight
+            sourceHeight: sourceHeight,
+            translationHeight: translationHeight
         )
     }
 }

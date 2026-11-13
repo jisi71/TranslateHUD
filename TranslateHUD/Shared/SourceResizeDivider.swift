@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-enum PanelArea { case source, body, content, translation }
+enum PanelArea { case header, source, body, content, translation }
 
 struct PanelAreaMarker: NSViewRepresentable {
     let area: PanelArea
@@ -19,7 +19,7 @@ final class PanelAreaView: NSView {
 struct SourceResizeDivider: NSViewRepresentable {
     let color: NSColor
     let label: String
-    let onStart: @MainActor (NSSize, CGFloat) -> Void
+    let onStart: @MainActor (NSSize, CGFloat, CGFloat) -> Void
     let onDrag: @MainActor (CGFloat) -> Void
 
     func makeNSView(context: Context) -> SourceResizeView { SourceResizeView() }
@@ -38,7 +38,7 @@ struct SourceResizeDivider: NSViewRepresentable {
 
 final class SourceResizeView: NSView {
     var color = NSColor.separatorColor
-    var onStart: (@MainActor (NSSize, CGFloat) -> Void)?
+    var onStart: (@MainActor (NSSize, CGFloat, CGFloat) -> Void)?
     var onDrag: (@MainActor (CGFloat) -> Void)?
     private var startY: CGFloat?
     private var startFrame = NSRect.zero
@@ -56,13 +56,16 @@ final class SourceResizeView: NSView {
 
     var sourceHeight: CGFloat { areaHeight(.source) }
 
-    private func areaHeight(_ area: PanelArea) -> CGFloat {
+    func screenFrame(of area: PanelArea) -> NSRect? {
         func find(_ view: NSView) -> PanelAreaView? {
             if let marker = view as? PanelAreaView, marker.area == area { return marker }
             return view.subviews.lazy.compactMap { find($0) }.first
         }
-        return window?.contentView.flatMap(find)?.bounds.height ?? 0
+        guard let window, let marker = window.contentView.flatMap(find) else { return nil }
+        return window.convertToScreen(marker.convert(marker.bounds, to: nil))
     }
+
+    private func areaHeight(_ area: PanelArea) -> CGFloat { screenFrame(of: area)?.height ?? 0 }
 
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -81,11 +84,10 @@ final class SourceResizeView: NSView {
         startY = event.locationInWindow.y + window.frame.minY
         startFrame = window.frame
         let blank = max(0, areaHeight(.body) - PopoverContent.bodyPadding - areaHeight(.content))
-        let translationSlack = max(0, areaHeight(.translation) - 72)
-        spareHeight = blank + translationSlack
+        spareHeight = blank
         let bottom = window.screen?.visibleFrame.minY ?? startFrame.minY
         maxHeight = max(startFrame.height, startFrame.maxY - bottom - 8)
-        onStart?(window.frame.size, sourceHeight)
+        onStart?(window.frame.size, sourceHeight, areaHeight(.translation))
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -95,8 +97,13 @@ final class SourceResizeView: NSView {
         let height = min(maxHeight, startFrame.height + max(0, delta - spareHeight))
         let frame = NSRect(x: startFrame.minX, y: startFrame.maxY - height,
                            width: startFrame.width, height: height)
-        if window.frame != frame { window.setFrame(frame, display: true) }
-        onDrag?(delta)
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            onDrag?(delta)
+            // Coalesce the SwiftUI state and native frame change before drawing.
+            if window.frame != frame { window.setFrame(frame, display: false, animate: false) }
+        }
     }
 
     override func mouseUp(with event: NSEvent) { startY = nil }

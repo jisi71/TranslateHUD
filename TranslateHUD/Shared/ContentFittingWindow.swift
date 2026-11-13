@@ -28,7 +28,7 @@ final class ContentFittingWindow: NSObject, NSWindowDelegate {
 
     func windowWillStartLiveResize(_ notification: Notification) {
         guard let window else { return }
-        sizeBudget.setUserSize(window.frame.size)
+        sizeBudget.beginWindowResize(window.frame.size)
     }
 
     func windowDidResize(_ notification: Notification) {
@@ -226,6 +226,7 @@ enum ContentFittingFrame {
 final class PanelSizeBudget: ObservableObject {
     @Published private(set) var visibleHeight: CGFloat
     @Published private(set) var userSize: NSSize?
+    @Published private(set) var translationHeight: CGFloat?
 
     init(visibleHeight: CGFloat) {
         self.visibleHeight = visibleHeight
@@ -236,6 +237,16 @@ final class PanelSizeBudget: ObservableObject {
     }
 
     var width: CGFloat { userSize?.width ?? PopoverContent.fixedWidth }
+
+    func beginSourceResize(_ size: NSSize, translationHeight: CGFloat) {
+        self.translationHeight = translationHeight.isFinite && translationHeight > 0 ? translationHeight : nil
+        setUserSize(size)
+    }
+
+    func beginWindowResize(_ size: NSSize) {
+        translationHeight = nil
+        setUserSize(size)
+    }
 
     func setUserSize(_ size: NSSize) {
         guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else { return }

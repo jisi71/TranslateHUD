@@ -59,11 +59,13 @@ enum PanelSectionSizer {
         limit: CGFloat,
         sourceCap: CGFloat,
         spacing: CGFloat,
-        sourceHeight: CGFloat? = nil
+        sourceHeight: CGFloat? = nil,
+        translationHeight: CGFloat? = nil
     ) -> [CGFloat] {
         guard !sections.isEmpty else { return [] }
         let usableLimit = (limit.isFinite && limit >= 0) ? limit : .greatestFiniteMagnitude
         let cap = (sourceCap.isFinite && sourceCap > 0) ? sourceCap : usableLimit
+        let fixedTranslation = translationHeight.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
 
         var heights = sections.map { section -> CGFloat in
             let ideal = section.idealHeight.isFinite ? max(0, section.idealHeight) : 0
@@ -75,19 +77,25 @@ enum PanelSectionSizer {
                 return min(ideal, cap)
             case .divider:
                 return min(max(ideal, 1), 12)
-            case .translation, .status, .actions, .extra:
+            case .translation:
+                if let fixedTranslation { return fixedTranslation }
+                return ideal
+            case .status, .actions, .extra:
                 return ideal
             }
         }
 
         var overflow = stackedHeight(heights, spacing: spacing) - usableLimit
         if overflow > 0.5 {
-            let order: [PanelSectionRole] = [.translation, .source, .extra, .status, .actions]
+            let order: [PanelSectionRole] = fixedTranslation == nil
+                ? [.translation, .source, .extra, .status, .actions]
+                : [.source, .extra, .status, .actions]
             for role in order where overflow > 0.5 {
                 overflow = shrink(&heights, sections: sections, role: role, overflow: overflow)
             }
         }
-        correctOverflow(&heights, sections: sections, limit: usableLimit, spacing: spacing)
+        correctOverflow(&heights, sections: sections, limit: usableLimit, spacing: spacing,
+                        keepTranslation: fixedTranslation != nil)
         return heights
     }
 
@@ -121,12 +129,14 @@ enum PanelSectionSizer {
         _ heights: inout [CGFloat],
         sections: [PanelSectionMeasurement],
         limit: CGFloat,
-        spacing: CGFloat
+        spacing: CGFloat,
+        keepTranslation: Bool
     ) {
         var extra = stackedHeight(heights, spacing: spacing) - limit
         guard extra > 0.5 else { return }
         let indexes = heights.indices
-            .filter { sections[$0].role != .divider && heights[$0] > 1 }
+            .filter { sections[$0].role != .divider && heights[$0] > 1
+                && !(keepTranslation && sections[$0].role == .translation) }
             .sorted { heights[$0] > heights[$1] }
         for index in indexes {
             guard extra > 0.5 else { break }

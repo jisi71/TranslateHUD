@@ -178,6 +178,7 @@ private struct ResultView: View {
             heightBudget: sizeBudget.budget,
             panelWidth: sizeBudget.width,
             isUserSized: sizeBudget.userSize != nil,
+            translationHeight: sizeBudget.translationHeight,
             recognitionNotice: recognitionNotice,
             screenshotSource: source,
             sourceEditor: source.editor,
@@ -186,9 +187,10 @@ private struct ResultView: View {
             onRetry: onRetry,
             onPin: onPin,
             onLayoutChange: onLayoutChange,
-            onSourceResizeStart: { sizeBudget.setUserSize($0) }
+            onSourceResizeStart: { sizeBudget.beginSourceResize($0, translationHeight: $1) }
         )
         .frame(width: sizeBudget.width, height: sizeBudget.userSize?.height, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: sizeBudget.userSize == nil)
+        .frame(maxHeight: sizeBudget.userSize == nil ? nil : .infinity, alignment: .topLeading)
     }
 }

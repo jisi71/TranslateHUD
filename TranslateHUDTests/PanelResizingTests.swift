@@ -102,7 +102,7 @@ final class PanelResizingTests: XCTestCase {
         XCTAssertLessThanOrEqual(PanelSectionSizer.stackedHeight(heights, spacing: 14), 400)
     }
 
-    func testDraggingSourceDividerKeepsWindowSizeAndDoesNotTranslate() async throws {
+    func testDraggingSourceKeepsTranslationAndUpperPanelStable() async throws {
         let oldWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
         var requests = 0
         let rows = [["Name", "Value"]] + (1...30).map { ["Product \($0)", "100"] }
@@ -111,8 +111,7 @@ final class PanelResizingTests: XCTestCase {
             return .ready(.init(translator: ResizeShortTranslator(), explainer: ResizeNoTerms()))
         })
         let floating = FloatingScreenshotWindow(image: NSImage(size: NSSize(width: 500, height: 400)), source: source)
-        floating.show()
-        source.start()
+        floating.show(); source.start()
         let window = try XCTUnwrap(NSApp.windows.first {
             !oldWindows.contains(ObjectIdentifier($0)) && $0.identifier?.rawValue == "screenshot-translation-panel"
         })
@@ -128,42 +127,76 @@ final class PanelResizingTests: XCTestCase {
         var divider: SourceResizeView?
         for _ in 0..<100 {
             divider = descendants(content).compactMap { $0 as? SourceResizeView }.first
-            if let divider, divider.sourceHeight > 0, window.frame.height >= 600,
-               case .success = source.progress.state { break }
+            if let divider, divider.sourceHeight > 0, case .success = source.progress.state { break }
             try await Task.sleep(for: .milliseconds(20))
         }
         let handle = try XCTUnwrap(divider)
-        let beforeRequests = requests
-        let beforeHeight = handle.sourceHeight
-        XCTAssertGreaterThan(beforeHeight, 50)
+        let visible = try XCTUnwrap(window.screen).visibleFrame
+        let fitter = try XCTUnwrap(window.delegate as? ContentFittingWindow)
+        fitter.windowWillStartLiveResize(Notification(name: NSWindow.willStartLiveResizeNotification, object: window))
+        let height = min(500, visible.height - 200)
+        window.setFrame(NSRect(x: visible.minX + 80, y: visible.maxY - height - 40, width: 500, height: height), display: true)
+        fitter.windowDidEndLiveResize(Notification(name: NSWindow.didEndLiveResizeNotification, object: window))
+        try await Task.sleep(for: .milliseconds(50))
         let beforeFrame = window.frame
-        let start = handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.maxY + 4), to: nil)
-        func event(_ type: NSEvent.EventType, y: CGFloat) -> NSEvent {
-            NSEvent.mouseEvent(with: type, location: NSPoint(x: start.x, y: y), modifierFlags: [],
-                               timestamp: 0, windowNumber: window.windowNumber, context: nil,
-                               eventNumber: 1, clickCount: 1, pressure: 1)!
+        let beforeSource = handle.sourceHeight
+        let beforeHeaderTop = try XCTUnwrap(handle.screenFrame(of: .header)).maxY
+        let beforeSourceTop = try XCTUnwrap(handle.screenFrame(of: .source)).maxY
+        let translationHeight = try XCTUnwrap(handle.screenFrame(of: .translation)).height
+        XCTAssertGreaterThan(translationHeight, 72)
+        let beforeRequests = requests
+        func checkAnchors() throws {
+            XCTAssertEqual(try XCTUnwrap(handle.screenFrame(of: .header)).maxY, beforeHeaderTop, accuracy: 1)
+            XCTAssertEqual(try XCTUnwrap(handle.screenFrame(of: .source)).maxY, beforeSourceTop, accuracy: 1)
+            XCTAssertEqual(try XCTUnwrap(handle.screenFrame(of: .translation)).height, translationHeight, accuracy: 1)
+            XCTAssertEqual(window.frame.maxY, beforeFrame.maxY, accuracy: 1)
+            XCTAssertEqual(window.frame.minX, beforeFrame.minX, accuracy: 1)
+            XCTAssertEqual(window.frame.width, beforeFrame.width)
         }
-        window.sendEvent(event(.leftMouseDown, y: start.y))
-        XCTAssertFalse(window.isMovableByWindowBackground)
-        window.sendEvent(event(.leftMouseDragged, y: start.y - 100))
-        for _ in 0..<100 {
-            if handle.sourceHeight > beforeHeight + 50 { break }
-            try await Task.sleep(for: .milliseconds(20))
+        func drag(_ distance: CGFloat) async throws {
+            let point = handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.maxY + 4), to: nil)
+            let screenY = point.y + window.frame.minY
+            func event(_ type: NSEvent.EventType, offset: CGFloat) -> NSEvent {
+                NSEvent.mouseEvent(with: type, location: NSPoint(x: point.x, y: screenY - offset - window.frame.minY),
+                                   modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                   eventNumber: 1, clickCount: 1, pressure: 1)!
+            }
+            window.sendEvent(event(.leftMouseDown, offset: 0))
+            XCTAssertFalse(window.isMovableByWindowBackground)
+            for fraction in [0.25, 0.5, 0.75, 1.0] {
+                window.sendEvent(event(.leftMouseDragged, offset: distance * fraction))
+                content.layoutSubtreeIfNeeded()
+                try checkAnchors()
+                try await Task.sleep(for: .milliseconds(25))
+                try checkAnchors()
+            }
+            window.sendEvent(event(.leftMouseUp, offset: distance))
+            XCTAssertTrue(window.isMovableByWindowBackground)
         }
-        window.sendEvent(event(.leftMouseUp, y: start.y - 100))
-        XCTAssertTrue(window.isMovableByWindowBackground)
-        XCTAssertGreaterThan(handle.sourceHeight, beforeHeight + 50)
-        XCTAssertEqual(window.frame, beforeFrame)
+        try await drag(100)
+        XCTAssertEqual(handle.sourceHeight, beforeSource + 100, accuracy: 2)
+        XCTAssertGreaterThan(window.frame.height, beforeFrame.height + 90)
+        try await drag(-100)
+        XCTAssertEqual(handle.sourceHeight, beforeSource, accuracy: 2)
+        try checkAnchors()
         XCTAssertEqual(requests, beforeRequests)
-        window.sendEvent(event(.leftMouseDown, y: start.y - 100))
-        window.sendEvent(event(.leftMouseDragged, y: start.y))
-        for _ in 0..<100 {
-            if abs(handle.sourceHeight - beforeHeight) < 2 { break }
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        window.sendEvent(event(.leftMouseUp, y: start.y))
-        XCTAssertEqual(handle.sourceHeight, beforeHeight, accuracy: 2)
-        XCTAssertEqual(window.frame, beforeFrame)
+    }
+
+    func testFixedTranslationViewportCannotBeBorrowedBySource() {
+        let sections: [PanelSectionMeasurement] = [
+            .init(role: .source, idealHeight: 900), .init(role: .divider, idealHeight: 12),
+            .init(role: .status, idealHeight: 40), .init(role: .translation, idealHeight: 800)
+        ]
+        let heights = PanelSectionSizer.resolve(sections: sections, limit: 508, sourceCap: 182,
+                                                spacing: 14, sourceHeight: 330, translationHeight: 240)
+        XCTAssertEqual(heights[3], 240)
+        XCTAssertLessThan(heights[0], 330)
+        XCTAssertLessThanOrEqual(PanelSectionSizer.stackedHeight(heights, spacing: 14), 508)
+        let budget = PanelSizeBudget(visibleHeight: 900)
+        budget.beginSourceResize(NSSize(width: 500, height: 600), translationHeight: 240)
+        XCTAssertEqual(budget.translationHeight, 240)
+        budget.beginWindowResize(NSSize(width: 500, height: 650))
+        XCTAssertNil(budget.translationHeight)
     }
 
     func testShortSourceDividerKeepsItsHeightAcrossTwoWindowDrags() async throws {

@@ -201,14 +201,16 @@ struct PopoverContent: View {
             heightBudget: sizeBudget.budget,
             panelWidth: sizeBudget.width,
             isUserSized: sizeBudget.userSize != nil,
+            translationHeight: sizeBudget.translationHeight,
             onClose: onCancel,
             onRetry: onRetry,
             onPin: onPin,
             onLayoutChange: onLayoutChange,
-            onSourceResizeStart: { sizeBudget.setUserSize($0) }
+            onSourceResizeStart: { sizeBudget.beginSourceResize($0, translationHeight: $1) }
         )
         .frame(width: sizeBudget.width, height: sizeBudget.userSize?.height, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: sizeBudget.userSize == nil)
+        .frame(maxHeight: sizeBudget.userSize == nil ? nil : .infinity, alignment: .topLeading)
     }
 
     static func heightBudget(visibleHeight: CGFloat, requestedHeight: CGFloat? = nil) -> PanelHeightBudget {

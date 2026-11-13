@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-enum PanelArea { case header, source, body, content, translation }
+enum PanelArea { case header, windowDrag, source, body, content, translation }
 
 struct PanelAreaMarker: NSViewRepresentable {
     let area: PanelArea
@@ -14,6 +14,21 @@ final class PanelAreaView: NSView {
     init(area: PanelArea) { self.area = area; super.init(frame: .zero) }
     required init?(coder: NSCoder) { nil }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    static func find(_ area: PanelArea, in view: NSView) -> PanelAreaView? {
+        guard !view.isHiddenOrHasHiddenAncestor else { return nil }
+        if let marker = view as? PanelAreaView, marker.area == area { return marker }
+        return view.subviews.lazy.compactMap { find(area, in: $0) }.first
+    }
+}
+
+enum PanelPointer {
+    static func screenPoint(for event: NSEvent, in window: NSWindow) -> NSPoint {
+        if let location = event.cgEvent?.location {
+            return NSPoint(x: location.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - location.y)
+        }
+        return window.convertPoint(toScreen: event.locationInWindow)
+    }
 }
 
 struct SourceResizeDivider: NSViewRepresentable {
@@ -57,11 +72,8 @@ final class SourceResizeView: NSView {
     var sourceHeight: CGFloat { areaHeight(.source) }
 
     func screenFrame(of area: PanelArea) -> NSRect? {
-        func find(_ view: NSView) -> PanelAreaView? {
-            if let marker = view as? PanelAreaView, marker.area == area { return marker }
-            return view.subviews.lazy.compactMap { find($0) }.first
-        }
-        guard let window, let marker = window.contentView.flatMap(find) else { return nil }
+        guard let window, let content = window.contentView,
+              let marker = PanelAreaView.find(area, in: content) else { return nil }
         return window.convertToScreen(marker.convert(marker.bounds, to: nil))
     }
 
@@ -81,7 +93,7 @@ final class SourceResizeView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard let window else { return }
-        startY = screenY(for: event, in: window)
+        startY = PanelPointer.screenPoint(for: event, in: window).y
         startFrame = window.frame
         let blank = max(0, areaHeight(.body) - PopoverContent.bodyPadding - areaHeight(.content))
         spareHeight = blank
@@ -93,7 +105,7 @@ final class SourceResizeView: NSView {
     override func mouseDragged(with event: NSEvent) {
         guard let startY, let window else { return }
         // Queued events retain the old window coordinates after its bottom edge moves.
-        let delta = startY - screenY(for: event, in: window)
+        let delta = startY - PanelPointer.screenPoint(for: event, in: window).y
         let height = min(maxHeight, startFrame.height + max(0, delta - spareHeight))
         let frame = NSRect(x: startFrame.minX, y: startFrame.maxY - height,
                            width: startFrame.width, height: height)
@@ -108,10 +120,4 @@ final class SourceResizeView: NSView {
 
     override func mouseUp(with event: NSEvent) { startY = nil }
 
-    private func screenY(for event: NSEvent, in window: NSWindow) -> CGFloat {
-        if let location = event.cgEvent?.location {
-            return (NSScreen.screens.first?.frame.maxY ?? 0) - location.y
-        }
-        return window.convertPoint(toScreen: event.locationInWindow).y
-    }
 }

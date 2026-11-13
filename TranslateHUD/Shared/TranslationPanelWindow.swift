@@ -3,10 +3,10 @@ import AppKit
 final class TranslationPanelWindow: NSWindow {
     var escapeHandler: (() -> Void)?
     private var sourceDivider: SourceResizeView?
-    private var backgroundWasMovable: Bool?
-    private var windowWasMovable: Bool?
+    private var windowDrag: (origin: NSPoint, pointer: NSPoint)?
 
     var isResizingSource: Bool { sourceDivider != nil }
+    var isHandlingDrag: Bool { isResizingSource || windowDrag != nil }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -14,17 +14,17 @@ final class TranslationPanelWindow: NSWindow {
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
         case .leftMouseDown:
-            endSourceResize()
+            endDrag()
             if let contentView,
                let divider = SourceResizeView.at(event.locationInWindow, in: contentView) {
-                // Handle this before AppKit starts dragging the window background.
                 sourceDivider = divider
-                backgroundWasMovable = isMovableByWindowBackground
-                windowWasMovable = isMovable
-                isMovableByWindowBackground = false
-                isMovable = false
                 makeKeyAndOrderFront(nil)
                 divider.mouseDown(with: event)
+                return
+            }
+            if isWindowDragPoint(event.locationInWindow) {
+                makeKeyAndOrderFront(nil)
+                windowDrag = (frame.origin, PanelPointer.screenPoint(for: event, in: self))
                 return
             }
         case .leftMouseDragged:
@@ -32,10 +32,20 @@ final class TranslationPanelWindow: NSWindow {
                 sourceDivider.mouseDragged(with: event)
                 return
             }
+            if let windowDrag {
+                let point = PanelPointer.screenPoint(for: event, in: self)
+                setFrameOrigin(NSPoint(x: windowDrag.origin.x + point.x - windowDrag.pointer.x,
+                                       y: windowDrag.origin.y + point.y - windowDrag.pointer.y))
+                return
+            }
         case .leftMouseUp:
             if let sourceDivider {
                 sourceDivider.mouseUp(with: event)
-                endSourceResize()
+                endDrag()
+                return
+            }
+            if windowDrag != nil {
+                endDrag()
                 return
             }
         default:
@@ -46,22 +56,20 @@ final class TranslationPanelWindow: NSWindow {
 
     override func keyDown(with event: NSEvent) {
         if FloatingPanelDismissPolicy.shouldCloseOnKeyDown(keyCode: event.keyCode) {
-            endSourceResize()
+            endDrag()
             escapeHandler?()
             return
         }
         super.keyDown(with: event)
     }
 
-    private func endSourceResize() {
+    func isWindowDragPoint(_ point: NSPoint) -> Bool {
+        guard let contentView, let handle = PanelAreaView.find(.windowDrag, in: contentView) else { return false }
+        return handle.convert(handle.bounds, to: nil).contains(point)
+    }
+
+    private func endDrag() {
         sourceDivider = nil
-        if let backgroundWasMovable {
-            isMovableByWindowBackground = backgroundWasMovable
-            self.backgroundWasMovable = nil
-        }
-        if let windowWasMovable {
-            isMovable = windowWasMovable
-            self.windowWasMovable = nil
-        }
+        windowDrag = nil
     }
 }

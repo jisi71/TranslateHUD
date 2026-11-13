@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// 截图翻译结果浮窗：截图完成后立即显示（loading 状态），翻译完成 / 超时 / 失败 切换状态。
-/// 可拖动（背景任意处）。未置顶时点窗口外关闭；已置顶点外不关闭。右上 X、ESC、取消按钮始终可关。
+/// 从顶部标题区域拖动。未置顶时点窗口外关闭；已置顶点外不关闭。右上 X、ESC、取消按钮始终可关。
 @MainActor
 final class FloatingScreenshotWindow {
     private enum CloseReason: String { case explicit, outside, escape }
@@ -39,7 +39,9 @@ final class FloatingScreenshotWindow {
         window.hidesOnDeactivate = false
         window.title = "TranslateHUD"
         window.identifier = NSUserInterfaceItemIdentifier("screenshot-translation-panel")
-        window.isMovableByWindowBackground = true
+        // The header handles moving; native background dragging can steal divider events.
+        window.isMovable = false
+        window.isMovableByWindowBackground = false
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
         window.maxSize = NSSize(width: PopoverContent.fixedWidth, height: budget.budget.panelMax)

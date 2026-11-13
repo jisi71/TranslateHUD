@@ -5,12 +5,64 @@ import XCTest
 
 @MainActor
 final class PanelResizingTests: XCTestCase {
+    func testOnlyHeaderDragMovesWindowAndKeepsSourceSize() throws {
+        let window = TranslationPanelWindow(contentRect: NSRect(x: 100, y: 300, width: 500, height: 400),
+                                            styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.isMovable = false
+        window.isMovableByWindowBackground = false
+        defer { window.close() }
+        let view = NSView(frame: NSRect(origin: .zero, size: window.frame.size))
+        let header = PanelAreaView(area: .windowDrag)
+        header.frame = NSRect(x: 18, y: 354, width: 235, height: 46)
+        let source = PanelAreaView(area: .source)
+        source.frame = NSRect(x: 18, y: 200, width: 464, height: 108)
+        let divider = SourceResizeView(frame: NSRect(x: 18, y: 186, width: 464, height: 12))
+        [header, source, divider].forEach(view.addSubview)
+        window.contentView = view
+        let budget = PanelSizeBudget(visibleHeight: 1_000)
+        let fitter = ContentFittingWindow(window: window, sizeBudget: budget, placement: nil)
+        fitter.applyNow { _ in NSSize(width: 500, height: 400) }
+        let before = window.frame
+        func event(_ type: NSEvent.EventType, x: CGFloat, y: CGFloat) throws -> NSEvent {
+            let e = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: y),
+                modifierFlags: [], timestamp: 1, windowNumber: window.windowNumber, context: nil,
+                eventNumber: 1, clickCount: 1, pressure: 1))
+            return type == .leftMouseDragged ? try XCTUnwrap(NSEvent(cgEvent: XCTUnwrap(e.cgEvent))) : e
+        }
+        XCTAssertTrue(window.isWindowDragPoint(NSPoint(x: 100, y: 377)))
+        XCTAssertFalse(window.isWindowDragPoint(NSPoint(x: 440, y: 377)))
+        XCTAssertFalse(window.isWindowDragPoint(NSPoint(x: 250, y: 192)))
+        let queued = try (1...4).map { try event(.leftMouseDragged, x: 100 + CGFloat($0 * 25), y: 377 - CGFloat($0 * 10)) }
+        window.sendEvent(try event(.leftMouseDown, x: 100, y: 377))
+        XCTAssertTrue(window.isHandlingDrag)
+        XCTAssertFalse(window.isResizingSource)
+        for e in queued {
+            window.sendEvent(e)
+            let moving = window.frame
+            fitter.applyNow { _ in NSSize(width: 500, height: 600) }
+            XCTAssertEqual(window.frame, moving)
+        }
+        window.sendEvent(try event(.leftMouseUp, x: 100, y: 377))
+        XCTAssertEqual(window.frame.origin.x, before.minX + 100, accuracy: 1)
+        XCTAssertEqual(window.frame.origin.y, before.minY - 40, accuracy: 1)
+        XCTAssertEqual(window.frame.size, before.size)
+        XCTAssertEqual(divider.sourceHeight, 108)
+        XCTAssertFalse(window.isHandlingDrag)
+        let moved = window.frame
+        window.sendEvent(try event(.leftMouseDown, x: 400, y: 250))
+        window.sendEvent(try event(.leftMouseDragged, x: 450, y: 220))
+        window.sendEvent(try event(.leftMouseUp, x: 450, y: 220))
+        XCTAssertEqual(window.frame, moved)
+    }
+
     func testQueuedDragEventsKeepTheirScreenPositionsWhileWindowGrows() throws {
         let window = TranslationPanelWindow(contentRect: NSRect(x: 100, y: 300, width: 500, height: 400),
                                             styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { window.close() }
-        window.isMovableByWindowBackground = true
+        window.isMovable = false
+        window.isMovableByWindowBackground = false
         let view = NSView(frame: NSRect(origin: .zero, size: window.frame.size))
         let divider = SourceResizeView(frame: NSRect(x: 18, y: 200, width: 464, height: 12))
         view.addSubview(divider); window.contentView = view
@@ -38,7 +90,7 @@ final class PanelResizingTests: XCTestCase {
         XCTAssertEqual(window.frame.minX, frame.minX, accuracy: 1)
         XCTAssertEqual(window.frame.width, frame.width, accuracy: 1)
         window.sendEvent(try event(.leftMouseUp, x: 320, offset: 100))
-        XCTAssertTrue(window.isMovable)
+        XCTAssertFalse(window.isMovable)
         XCTAssertFalse(window.isResizingSource)
     }
 
@@ -47,7 +99,8 @@ final class PanelResizingTests: XCTestCase {
                                             styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { window.close() }
-        window.isMovableByWindowBackground = true
+        window.isMovable = false
+        window.isMovableByWindowBackground = false
         let view = NSView(frame: NSRect(origin: .zero, size: window.frame.size))
         let divider = SourceResizeView(frame: NSRect(x: 18, y: 200, width: 464, height: 12))
         view.addSubview(divider); window.contentView = view
@@ -74,8 +127,8 @@ final class PanelResizingTests: XCTestCase {
             XCTAssertEqual(delta, 0)
         }
         window.sendEvent(try event(.leftMouseUp, x: 80))
-        XCTAssertTrue(window.isMovable)
-        XCTAssertTrue(window.isMovableByWindowBackground)
+        XCTAssertFalse(window.isMovable)
+        XCTAssertFalse(window.isMovableByWindowBackground)
     }
 
     func testContentUpdatesKeepManualFrameWithoutMeasuringAgain() throws {
@@ -204,6 +257,12 @@ final class PanelResizingTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
         }
         let handle = try XCTUnwrap(divider)
+        let panelWindow = try XCTUnwrap(window as? TranslationPanelWindow)
+        let headerDrag = try XCTUnwrap(PanelAreaView.find(.windowDrag, in: content))
+        XCTAssertTrue(panelWindow.isWindowDragPoint(headerDrag.convert(NSPoint(x: headerDrag.bounds.midX, y: headerDrag.bounds.midY), to: nil)))
+        XCTAssertFalse(panelWindow.isWindowDragPoint(handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.midY), to: nil)))
+        XCTAssertFalse(window.isMovable)
+        XCTAssertFalse(window.isMovableByWindowBackground)
         let visible = try XCTUnwrap(window.screen).visibleFrame
         let fitter = try XCTUnwrap(window.delegate as? ContentFittingWindow)
         fitter.windowWillStartLiveResize(Notification(name: NSWindow.willStartLiveResizeNotification, object: window))
@@ -253,7 +312,7 @@ final class PanelResizingTests: XCTestCase {
                 try checkAnchors()
             }
             window.sendEvent(event(.leftMouseUp, offset: distance))
-            XCTAssertTrue(window.isMovableByWindowBackground)
+            XCTAssertFalse(window.isMovableByWindowBackground)
         }
         try await drag(100)
         XCTAssertEqual(handle.sourceHeight, beforeSource + 100, accuracy: 2)
@@ -302,6 +361,7 @@ final class PanelResizingTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
         }
         let handle = try XCTUnwrap(divider)
+        XCTAssertFalse(window.isMovableByWindowBackground, "Implicit window dragging must stay off outside the header")
         let fitter = try XCTUnwrap(window.delegate as? ContentFittingWindow)
         fitter.windowWillStartLiveResize(Notification(name: NSWindow.willStartLiveResizeNotification, object: window))
         window.setFrame(NSRect(origin: window.frame.origin, size: NSSize(width: 500, height: 500)), display: true)
@@ -321,7 +381,7 @@ final class PanelResizingTests: XCTestCase {
             XCTAssertFalse(window.isMovableByWindowBackground)
             window.sendEvent(event(.leftMouseDragged, offset: 50))
             window.sendEvent(event(.leftMouseUp, offset: 50))
-            XCTAssertTrue(window.isMovableByWindowBackground)
+            XCTAssertFalse(window.isMovableByWindowBackground)
             for _ in 0..<100 {
                 if abs(handle.sourceHeight - expected) < 2 { break }
                 try await Task.sleep(for: .milliseconds(20))

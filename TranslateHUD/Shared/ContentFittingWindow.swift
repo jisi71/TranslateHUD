@@ -66,7 +66,7 @@ final class ContentFittingWindow: NSObject, NSWindowDelegate {
     private func apply() {
         guard let window, let measure = pendingMeasure else { return }
         guard !window.inLiveResize else { return }
-        guard (window as? TranslationPanelWindow)?.isResizingSource != true else { return }
+        guard (window as? TranslationPanelWindow)?.isHandlingDrag != true else { return }
         if hasPlaced, NSEvent.pressedMouseButtons != 0 {
             // A frame change mid-drag fights the pointer. Retry after the drag.
             Task { @MainActor [weak self] in

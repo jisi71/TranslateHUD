@@ -50,7 +50,9 @@ final class FloatingTranslationPopover {
         window.hidesOnDeactivate = false
         window.title = "TranslateHUD"
         window.identifier = NSUserInterfaceItemIdentifier("selection-translation-panel")
-        window.isMovableByWindowBackground = true
+        // The header handles moving; native background dragging can steal divider events.
+        window.isMovable = false
+        window.isMovableByWindowBackground = false
         window.minSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
         window.maxSize = NSSize(width: PopoverContent.fixedWidth, height: budget.budget.panelMax)
         fitter = ContentFittingWindow(window: window, sizeBudget: budget, placement: placement)

@@ -292,13 +292,17 @@ struct TranslationPanel: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(systemName: "character.bubble")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(colors.muted)
-            Text("TranslateHUD")
-                .font(.system(size: 17, weight: .semibold))
-                .lineLimit(1)
-            Spacer(minLength: 10)
+            HStack(spacing: 10) {
+                Image(systemName: "character.bubble")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(colors.muted)
+                Text("TranslateHUD")
+                    .font(.system(size: 17, weight: .semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 10)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(PanelAreaMarker(area: .windowDrag))
             Menu {
                 ForEach(TargetLanguage.allCases) { language in
                     Button {

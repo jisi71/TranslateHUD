@@ -11,6 +11,7 @@ final class ContentFittingWindow: NSObject, NSWindowDelegate {
     private var hasPlaced = false
     private var scheduled = false
     private var pendingMeasure: (@MainActor (NSSize) -> NSSize?)?
+    private var minimumHeight: CGFloat = PopoverContent.minHeight
 
     init(window: NSWindow, sizeBudget: PanelSizeBudget, placement: PopoverPlacementContext?) {
         self.window = window
@@ -86,7 +87,7 @@ final class ContentFittingWindow: NSObject, NSWindowDelegate {
         }
 
         let available = screen.visibleFrame.insetBy(dx: 8, dy: 8).size
-        window.minSize = NSSize(width: min(420, available.width), height: min(320, available.height))
+        window.minSize = NSSize(width: min(420, available.width), height: min(minimumHeight, available.height))
         window.maxSize = available
 
         if let userSize = sizeBudget.userSize {
@@ -106,6 +107,9 @@ final class ContentFittingWindow: NSObject, NSWindowDelegate {
         let probe = NSSize(width: PopoverContent.fixedWidth, height: panelMax)
         guard var height = measure(probe)?.height, height.isFinite, !height.isNaN else { return }
         height = min(max(height.rounded(.up), PopoverContent.minHeight), panelMax)
+        // A short panel must be able to return to its automatically fitted height.
+        minimumHeight = min(320, height)
+        window.minSize.height = min(minimumHeight, available.height)
         let size = NSSize(width: PopoverContent.fixedWidth, height: height)
         let frame = nextFrame(for: window, size: size, screen: screen)
         let contentSize = window.contentRect(forFrameRect: frame).size
@@ -118,7 +122,7 @@ final class ContentFittingWindow: NSObject, NSWindowDelegate {
 
     private func clampedSize(_ size: NSSize, available: NSSize) -> NSSize {
         NSSize(width: min(max(size.width, 420), available.width),
-               height: min(max(size.height, 320), available.height))
+               height: min(max(size.height, minimumHeight), available.height))
     }
 
     private func nextFrame(for window: NSWindow, size: NSSize, screen: NSScreen) -> NSRect {

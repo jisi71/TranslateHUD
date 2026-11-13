@@ -58,7 +58,8 @@ enum PanelSectionSizer {
         sections: [PanelSectionMeasurement],
         limit: CGFloat,
         sourceCap: CGFloat,
-        spacing: CGFloat
+        spacing: CGFloat,
+        sourceHeight: CGFloat? = nil
     ) -> [CGFloat] {
         guard !sections.isEmpty else { return [] }
         let usableLimit = (limit.isFinite && limit >= 0) ? limit : .greatestFiniteMagnitude
@@ -68,9 +69,12 @@ enum PanelSectionSizer {
             let ideal = section.idealHeight.isFinite ? max(0, section.idealHeight) : 0
             switch section.role {
             case .source:
+                if let sourceHeight, sourceHeight.isFinite {
+                    return min(ideal, max(floor(role: .source, ideal: ideal), sourceHeight))
+                }
                 return min(ideal, cap)
             case .divider:
-                return ideal > 0 && ideal < 3 ? ideal : 1
+                return min(max(ideal, 1), 12)
             case .translation, .status, .actions, .extra:
                 return ideal
             }

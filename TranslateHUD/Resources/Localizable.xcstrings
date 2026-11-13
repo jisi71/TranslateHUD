@@ -1,6 +1,7 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "调整原文显示高度": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "调整原文显示高度" } }, "en": { "stringUnit": { "state": "translated", "value": "Resize source area" } } } },
     "编辑原文": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "编辑原文" } }, "en": { "stringUnit": { "state": "translated", "value": "Edit original" } } } },
     "保存并重新翻译": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "保存并重新翻译" } }, "en": { "stringUnit": { "state": "translated", "value": "Save and retranslate" } } } },
     "无法编辑识别内容，请重新截图。": { "extractionState": "manual", "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法编辑识别内容，请重新截图。" } }, "en": { "stringUnit": { "state": "translated", "value": "Could not edit the recognized text. Please take the screenshot again." } } } },

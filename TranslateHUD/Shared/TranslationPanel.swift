@@ -24,11 +24,14 @@ struct TranslationPanel: View {
     var onRetry: @MainActor () -> Void
     var onPin: @MainActor (Bool) -> Void
     var onLayoutChange: @MainActor () -> Void = {}
+    var onSourceResizeStart: @MainActor (NSSize) -> Void = { _ in }
 
     @State private var isPinned = false
     @State private var isOriginalExpanded = false
     @State private var showsContext = false
     @State private var hasCopied = false
+    @State private var sourceHeight: CGFloat?
+    @State private var sourceDragStart: CGFloat = 0
 
     private var colors: PanelColors {
         _ = appearance.changeID
@@ -61,10 +64,24 @@ struct TranslationPanel: View {
                 PanelSectionsLayout(
                     maxHeight: heightBudget.contentMax,
                     sourceCap: heightBudget.sourceMax,
-                    spacing: 14
+                    spacing: 14,
+                    sourceHeight: sourceHeight
                 ) {
                     sourceSection
-                    separator.panelSectionRole(.divider)
+                        .background(SourceAreaMarker())
+                    SourceResizeDivider(
+                        color: NSColor(colors.border),
+                        label: interfaceLanguage.text("调整原文显示高度"),
+                        onStart: { size, height in
+                            sourceDragStart = height
+                            onSourceResizeStart(size)
+                        },
+                        onDrag: { delta in
+                            sourceHeight = min(max(0, sourceDragStart + delta), heightBudget.contentMax)
+                        }
+                    )
+                    .frame(height: 12)
+                    .panelSectionRole(.divider)
                     statusSection
                     if !translated.isEmpty { translationSection }
                     if termProgress.isExpanded { termsSection }
@@ -161,7 +178,7 @@ struct TranslationPanel: View {
             role: .source,
             colors: colors,
             width: narrow,
-            maxLines: isOriginalExpanded ? nil : Self.collapsedSourceLines,
+            maxLines: isOriginalExpanded || sourceHeight != nil ? nil : Self.collapsedSourceLines,
             tableSpans: tableSpans
         )
         return (visible, true)
@@ -184,6 +201,7 @@ struct TranslationPanel: View {
                         isOriginalExpanded ? "chevron.up" : "chevron.down",
                         help: isOriginalExpanded ? "收起原文" : "展开原文"
                     ) {
+                        sourceHeight = nil
                         isOriginalExpanded.toggle()
                     }
                 }
@@ -207,7 +225,7 @@ struct TranslationPanel: View {
         let label = MarkdownDisplay.BlocksView(markdown: sourceBody, role: .source, colors: colors,
                                                width: sourceTextWidth(showsExpand: layout.showsExpand), tableSpans: tableSpans)
 
-        if layout.showsExpand && !isOriginalExpanded {
+        if layout.showsExpand && !isOriginalExpanded && sourceHeight == nil {
             // Propose the six-line cap so HeightFitting scrolls, instead of
             // letting the full text become the section height.
             MaxHeightLayout(maxHeight: layout.textHeight) {
@@ -797,6 +815,7 @@ private struct PanelSectionsLayout: Layout {
     var maxHeight: CGFloat
     var sourceCap: CGFloat
     var spacing: CGFloat
+    var sourceHeight: CGFloat?
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? (PopoverContent.fixedWidth - PopoverContent.bodyPadding)
@@ -834,7 +853,8 @@ private struct PanelSectionsLayout: Layout {
             sections: sections,
             limit: limit,
             sourceCap: sourceCap,
-            spacing: spacing
+            spacing: spacing,
+            sourceHeight: sourceHeight
         )
     }
 }

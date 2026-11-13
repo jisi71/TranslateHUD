@@ -199,7 +199,8 @@ private struct ResultView: View {
             onClose: onClose,
             onRetry: onRetry,
             onPin: onPin,
-            onLayoutChange: onLayoutChange
+            onLayoutChange: onLayoutChange,
+            onSourceResizeStart: { sizeBudget.setUserSize($0) }
         )
         .frame(width: sizeBudget.width, height: sizeBudget.userSize?.height, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: sizeBudget.userSize == nil)

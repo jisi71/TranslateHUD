@@ -1,6 +1,6 @@
 (function () {
-  // Notarized 0.4.6 / build 16 DMG for macOS 14+, Apple silicon and Intel.
-  var DOWNLOAD_URL = "https://github.com/jisi71/TranslateHUD/releases/download/v0.4.6/TranslateHUD-0.4.6.dmg";
+  // Notarized 0.4.7 / build 17 DMG for macOS 14+, Apple silicon and Intel.
+  var DOWNLOAD_URL = "https://github.com/jisi71/TranslateHUD/releases/download/v0.4.7/TranslateHUD-0.4.7.dmg";
 
   var INVITE_STATUS_URL = "https://translatehud-d4gl951eo8bef4702-1445578102.ap-shanghai.app.tcloudbase.com/v1/trial/invite-status";
   var DEFAULT_INVITE_CODE = "translatehud-200";

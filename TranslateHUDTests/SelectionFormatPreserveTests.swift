@@ -326,6 +326,182 @@ final class SelectionFormatPreserveTests: XCTestCase {
         ])), "\(parsed)")
     }
 
+    func testRestoredLinkLabelsAreCheckedAfterBaseTranslation() async throws {
+        // Link-only uses zero segments; prefix + link uses the single-segment stream;
+        // a separate heading exercises the multi-segment branch.
+        for (source, segmentCount) in [("[官方仓库](https://example.com/docs)", 0),
+                                       ("说明：[官方仓库](https://example.com/docs)", 1),
+                                       ("## 标题\n\n说明：[官方仓库](https://example.com/docs)", 2)] {
+            let prepared = SelectionFormatPipeline.prepare(source)
+            XCTAssertEqual(prepared.segmentsToTranslate.count, segmentCount, "exercise zero/single/multiple restoration branches")
+            let translator = FormatPreservingTranslator(base: LabelCaptionTranslator(), prepared: prepared)
+            let branch = ["zero", "single", "multiple"][segmentCount]
+            let translations = try await LabelCaptionTranslator().translate(prepared.segmentsToTranslate, to: .english, context: nil)
+            let restored = prepared.restore(translatedSegments: translations)
+            XCTAssertTrue(TranslationValidator.hasUntranslatedProseUnit(input: prepared.displayOriginal, output: restored, target: .english))
+            let full = TranslationValidator.validate(input: prepared.displayOriginal, output: restored, target: .english)
+            XCTAssertTrue(full.contains(.underTranslated), "ordinary restored labels must still fail QC / \(branch)")
+            await assertRestoreDecision(translator, source: source, target: .english, expected: full,
+                soft: segmentCount > 0 && TranslationSoftWarning.isOnlyUnderTranslated(full), output: restored)
+
+        }
+        let source = "[官方仓库](https://example.com/docs)"
+        let translator = FormatPreservingTranslator(base: LabelCaptionTranslator(), prepared: SelectionFormatPipeline.prepare(source))
+        let chinese = try await translator.translate([source], to: .chinese, context: nil)
+        XCTContext.runActivity(named: "restore / zero / batch / Chinese retains target label") { _ in
+            XCTAssertEqual(chinese, [source], "already-target label and URL are legal retained content")
+        }
+        var streamed = ""
+        for try await event in translator.translateStreaming(source, to: .chinese, context: nil) {
+            if case .delta(let partial) = event { streamed = partial }
+        }
+        XCTContext.runActivity(named: "restore / zero / stream / Chinese retains target label") { _ in
+            XCTAssertEqual(streamed, source, "already-target label and URL are legal retained content")
+        }
+    }
+
+
+    func testRestoreFullQCIncludesHardFailuresAcrossZeroSingleAndMultipleSegments() async throws {
+        // MANUAL candidate operations and deliberately incomplete upstream flags.
+        // Only the full validator below determines which real final failures exist.
+        let fixtures: [(String, [String], TranslationValidator.Failure)] = [
+            ("[alpha bravo](https://example.com/docs)", [], .missingTargetLanguageContent),
+            ("alpha bravo charlie delta", ["alpha bravo charlie 德尔塔 I cannot translate"], .refusalDetected),
+            ("alpha bravo charlie delta\n\nfoxtrot golf hotel india",
+             ["alpha bravo charlie 德尔塔 I cannot translate", "foxtrot golf hotel 印度"], .refusalDetected)
+        ]
+        for (ordinal, fixture) in fixtures.enumerated() {
+            let (source, candidates, requiredHard) = fixture
+            let prepared = SelectionFormatPipeline.prepare(source)
+            XCTAssertEqual(prepared.segmentsToTranslate.count, ordinal)
+            XCTAssertEqual(candidates.count, ordinal)
+            let output = prepared.restore(translatedSegments: candidates)
+            let full = TranslationValidator.validate(input: prepared.displayOriginal, output: output, target: .chinese)
+            XCTAssertTrue(full.contains(requiredHard), "fixture must actually hit its intended hard predicate")
+            XCTAssertTrue(full.contains(.underTranslated), "hard + under must stay hard")
+            let plain = FormatPreservingTranslator(base: RestoreBoundaryTranslator(candidates: candidates), prepared: prepared)
+            await assertRestoreDecision(plain, source: source, target: .chinese, expected: full, soft: false, output: output)
+            if !candidates.isEmpty {
+                let flags = candidates.map { _ in [TranslationValidator.Failure.underTranslated] }
+                let inherited = try XCTUnwrap(TranslationSoftWarning.make(sources: prepared.segmentsToTranslate,
+                    candidates: candidates, target: .chinese, failures: flags, model: "MANUAL-STUB",
+                    origin: "deliberately-incomplete-upstream-flags"))
+                let wrapped = FormatPreservingTranslator(base: RestoreBoundaryTranslator(candidates: candidates, warning: inherited), prepared: prepared)
+                await assertRestoreDecision(wrapped, source: source, target: .chinese,
+                    expected: flags.flatMap { $0 } + full, soft: false, output: output)
+            }
+        }
+    }
+
+    func testRestoreUnionsBaseAndFinalFlagsWithoutLosingHardFailures() async throws {
+        let source = "alpha bravo charlie delta"
+        let prepared = SelectionFormatPipeline.prepare(source)
+        let candidate = "alpha bravo charlie 德尔塔"
+        let full = TranslationValidator.validate(input: source, output: candidate, target: .chinese)
+        XCTAssertEqual(full, [.underTranslated], "actual validator, independent MANUAL only-under control")
+        let plain = FormatPreservingTranslator(base: RestoreBoundaryTranslator(candidates: [candidate]), prepared: prepared)
+        await assertRestoreDecision(plain, source: source, target: .chinese, expected: full, soft: true, output: candidate)
+        let base = try XCTUnwrap(TranslationSoftWarning.make(sources: prepared.segmentsToTranslate,
+            candidates: [candidate], target: .chinese, failures: [[.underTranslated]], model: "MANUAL-STUB", origin: "base-flags"))
+        // Deliberately inject a hard upstream carrier: restore must preserve its flag,
+        // even though the actual final validator reports only underTranslated.
+        let hard = base.replacingOutputs([candidate], additional: [.echoedInput])
+        let wrapped = FormatPreservingTranslator(base: RestoreBoundaryTranslator(candidates: [candidate], warning: hard), prepared: prepared)
+        await assertRestoreDecision(wrapped, source: source, target: .chinese,
+            expected: [.underTranslated, .echoedInput] + full, soft: false, output: candidate)
+
+        let clean = "阿尔法布拉沃查理德尔塔"
+        XCTAssertEqual(TranslationValidator.validate(input: source, output: clean, target: .chinese), [])
+        let retained = try XCTUnwrap(TranslationSoftWarning.make(sources: prepared.segmentsToTranslate,
+            candidates: [clean], target: .chinese, failures: [[.underTranslated]], model: "MANUAL-STUB", origin: "retain-base-decision"))
+        let cleanWrapped = FormatPreservingTranslator(base: RestoreBoundaryTranslator(candidates: [clean], warning: retained), prepared: prepared)
+        await assertRestoreDecision(cleanWrapped, source: source, target: .chinese,
+            expected: [.underTranslated], soft: true, output: clean)
+    }
+
+    func testRestoreRejectsFinalFenceAndMismatchedInheritedSource() async throws {
+        let source = "alpha bravo charlie delta"
+        let prepared = SelectionFormatPipeline.prepare(source)
+        let output = "```text\nalpha bravo charlie 德尔塔\n```"
+        let full = TranslationValidator.validate(input: source, output: output, target: .chinese)
+        XCTAssertTrue(full.contains(.codeFenceWrapped))
+        let translator = FormatPreservingTranslator(base: RestoreBoundaryTranslator(candidates: [output]), prepared: prepared)
+        await assertRestoreDecision(translator, source: source, target: .chinese, expected: full, soft: false, output: output)
+        for incomplete in [[], [""]] as [[String]] {
+            let broken = FormatPreservingTranslator(base: RestoreBoundaryTranslator(candidates: incomplete), prepared: prepared)
+            for streaming in [false, true] {
+                do {
+                    if streaming { for try await _ in broken.translateStreaming(source, to: .chinese, context: nil) {} }
+                    else { _ = try await broken.translate([source], to: .chinese, context: nil) }
+                    XCTFail("missing or empty provider items must be a hard mapping failure")
+                } catch TranslationError.parse(_) { }
+                catch { XCTFail("expected incomplete item parse failure, got \(error)") }
+            }
+        }
+        let candidate = "alpha bravo charlie 德尔塔"
+        let mismatched = try XCTUnwrap(TranslationSoftWarning.make(sources: ["different source"], candidates: [candidate],
+            target: .chinese, failures: [[.underTranslated]], model: "MANUAL-STUB", origin: "wrong-source"))
+        let wrong = FormatPreservingTranslator(base: RestoreBoundaryTranslator(candidates: [candidate], warning: mismatched), prepared: prepared)
+        for streaming in [false, true] {
+            do {
+                if streaming { for try await _ in wrong.translateStreaming(source, to: .chinese, context: nil) {} }
+                else { _ = try await wrong.translate([source], to: .chinese, context: nil) }
+                XCTFail("mismatched snapshot must not be accepted")
+            } catch TranslationError.parse(_) { /* Actual mapping guard, never a soft result. */ }
+            catch { XCTFail("expected mapping parse failure, got \(error)") }
+        }
+    }
+
+    func testRestorePreservesLegalCodeURLPathAndZeroSegmentTargetContent() async throws {
+        let fixtures: [(String, TargetLanguage)] = [
+            ("说明：`alpha bravo()` https://example.com/docs /tmp/report.txt", .chinese),
+            ("[中文说明](https://example.com/docs)", .chinese),
+            ("https://example.com/docs", .chinese),
+            ("/tmp/report.txt", .chinese),
+            ("```swift\nlet value = 1\n```", .english),
+            ("`get_value()`", .english)
+        ]
+        for (source, target) in fixtures {
+            let prepared = SelectionFormatPipeline.prepare(source)
+            let candidates = prepared.segmentsToTranslate
+            let output = prepared.restore(translatedSegments: candidates)
+            XCTAssertEqual(output, source)
+            XCTAssertEqual(TranslationValidator.validate(input: prepared.displayOriginal, output: output, target: target), [])
+            let translator = FormatPreservingTranslator(base: RestoreBoundaryTranslator(candidates: candidates), prepared: prepared)
+            let result = try await translator.translate([source], to: target, context: nil)
+            XCTAssertEqual(result, [source])
+            var last = ""
+            for try await event in translator.translateStreaming(source, to: target, context: nil) {
+                if case .delta(let text) = event { last = text }
+            }
+            XCTAssertEqual(last, source)
+            if source.hasPrefix("[") { XCTAssertTrue(candidates.isEmpty, "no provider snapshot for zero-segment success") }
+        }
+    }
+
+    private func assertRestoreDecision(_ translator: FormatPreservingTranslator, source: String, target: TargetLanguage,
+                                       expected: [TranslationValidator.Failure], soft: Bool, output: String,
+                                       file: StaticString = #filePath, line: UInt = #line) async {
+        for streaming in [false, true] {
+            do {
+                if streaming { for try await _ in translator.translateStreaming(source, to: target, context: nil) {} }
+                else { _ = try await translator.translate([source], to: target, context: nil) }
+                XCTFail("expected QC rejection / streaming=\(streaming)", file: file, line: line)
+            } catch let warning as TranslationSoftWarning {
+                XCTAssertTrue(soft, "hard or no-provider result must not become soft", file: file, line: line)
+                XCTAssertTrue(warning.hasCompleteSnapshot, file: file, line: line)
+                XCTAssertTrue(warning.hasOnlySoftFailures, file: file, line: line)
+                XCTAssertEqual(warning.itemFailures.flatMap { $0 } + warning.additionalFailures, expected, file: file, line: line)
+                XCTAssertEqual(warning.outputs, [output], file: file, line: line)
+                XCTAssertEqual(warning.displaySources, [translator.prepared.displayOriginal], file: file, line: line)
+                XCTAssertEqual(warning.sourceItems, translator.prepared.segmentsToTranslate, file: file, line: line)
+            } catch TranslationError.qualityFailures(let actual) {
+                XCTAssertFalse(soft, file: file, line: line)
+                XCTAssertEqual(actual, expected, file: file, line: line)
+            } catch { XCTFail("unexpected error: \(error)", file: file, line: line) }
+        }
+    }
+
 
 }
 
@@ -334,5 +510,23 @@ private struct FormatTestTranslator: Translator {
         _ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?
     ) async throws -> [String] {
         texts.map { "译:\($0)" }
+    }
+}
+
+private struct LabelCaptionTranslator: Translator {
+    func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] {
+        texts.map { $0.replacingOccurrences(of: "说明：", with: "Description: ").replacingOccurrences(of: "标题", with: "Title") }
+    }
+}
+
+/// Explicit offline transport stub; injected flags are test inputs, not provider observations.
+private struct RestoreBoundaryTranslator: Translator {
+    let candidates: [String]
+    var warning: TranslationSoftWarning? = nil
+
+    func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] {
+        guard !texts.isEmpty else { throw TranslationError.service("zero-segment fixture must not call a provider") }
+        if let warning { throw warning }
+        return candidates
     }
 }

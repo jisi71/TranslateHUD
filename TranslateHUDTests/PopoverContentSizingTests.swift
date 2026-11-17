@@ -66,6 +66,37 @@ final class PopoverContentSizingTests: XCTestCase {
         try attachPreview(host: host, size: size, name: "Translation panel")
     }
 
+    func testSoftWarningKeepsCandidateAndFeedbackInTheTranslationViewport() async throws {
+        let original = "Please restart the service and verify the network connection."
+        let candidate = "请重启服务 and verify the network connection."
+        let warning = try XCTUnwrap(TranslationSoftWarning.make(
+            sources: [original], candidates: [candidate], target: .chinese,
+            failures: [[.underTranslated]], model: "offline-synthetic", origin: "offline-render"
+        ))
+        let progress = TranslationProgress()
+        progress.feedbackOwnerAtStart = { nil }
+        progress.start(translator: PanelWarningTranslator(warning: warning), originals: [original], target: .chinese)
+        for _ in 0..<50 {
+            if case .success = progress.state { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(progress.displayedTranslation, candidate)
+        XCTAssertNotNil(progress.qualityWarning)
+        let host = NSHostingController(rootView: PopoverContent(
+            original: original, progress: progress,
+            termProgress: TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original]),
+            speech: SpeechController(), onCancel: {}, onRetry: {}
+        ))
+        let size = host.sizeThatFits(in: NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.maxHeight))
+        XCTAssertLessThanOrEqual(size.height, PopoverContent.maxHeight)
+        try attachPreview(host: host, size: size, name: "Synthetic quality warning and feedback")
+        let translation = try XCTUnwrap(PanelAreaView.find(.translation, in: host.view))
+        let frame = translation.convert(translation.bounds, to: host.view)
+        XCTAssertGreaterThan(frame.height, 40)
+        XCTAssertGreaterThanOrEqual(frame.minY, -1)
+        XCTAssertLessThanOrEqual(frame.maxY, host.view.bounds.maxY + 1)
+    }
+
     func testCollapsedSourceTracksOneToSixLines() {
         let one = fittingSize(original: "Hi")
         let four = fittingSize(original: ["One", "Two", "Three", "Four"].joined(separator: "\n"))
@@ -79,6 +110,138 @@ final class PopoverContentSizingTests: XCTestCase {
         XCTAssertGreaterThan(twelve.height, four.height + 8)
     }
 
+    func testDefaultCollapsedSourceHasBoundedViewportAndCanScrollToEnd() throws {
+        func inspect(lines: Int) throws -> CGFloat {
+            let original = (1...lines).map { "Line \($0)" }.joined(separator: "\n")
+            let progress = TranslationProgress()
+            let host = NSHostingController(rootView: PopoverContent(
+                original: original, progress: progress,
+                termProgress: TermExplanationProgress(explainer: EmptyTermExplainer(), texts: [original]),
+                speech: SpeechController(), onCancel: {}, onRetry: {}
+            ))
+            let size = host.sizeThatFits(in: NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.maxHeight))
+            let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+                                  styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentViewController = host
+            defer { window.close() }
+            window.orderFront(nil)
+            for _ in 0..<10 {
+                host.view.layoutSubtreeIfNeeded()
+                RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+            }
+            func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+            let field = try XCTUnwrap(descendants(host.view).compactMap { $0 as? NSTextView }
+                .first { $0.string.contains("Line 1") })
+            XCTAssertTrue(field.isEditable, "Collapsed content remains directly editable")
+            let source = try XCTUnwrap(PanelAreaView.find(.source, in: host.view))
+            recordSourceViewportMetrics(original: original, lines: lines, source: source, field: field)
+            if lines > 6 {
+                // Skip the field's own AppKit scroll view: the whole Markdown document
+                // (including grids and other blocks) must scroll in the source viewport.
+                let inner = try XCTUnwrap(field.enclosingScrollView)
+                var ancestor = inner.superview
+                var outer: NSScrollView?
+                while let view = ancestor {
+                    if let scroll = view as? NSScrollView { outer = scroll; break }
+                    ancestor = view.superview
+                }
+                let scroll = try XCTUnwrap(outer)
+                let document = try XCTUnwrap(scroll.documentView)
+                XCTAssertGreaterThan(document.bounds.height, scroll.contentView.bounds.height)
+                XCTAssertLessThanOrEqual(scroll.contentView.bounds.height, source.bounds.height + 1)
+                let manager = try XCTUnwrap(field.layoutManager)
+                let container = try XCTUnwrap(field.textContainer)
+                manager.ensureLayout(for: container)
+                let characters = (field.string as NSString).range(of: "Line \(lines)", options: .backwards)
+                XCTAssertNotEqual(characters.location, NSNotFound)
+                let end = manager.boundingRect(forGlyphRange: manager.glyphRange(
+                    forCharacterRange: characters, actualCharacterRange: nil), in: container)
+                    .offsetBy(dx: field.textContainerOrigin.x, dy: field.textContainerOrigin.y)
+                let target = document.convert(end, from: field)
+                document.scrollToVisible(target)
+                host.view.layoutSubtreeIfNeeded()
+                print("source-viewport end lines=\(lines) target=\(target) outerVisible=\(scroll.contentView.documentVisibleRect) fieldEnd=\(end) fieldVisible=\(field.visibleRect)")
+                XCTAssertGreaterThan(scroll.contentView.bounds.minY, 0)
+                XCTAssertTrue(scroll.contentView.documentVisibleRect.insetBy(dx: -1, dy: -1).contains(target),
+                              "The final line must remain reachable through the outer viewport")
+                XCTAssertTrue(field.visibleRect.insetBy(dx: -1, dy: -1).contains(end),
+                              "The field's own clip must not hide the final line")
+            }
+            return source.bounds.height
+        }
+        let six = try inspect(lines: 6)
+        let twelve = try inspect(lines: 12)
+        let eighty = try inspect(lines: 80)
+        XCTAssertLessThanOrEqual(twelve, six + 1)
+        XCTAssertEqual(eighty, twelve, accuracy: 1)
+        print("source-viewport comparisons completed six=\(six) twelve=\(twelve) eighty=\(eighty)")
+    }
+
+    // Retain actual viewport/scroll and raw TextKit evidence for Mac failures.
+    private func recordSourceViewportMetrics(original: String, lines: Int, source: NSView, field: NSTextView) {
+        var output = ["lines=\(lines) source=\(source.bounds) field=\(field.bounds) inset=\(field.textContainerInset) origin=\(field.textContainerOrigin)"]
+        var ancestor: NSView? = field
+        while let view = ancestor {
+            if let scroll = view as? NSScrollView {
+                output.append("scroll frame=\(scroll.frame) clip=\(scroll.contentView.bounds) document=\(String(describing: scroll.documentView?.bounds))")
+            }
+            ancestor = view.superview
+        }
+        // Mirror TranslationPanel's current recipes, and report actual field width
+        // separately so a recipe/real-layout mismatch is visible rather than assumed.
+        let openWidth = PopoverContent.translationTextWidth - 8 - 24
+        let narrowWidth = PopoverContent.translationTextWidth - 8 - 26
+        let six = (1...6).map { "Line \($0)" }.joined(separator: "\n")
+        for width in [openWidth, narrowWidth] {
+            let full = MarkdownDisplay.height(original, role: .source, colors: .dark, width: width, maxLines: nil)
+            let cap = MarkdownDisplay.height(original, role: .source, colors: .dark, width: width, maxLines: 6)
+            let editor = DirectMarkdownEditor.height(original, role: .source, colors: .dark, width: width)
+            let reference = DirectMarkdownEditor.height(six, role: .source, colors: .dark, width: width)
+            output.append("recipe width=\(width) full=\(full) cap=\(cap) editor=\(editor) sixEditor=\(reference) capWithInset=\(cap + DirectMarkdownEditor.textVerticalInset) showsExpand=\(full > cap + 1)")
+            // Same typography and container settings as TextBlockMetrics. Compare
+            // full vs capped at the SAME width; do not infer wrapping from buttons.
+            // Zero-spacing controls isolate terminal-line spacing from width and
+            // font metrics; they are probes, never substituted into product layout.
+            let spacing = MarkdownDisplay.Role.source.lineSpacing
+            for (label, text, limit, gap) in [
+                ("six-full", six, 0, spacing), ("original-cap", original, 6, spacing),
+                ("six-full-control", six, 0, CGFloat.zero), ("original-cap-control", original, 6, CGFloat.zero)
+            ] {
+                let value = NSMutableAttributedString(attributedString: NSAttributedString(
+                    MarkdownDisplay.styled(text, role: .source, colors: .dark)))
+                let style = NSMutableParagraphStyle()
+                style.lineBreakMode = .byWordWrapping
+                style.lineSpacing = gap
+                value.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: value.length))
+                let storage = NSTextStorage(attributedString: value)
+                let manager = NSLayoutManager()
+                let container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
+                container.lineFragmentPadding = 0
+                container.maximumNumberOfLines = limit
+                manager.usesFontLeading = true
+                manager.addTextContainer(container)
+                storage.addLayoutManager(manager)
+                let glyphs = manager.glyphRange(for: container)
+                var fragments: [String] = []
+                manager.enumerateLineFragments(forGlyphRange: glyphs) { rect, used, _, range, _ in
+                    fragments.append("glyphs=\(range) fragment=\(rect) used=\(used)")
+                }
+                output.append("textkit \(label) width=\(width) spacing=\(style.lineSpacing) used=\(manager.usedRect(for: container)) lines=\(fragments.count) \(fragments.joined(separator: "; "))")
+            }
+        }
+        if let manager = field.layoutManager, let container = field.textContainer {
+            manager.ensureLayout(for: container)
+            output.append("actual textkit container=\(container.containerSize) padding=\(container.lineFragmentPadding) used=\(manager.usedRect(for: container))")
+        }
+        let report = output.joined(separator: "\n")
+        print("source-viewport metrics\n\(report)")
+        let attachment = XCTAttachment(string: report)
+        attachment.name = "Source viewport metrics: \(lines) lines"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testTextMeasurementDoesNotReserveUnusedLines() {
         let font = NSFont.systemFont(ofSize: 14)
         let width: CGFloat = 430
@@ -90,6 +253,79 @@ final class PopoverContentSizingTests: XCTestCase {
         let full = TextBlockMetrics.height(text: many, font: font, lineSpacing: 4, width: width, maxLines: nil)
         let capped = TextBlockMetrics.height(text: many, font: font, lineSpacing: 4, width: width, maxLines: 6)
         XCTAssertGreaterThan(full, capped + 8)
+    }
+
+    func testCappedMeasurementEndsAtVisibleLineWithoutFollowingGap() {
+        let font = NSFont.systemFont(ofSize: 14)
+        for separator in ["\n", "\r\n", "\u{2028}"] {
+            for spacing in [CGFloat(0), 4, 9] {
+                // Includes empty interior/terminal lines and whitespace-only lines.
+                for visible in [["First", "", "👩🏽‍💻 e\u{301} 漢字", "Fourth", "Fifth", "Sixth"],
+                                ["First", "Second", "Third", "Fourth", "Fifth", " "],
+                                ["First", "Second", "Third", "Fourth", "Fifth", ""]] {
+                    let prefix = visible.joined(separator: separator)
+                    let text = prefix + separator + "Hidden next line" + separator + "Tail"
+                    // A space gives the empty terminal line its font's line box
+                    // without relying on TextKit's separate extra-line fragment.
+                    let terminal = visible.last == "" ? prefix + " " : prefix
+                    let expected = TextBlockMetrics.height(text: terminal, font: font,
+                        lineSpacing: spacing, width: 430, maxLines: nil)
+                    let capped = TextBlockMetrics.height(text: text, font: font,
+                        lineSpacing: spacing, width: 430, maxLines: 6)
+                    XCTAssertEqual(capped, expected, accuracy: 0.5,
+                                   "spacing=\(spacing), separator=\(separator.debugDescription), prefix=\(prefix.debugDescription)")
+                    XCTAssertEqual(TextBlockMetrics.height(text: terminal, font: font,
+                        lineSpacing: spacing, width: 430, maxLines: 6), expected, accuracy: 0.5)
+                    let full = TextBlockMetrics.height(text: text, font: font,
+                        lineSpacing: spacing, width: 430, maxLines: nil)
+                    XCTAssertGreaterThan(full, capped)
+                    for unlimited in [0, -1] {
+                        XCTAssertEqual(TextBlockMetrics.height(text: text, font: font,
+                            lineSpacing: spacing, width: 430, maxLines: unlimited), full, accuracy: 0.5)
+                    }
+                }
+            }
+        }
+    }
+
+    func testCappedMixedFontsAndSoftWrapKeepTheVisibleGlyphHeight() {
+        let font = NSFont.systemFont(ofSize: 14)
+        for spacing in [CGFloat(0), 4, 9] {
+            for width in [CGFloat(96), 180] {
+                let value = NSMutableAttributedString(string:
+                    String(repeating: "漢字 👩🏽‍💻 e\u{301} wide words ", count: 20), attributes: [.font: font])
+                // A tall run on the first (last visible) line must retain its real height.
+                value.addAttribute(.font, value: NSFont.systemFont(ofSize: 28),
+                                   range: NSRange(location: 0, length: 2))
+                let style = NSMutableParagraphStyle()
+                style.lineBreakMode = .byWordWrapping
+                style.lineSpacing = spacing
+                value.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: value.length))
+                let storage = NSTextStorage(attributedString: value)
+                let manager = NSLayoutManager()
+                let container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
+                container.lineFragmentPadding = 0
+                manager.usesFontLeading = true
+                manager.addTextContainer(container)
+                storage.addLayoutManager(manager)
+                manager.ensureLayout(for: container)
+                var glyphs = NSRange(location: 0, length: 0)
+                _ = manager.lineFragmentRect(forGlyphAt: 0, effectiveRange: &glyphs)
+                let characters = manager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+                XCTAssertLessThan(NSMaxRange(characters), value.length)
+                // An independently laid-out, complete visible prefix is the oracle;
+                // it preserves composed Unicode and all font runs at the wrap boundary.
+                let prefix = value.attributedSubstring(from: characters)
+                let expected = TextBlockMetrics.height(attributed: AttributedString(prefix),
+                    lineSpacing: spacing, width: width, maxLines: nil)
+                let actual = TextBlockMetrics.height(attributed: AttributedString(value),
+                    lineSpacing: spacing, width: width, maxLines: 1)
+                XCTAssertEqual(actual, expected, accuracy: 0.5, "width=\(width), spacing=\(spacing)")
+                let small = TextBlockMetrics.height(text: prefix.string, font: font,
+                    lineSpacing: spacing, width: width, maxLines: nil)
+                XCTAssertGreaterThan(actual, small, "Tall glyphs must not be clipped to the base font")
+            }
+        }
     }
 
     func testLoadingPanelIsShorterThanALongTranslation() async throws {
@@ -468,6 +704,13 @@ private struct EmptyTermExplainer: TermExplainer {
         context: SelectionFetcher.TextContext?
     ) async throws -> [TermExplanation] {
         []
+    }
+}
+
+private struct PanelWarningTranslator: Translator {
+    let warning: TranslationSoftWarning
+    func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] {
+        throw warning
     }
 }
 

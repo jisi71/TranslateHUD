@@ -190,6 +190,9 @@ struct ScreenshotTrialRequest {
         do {
             let result = try await inner.translateStyledTrial(items, to: target, context: context, screenshotDiagnostics: true)
             return ScreenshotTrialResult(items: result, didSettle: await receipt.received)
+        } catch let warning as TranslationSoftWarning {
+            // Receipt was already applied; this never refunds or repeats the request.
+            throw warning.replacingOutputs(warning.outputs, settled: await receipt.received)
         } catch is CancellationError {
             throw CancellationError()
         } catch {

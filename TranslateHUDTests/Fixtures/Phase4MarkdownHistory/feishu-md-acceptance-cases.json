@@ -1,0 +1,54 @@
+[
+  {
+    "name": "一、标题层级",
+    "markdown": "## 一、标题层级\n\n\n\n# 一级标题 H1\n\n## 二级标题 H2\n\n### 三级标题 H3\n\n#### 四级标题 H4\n\n##### 五级标题 H5\n\n###### 六级标题 H6\n\n\n\n正文普通段落：这是一段普通文字，用来对照标题是否还在、字号/层级标记是否被吃掉。\n\n\n\n---"
+  },
+  {
+    "name": "二、强调与行内样式",
+    "markdown": "## 二、强调与行内样式\n\n\n\n普通字，**粗体**，\\*斜体\\*，***粗斜体***，\\~\\~删除线\\~\\~，`行内代码 path/to/file.swift`。\n\n\n\n中英混排：**TranslateHUD** 是菜单栏翻译，\\*selection\\* 划词与 `OCR` 截图。\n\n\n\n---"
+  },
+  {
+    "name": "三、空行与段落（重点测空行是否被吞）",
+    "markdown": "## 三、空行与段落（重点测空行是否被吞）\n\n\n\n第一段：假换行测试前先确认空行。\n\n\n\n第二段：上面这一行和本段之间应有一个空行；译完后空行应还在。\n\n\n\n第三段：下面列表前也应留空行。\n\n\n\n---"
+  },
+  {
+    "name": "四、无序列表",
+    "markdown": "## 四、无序列表\n\n\n\n- 苹果\n- 香蕉\n- 樱桃\n\n带空行的列表：\n\n\n\n- 第一项\n- 第二项（与上一项之间有空行）\n- 第三项\n\n嵌套：\n\n\n\n- 外层 A\n\n  - 内层 A1\n  - 内层 A2\n- 外层 B\n\n  - 内层 B1\n\n---"
+  },
+  {
+    "name": "五、有序列表",
+    "markdown": "## 五、有序列表\n\n\n\n1. 打开 TranslateHUD\n2. 划选本段文字\n3. 看译文是否仍是 1. 2. 3.\n\n带空行：\n\n\n\n1. 步骤一\n2. 步骤二（中间空行）\n3. 步骤三\n\n---"
+  },
+  {
+    "name": "六、引用",
+    "markdown": "## 六、引用\n\n\n\n> 这是一句引用。\n> \n> 引用里也可以有第二段，中间应有空行。\n\n\n\n嵌套引用：\n\n\n\n> 外层引用\n> \n> 内层引用还在不在？\n\n\n\n---"
+  },
+  {
+    "name": "七、代码",
+    "markdown": "## 七、代码\n\n\n\n行内：`let x = 1`\n\n\n\n围栏代码（整块一般不应被翻译）：\n\n\n\n```Swift\nfunc hello() {\n    print(\"Hello, TranslateHUD\")\n}\n```\n\n\n\n围栏前后都有空行与说明：\n\n\n\n上面是说明。\n\n\n\n```Plain Text\nplain fence\nline two\n```\n\n\n\n下面是说明，空行应保留。\n\n\n\n---"
+  },
+  {
+    "name": "八、链接与图片语法",
+    "markdown": "## 八、链接与图片语法\n\n\n\n链接：[官方仓库](https://github.com/jisi71/TranslateHUD)\n\n\n\n带标题的链接：[文档](https://example.com/path)\n\n\n\n图片语法（只测标记不被拆）：![图标示意](https://example.com/icon.png)\n\n\n\n---"
+  },
+  {
+    "name": "九、表格",
+    "markdown": "## 九、表格\n\n\n\n| 功能 | 状态 | 备注 |\n|-|-|-|\n| 假换行 | 待测 | PDF 软换行 |\n| 空行 | 待测 | 段间空行 |\n| 列表 | 待测 | `-` / `1.` |\n\n\n\n---"
+  },
+  {
+    "name": "十、分隔线与任务列表",
+    "markdown": "## 十、分隔线与任务列表\n\n\n\n上文结束。\n\n\n\n---\n\n\n\n- [x] 已完成的任务\n\n- [ ] 未完成的任务\n\n- [ ] 再试一次划词\n\n---"
+  },
+  {
+    "name": "十一、PDF 假换行样例（可整段划）",
+    "markdown": "## 十一、PDF 假换行样例（可整段划）\n\n\n\nThis is a long English sentence that was\n\nbroken in the middle by a narrow column so the\n\ntranslator used to see three broken lines.\n\n\n\n这是一段被版心\n\n打断的中文句子，用来看智能合并是否拼回整句。\n\n\n\n英文断词：The implementation of the algo-\n\nrithm should become one word after purify.\n\n\n\n---"
+  },
+  {
+    "name": "十二、信件式空行",
+    "markdown": "## 十二、信件式空行\n\n\n\nDear Sir,\n\n\n\nI hope you are well.\n\n\n\nBest regards,\n\nYahao\n\n\n\n---"
+  },
+  {
+    "name": "十三、综合一小段（推荐整段划一次）",
+    "markdown": "## 十三、综合一小段（推荐整段划一次）\n\n\n\n## 产品说明\n\n\n\n平台级的交易基础设施我们做不了，但可以：\n\n\n\n- 在豆包、抖音上开小店，做商品详情页的优化；\n- 直接做线索生意：如果你没能力去谈 GEO 大客户，自己做一个垂直平台。比如做一个家教推荐网站，人知道这个平台，再把线索分发给兼职家教老师。\n\n详见 [示例链接](https://example.com) 与代码：\n\n\n\n```Plain Text\nshop.optimize()\nleads.dispatch()\n```\n\n\n\n完。"
+  }
+]

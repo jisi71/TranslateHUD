@@ -1,0 +1,577 @@
+{
+  "revision": 17,
+  "source": "https://example.invalid/translatehud-markdown-fixture",
+  "retrievedAt": "2026-11-15 16:29:06 Asia/Taipei (UTC+8)",
+  "bodySHA256": "77682a178c7e6a0ab25256d65569334d921d280cc3632efdc47d0f4cf22a0ba6",
+  "rawSHA256": {
+    "docs-fetch.json": "7d2d12cbbcafc24bb2a9137363109658dae16a04648030751b6ef189e06d56b7",
+    "node-get.json": "cbe7c1937cbdccd64126b1aebd41c5199acea250ef8a8bfca89bc768582e69ef",
+    "TranslateHUD-划词-Markdown-测试.md": "e3c2a01c739946af570fef17c94531981f9d1390b8c48f9562d081bb6957317e"
+  },
+  "preamble": "<title>TranslateHUD 划词 Markdown 测试</title>\n\n> 用途：划词翻译时检查「假换行合并 / 空行保留 / 结构标记是否还在」。下面每种格式各试一小段即可。\n\n\n\n---\n\n\n\n",
+  "body": "<title>TranslateHUD 划词 Markdown 测试</title>\n\n> 用途：划词翻译时检查「假换行合并 / 空行保留 / 结构标记是否还在」。下面每种格式各试一小段即可。\n\n\n\n---\n\n\n\n## 一、标题层级\n\n\n\n# 一级标题 H1\n\n## 二级标题 H2\n\n### 三级标题 H3\n\n#### 四级标题 H4\n\n##### 五级标题 H5\n\n###### 六级标题 H6\n\n\n\n正文普通段落：这是一段普通文字，用来对照标题是否还在、字号/层级标记是否被吃掉。\n\n\n\n---\n\n\n\n## 二、强调与行内样式\n\n\n\n普通字，**粗体**，\\*斜体\\*，***粗斜体***，\\~\\~删除线\\~\\~，`行内代码 path/to/file.swift`。\n\n\n\n中英混排：**TranslateHUD** 是菜单栏翻译，\\*selection\\* 划词与 `OCR` 截图。\n\n\n\n---\n\n\n\n## 三、空行与段落（重点测空行是否被吞）\n\n\n\n第一段：假换行测试前先确认空行。\n\n\n\n第二段：上面这一行和本段之间应有一个空行；译完后空行应还在。\n\n\n\n第三段：下面列表前也应留空行。\n\n\n\n---\n\n\n\n## 四、无序列表\n\n\n\n- 苹果\n- 香蕉\n- 樱桃\n\n带空行的列表：\n\n\n\n- 第一项\n- 第二项（与上一项之间有空行）\n- 第三项\n\n嵌套：\n\n\n\n- 外层 A\n\n  - 内层 A1\n  - 内层 A2\n- 外层 B\n\n  - 内层 B1\n\n---\n\n\n\n\n\n## 五、有序列表\n\n\n\n1. 打开 TranslateHUD\n2. 划选本段文字\n3. 看译文是否仍是 1. 2. 3.\n\n带空行：\n\n\n\n1. 步骤一\n2. 步骤二（中间空行）\n3. 步骤三\n\n---\n\n\n\n## 六、引用\n\n\n\n> 这是一句引用。\n> \n> 引用里也可以有第二段，中间应有空行。\n\n\n\n嵌套引用：\n\n\n\n> 外层引用\n> \n> 内层引用还在不在？\n\n\n\n---\n\n\n\n## 七、代码\n\n\n\n行内：`let x = 1`\n\n\n\n围栏代码（整块一般不应被翻译）：\n\n\n\n```Swift\nfunc hello() {\n    print(\"Hello, TranslateHUD\")\n}\n```\n\n\n\n围栏前后都有空行与说明：\n\n\n\n上面是说明。\n\n\n\n```Plain Text\nplain fence\nline two\n```\n\n\n\n下面是说明，空行应保留。\n\n\n\n---\n\n\n\n## 八、链接与图片语法\n\n\n\n链接：[官方仓库](https://github.com/jisi71/TranslateHUD)\n\n\n\n带标题的链接：[文档](https://example.com/path)\n\n\n\n图片语法（只测标记不被拆）：![图标示意](https://example.com/icon.png)\n\n\n\n---\n\n\n\n## 九、表格\n\n\n\n| 功能 | 状态 | 备注 |\n|-|-|-|\n| 假换行 | 待测 | PDF 软换行 |\n| 空行 | 待测 | 段间空行 |\n| 列表 | 待测 | `-` / `1.` |\n\n\n\n---\n\n\n\n## 十、分隔线与任务列表\n\n\n\n上文结束。\n\n\n\n---\n\n\n\n- [x] 已完成的任务\n\n- [ ] 未完成的任务\n\n- [ ] 再试一次划词\n\n---\n\n\n\n## 十一、PDF 假换行样例（可整段划）\n\n\n\nThis is a long English sentence that was\n\nbroken in the middle by a narrow column so the\n\ntranslator used to see three broken lines.\n\n\n\n这是一段被版心\n\n打断的中文句子，用来看智能合并是否拼回整句。\n\n\n\n英文断词：The implementation of the algo-\n\nrithm should become one word after purify.\n\n\n\n---\n\n\n\n## 十二、信件式空行\n\n\n\nDear Sir,\n\n\n\nI hope you are well.\n\n\n\nBest regards,\n\nYahao\n\n\n\n---\n\n\n\n## 十三、综合一小段（推荐整段划一次）\n\n\n\n## 产品说明\n\n\n\n平台级的交易基础设施我们做不了，但可以：\n\n\n\n- 在豆包、抖音上开小店，做商品详情页的优化；\n- 直接做线索生意：如果你没能力去谈 GEO 大客户，自己做一个垂直平台。比如做一个家教推荐网站，人知道这个平台，再把线索分发给兼职家教老师。\n\n详见 [示例链接](https://example.com) 与代码：\n\n\n\n```Plain Text\nshop.optimize()\nleads.dispatch()\n```\n\n\n\n完。\n\n## Nine, table\n\n\n\n| 功能 | 状态 | 备注 |\n|-|-|-|\n| 假换行 | 待测 | PDF 软换行 |\n| 空行 | 待测 | 段间空行 |\n| 列表 | 待测 | `-` / `1.` |",
+  "cases": [
+    {
+      "name": "一、标题层级",
+      "markdown": "## 一、标题层级\n\n\n\n# 一级标题 H1\n\n## 二级标题 H2\n\n### 三级标题 H3\n\n#### 四级标题 H4\n\n##### 五级标题 H5\n\n###### 六级标题 H6\n\n\n\n正文普通段落：这是一段普通文字，用来对照标题是否还在、字号/层级标记是否被吃掉。\n\n\n\n---\n\n\n\n",
+      "sha256": "66d8148aaee5cd0c8db942ea4e1da0cf4b191d44a1dac30c1442690bf82adebf",
+      "headings": [
+        {
+          "level": 2,
+          "text": "一、标题层级"
+        },
+        {
+          "level": 1,
+          "text": "一级标题 H1"
+        },
+        {
+          "level": 2,
+          "text": "二级标题 H2"
+        },
+        {
+          "level": 3,
+          "text": "三级标题 H3"
+        },
+        {
+          "level": 4,
+          "text": "四级标题 H4"
+        },
+        {
+          "level": 5,
+          "text": "五级标题 H5"
+        },
+        {
+          "level": 6,
+          "text": "六级标题 H6"
+        }
+      ],
+      "fences": [],
+      "lists": [],
+      "links": [],
+      "table": [],
+      "inline": [],
+      "candidate": "## 一、标题层级\n\n\n\n# 一级标题 H1\n\n## 二级标题 H2\n\n### 三级标题 H3\n\n#### 四级标题 H4\n\n##### 五级标题 H5\n\n###### 六级标题 H6\n\n\n\n正文普通段落：这是一段普通文字，用来对照标题是否还在、字号/层级标记是否被吃掉。\n\n\n\n---\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": false,
+      "paragraphs": [
+        "正文普通段落：这是一段普通文字，用来对照标题是否还在、字号/层级标记是否被吃掉。"
+      ],
+      "manualEnglish": null
+    },
+    {
+      "name": "二、强调与行内样式",
+      "markdown": "## 二、强调与行内样式\n\n\n\n普通字，**粗体**，\\*斜体\\*，***粗斜体***，\\~\\~删除线\\~\\~，`行内代码 path/to/file.swift`。\n\n\n\n中英混排：**TranslateHUD** 是菜单栏翻译，\\*selection\\* 划词与 `OCR` 截图。\n\n\n\n---\n\n\n\n",
+      "sha256": "3cae660de477d92891774bdc187eaf59714d5cc79cecd1cc298992e719c4983b",
+      "headings": [
+        {
+          "level": 2,
+          "text": "二、强调与行内样式"
+        }
+      ],
+      "fences": [],
+      "lists": [],
+      "links": [],
+      "table": [],
+      "inline": [
+        "行内代码 path/to/file.swift",
+        "OCR"
+      ],
+      "candidate": "## 二、强调与行内样式\n\n\n\n普通字，**粗体**，\\*斜体\\*，***粗斜体***，\\~\\~删除线\\~\\~，`行内代码 path/to/file.swift`。\n\n\n\n中英混排：**TranslateHUD** 是菜单栏翻译，\\*划词选择\\* 划词与 `OCR` 截图。\n\n\n\n---\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": false,
+      "paragraphs": [],
+      "manualEnglish": null
+    },
+    {
+      "name": "三、空行与段落（重点测空行是否被吞）",
+      "markdown": "## 三、空行与段落（重点测空行是否被吞）\n\n\n\n第一段：假换行测试前先确认空行。\n\n\n\n第二段：上面这一行和本段之间应有一个空行；译完后空行应还在。\n\n\n\n第三段：下面列表前也应留空行。\n\n\n\n---\n\n\n\n",
+      "sha256": "8d4d58e2aaac1c180359337f581d3f6a46172141b6e5575e6ce7b2d0e24a2adb",
+      "headings": [
+        {
+          "level": 2,
+          "text": "三、空行与段落（重点测空行是否被吞）"
+        }
+      ],
+      "fences": [],
+      "lists": [],
+      "links": [],
+      "table": [],
+      "inline": [],
+      "candidate": "## 三、空行与段落（重点测空行是否被吞）\n\n\n\n第一段：假换行测试前先确认空行。\n\n\n\n第二段：上面这一行和本段之间应有一个空行；译完后空行应还在。\n\n\n\n第三段：下面列表前也应留空行。\n\n\n\n---\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": false,
+      "paragraphs": [
+        "第一段：假换行测试前先确认空行。",
+        "第二段：上面这一行和本段之间应有一个空行；译完后空行应还在。",
+        "第三段：下面列表前也应留空行。"
+      ],
+      "manualEnglish": null
+    },
+    {
+      "name": "四、无序列表",
+      "markdown": "## 四、无序列表\n\n\n\n- 苹果\n- 香蕉\n- 樱桃\n\n带空行的列表：\n\n\n\n- 第一项\n- 第二项（与上一项之间有空行）\n- 第三项\n\n嵌套：\n\n\n\n- 外层 A\n\n  - 内层 A1\n  - 内层 A2\n- 外层 B\n\n  - 内层 B1\n\n---\n\n\n\n\n\n",
+      "sha256": "5a73093c83038dc67a122491bb6593d85826a06586fa680dbe538bfbc8db72ed",
+      "headings": [
+        {
+          "level": 2,
+          "text": "四、无序列表"
+        }
+      ],
+      "fences": [],
+      "lists": [
+        {
+          "text": "苹果",
+          "depth": 1,
+          "ordinal": 0
+        },
+        {
+          "text": "香蕉",
+          "depth": 1,
+          "ordinal": 0
+        },
+        {
+          "text": "樱桃",
+          "depth": 1,
+          "ordinal": 0
+        },
+        {
+          "text": "第一项",
+          "depth": 1,
+          "ordinal": 0
+        },
+        {
+          "text": "第二项（与上一项之间有空行）",
+          "depth": 1,
+          "ordinal": 0
+        },
+        {
+          "text": "第三项",
+          "depth": 1,
+          "ordinal": 0
+        },
+        {
+          "text": "外层 A",
+          "depth": 1,
+          "ordinal": 0
+        },
+        {
+          "text": "内层 A1",
+          "depth": 2,
+          "ordinal": 0
+        },
+        {
+          "text": "内层 A2",
+          "depth": 2,
+          "ordinal": 0
+        },
+        {
+          "text": "外层 B",
+          "depth": 1,
+          "ordinal": 0
+        },
+        {
+          "text": "内层 B1",
+          "depth": 2,
+          "ordinal": 0
+        }
+      ],
+      "links": [],
+      "table": [],
+      "inline": [],
+      "candidate": "## 四、无序列表\n\n\n\n- 苹果\n- 香蕉\n- 樱桃\n\n带空行的列表：\n\n\n\n- 第一项\n- 第二项（与上一项之间有空行）\n- 第三项\n\n嵌套：\n\n\n\n- 外层 A\n\n  - 内层 A1\n  - 内层 A2\n- 外层 B\n\n  - 内层 B1\n\n---\n\n\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": false,
+      "paragraphs": [
+        "带空行的列表：",
+        "嵌套："
+      ],
+      "manualEnglish": null
+    },
+    {
+      "name": "五、有序列表",
+      "markdown": "## 五、有序列表\n\n\n\n1. 打开 TranslateHUD\n2. 划选本段文字\n3. 看译文是否仍是 1. 2. 3.\n\n带空行：\n\n\n\n1. 步骤一\n2. 步骤二（中间空行）\n3. 步骤三\n\n---\n\n\n\n",
+      "sha256": "dc19b05a42d0e1589990996a3257718d6a72ace47feeb0202428baeee99a79ef",
+      "headings": [
+        {
+          "level": 2,
+          "text": "五、有序列表"
+        }
+      ],
+      "fences": [],
+      "lists": [
+        {
+          "text": "打开 TranslateHUD",
+          "depth": 1,
+          "ordinal": 1
+        },
+        {
+          "text": "划选本段文字",
+          "depth": 1,
+          "ordinal": 2
+        },
+        {
+          "text": "看译文是否仍是 1. 2. 3.",
+          "depth": 1,
+          "ordinal": 3
+        },
+        {
+          "text": "步骤一",
+          "depth": 1,
+          "ordinal": 1
+        },
+        {
+          "text": "步骤二（中间空行）",
+          "depth": 1,
+          "ordinal": 2
+        },
+        {
+          "text": "步骤三",
+          "depth": 1,
+          "ordinal": 3
+        }
+      ],
+      "links": [],
+      "table": [],
+      "inline": [],
+      "candidate": "## 五、有序列表\n\n\n\n1. 打开 TranslateHUD\n2. 划选本段文字\n3. 看译文是否仍是 1. 2. 3.\n\n带空行：\n\n\n\n1. 步骤一\n2. 步骤二（中间空行）\n3. 步骤三\n\n---\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": false,
+      "paragraphs": [
+        "带空行："
+      ],
+      "manualEnglish": null
+    },
+    {
+      "name": "六、引用",
+      "markdown": "## 六、引用\n\n\n\n> 这是一句引用。\n> \n> 引用里也可以有第二段，中间应有空行。\n\n\n\n嵌套引用：\n\n\n\n> 外层引用\n> \n> 内层引用还在不在？\n\n\n\n---\n\n\n\n",
+      "sha256": "952acbeb4ac4dd5a8014cd2b1576ec49497d03fc46e8be15f0c01d547f488e7f",
+      "headings": [
+        {
+          "level": 2,
+          "text": "六、引用"
+        }
+      ],
+      "fences": [],
+      "lists": [],
+      "links": [],
+      "table": [],
+      "inline": [],
+      "candidate": "## 六、引用\n\n\n\n> 这是一句引用。\n> \n> 引用里也可以有第二段，中间应有空行。\n\n\n\n嵌套引用：\n\n\n\n> 外层引用\n> \n> 内层引用还在不在？\n\n\n\n---\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": false,
+      "paragraphs": [
+        "嵌套引用："
+      ],
+      "manualEnglish": null
+    },
+    {
+      "name": "七、代码",
+      "markdown": "## 七、代码\n\n\n\n行内：`let x = 1`\n\n\n\n围栏代码（整块一般不应被翻译）：\n\n\n\n```Swift\nfunc hello() {\n    print(\"Hello, TranslateHUD\")\n}\n```\n\n\n\n围栏前后都有空行与说明：\n\n\n\n上面是说明。\n\n\n\n```Plain Text\nplain fence\nline two\n```\n\n\n\n下面是说明，空行应保留。\n\n\n\n---\n\n\n\n",
+      "sha256": "f3bc2250e91e04b9d93adb04520c6cbc1d6976cde1c1094e0c0d960f6b40e93d",
+      "headings": [
+        {
+          "level": 2,
+          "text": "七、代码"
+        }
+      ],
+      "fences": [
+        {
+          "language": "Swift",
+          "body": "func hello() {\n    print(\"Hello, TranslateHUD\")\n}"
+        },
+        {
+          "language": "Plain Text",
+          "body": "plain fence\nline two"
+        }
+      ],
+      "lists": [],
+      "links": [],
+      "table": [],
+      "inline": [
+        "let x = 1"
+      ],
+      "candidate": "## 七、代码\n\n\n\n行内：`let x = 1`\n\n\n\n围栏代码（整块一般不应被翻译）：\n\n\n\n```Swift\nfunc hello() {\n    print(\"Hello, TranslateHUD\")\n}\n```\n\n\n\n围栏前后都有空行与说明：\n\n\n\n上面是说明。\n\n\n\n```Plain Text\n普通围栏\n第二行\n```\n\n\n\n下面是说明，空行应保留。\n\n\n\n---\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": false,
+      "paragraphs": [
+        "围栏代码（整块一般不应被翻译）：",
+        "围栏前后都有空行与说明：",
+        "上面是说明。",
+        "下面是说明，空行应保留。"
+      ],
+      "manualEnglish": "## Seven, code\n\n\n\nInline: `let x = 1`\n\n\n\nFenced code (generally preserve the entire block):\n\n\n\n```Swift\nfunc hello() {\n    print(\"Hello, TranslateHUD\")\n}\n```\n\n\n\nBlank lines and explanations surround the fence:\n\n\n\nThis is the explanation above.\n\n\n\n```Plain Text\nplain fence\nline two\n```\n\n\n\nThis is the explanation below; preserve blank lines.\n\n\n\n---\n\n\n\n"
+    },
+    {
+      "name": "八、链接与图片语法",
+      "markdown": "## 八、链接与图片语法\n\n\n\n链接：[官方仓库](https://github.com/jisi71/TranslateHUD)\n\n\n\n带标题的链接：[文档](https://example.com/path)\n\n\n\n图片语法（只测标记不被拆）：![图标示意](https://example.com/icon.png)\n\n\n\n---\n\n\n\n",
+      "sha256": "db627f1b0d9adf59d9d2cfebcfa03f8b668438e0d691a01a419814169a75eea7",
+      "headings": [
+        {
+          "level": 2,
+          "text": "八、链接与图片语法"
+        }
+      ],
+      "fences": [],
+      "lists": [],
+      "links": [
+        {
+          "label": "官方仓库",
+          "url": "https://github.com/jisi71/TranslateHUD",
+          "image": false
+        },
+        {
+          "label": "文档",
+          "url": "https://example.com/path",
+          "image": false
+        },
+        {
+          "label": "图标示意",
+          "url": "https://example.com/icon.png",
+          "image": true
+        }
+      ],
+      "table": [],
+      "inline": [],
+      "candidate": "## 八、链接与图片语法\n\n\n\n链接：[官方仓库](https://github.com/jisi71/TranslateHUD)\n\n\n\n带标题的链接：[文档](https://example.com/path)\n\n\n\n图片语法（只测标记不被拆）：![图标示意](https://example.com/icon.png)\n\n\n\n---\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": false,
+      "paragraphs": [],
+      "manualEnglish": "## Eight, links and image syntax\n\n\n\nLink: [Official repository](https://github.com/jisi71/TranslateHUD)\n\n\n\nTitled link: [Documentation](https://example.com/path)\n\n\n\nImage syntax (only check markers remain intact): ![Icon illustration](https://example.com/icon.png)\n\n\n\n---\n\n\n\n"
+    },
+    {
+      "name": "九、表格",
+      "markdown": "## 九、表格\n\n\n\n| 功能 | 状态 | 备注 |\n|-|-|-|\n| 假换行 | 待测 | PDF 软换行 |\n| 空行 | 待测 | 段间空行 |\n| 列表 | 待测 | `-` / `1.` |\n\n\n\n---\n\n\n\n",
+      "sha256": "e4b9946f731921b12e4b7f48e36ed6bedd3910c14bf838ffd5ece29b105dbb0f",
+      "headings": [
+        {
+          "level": 2,
+          "text": "九、表格"
+        }
+      ],
+      "fences": [],
+      "lists": [],
+      "links": [],
+      "table": [
+        [
+          "功能",
+          "状态",
+          "备注"
+        ],
+        [
+          "假换行",
+          "待测",
+          "PDF 软换行"
+        ],
+        [
+          "空行",
+          "待测",
+          "段间空行"
+        ],
+        [
+          "列表",
+          "待测",
+          "`-` / `1.`"
+        ]
+      ],
+      "inline": [
+        "-",
+        "1."
+      ],
+      "candidate": "## 九、表格\n\n\n\n| 功能 | 状态 | 备注 |\n|-|-|-|\n| 假换行 | 待测 | PDF 软换行 |\n| 空行 | 待测 | 段间空行 |\n| 列表 | 待测 | `-` / `1.` |\n\n\n\n---\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": false,
+      "paragraphs": [],
+      "manualEnglish": null
+    },
+    {
+      "name": "十、分隔线与任务列表",
+      "markdown": "## 十、分隔线与任务列表\n\n\n\n上文结束。\n\n\n\n---\n\n\n\n- [x] 已完成的任务\n\n- [ ] 未完成的任务\n\n- [ ] 再试一次划词\n\n---\n\n\n\n",
+      "sha256": "c79a165d4e9c8c0d39ab6a5826d1f4f51b6a84c1285b610d43fc0d3bb2c433f6",
+      "headings": [
+        {
+          "level": 2,
+          "text": "十、分隔线与任务列表"
+        }
+      ],
+      "fences": [],
+      "lists": [
+        {
+          "text": "[x] 已完成的任务",
+          "depth": 1,
+          "ordinal": 0
+        },
+        {
+          "text": "[ ] 未完成的任务",
+          "depth": 1,
+          "ordinal": 0
+        },
+        {
+          "text": "[ ] 再试一次划词",
+          "depth": 1,
+          "ordinal": 0
+        }
+      ],
+      "links": [],
+      "table": [],
+      "inline": [],
+      "candidate": "## 十、分隔线与任务列表\n\n\n\n上文结束。\n\n\n\n---\n\n\n\n- [x] 已完成的任务\n\n- [ ] 未完成的任务\n\n- [ ] 再试一次划词\n\n---\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": false,
+      "paragraphs": [
+        "上文结束。"
+      ],
+      "manualEnglish": null
+    },
+    {
+      "name": "十一、PDF 假换行样例（可整段划）",
+      "markdown": "## 十一、PDF 假换行样例（可整段划）\n\n\n\nThis is a long English sentence that was\n\nbroken in the middle by a narrow column so the\n\ntranslator used to see three broken lines.\n\n\n\n这是一段被版心\n\n打断的中文句子，用来看智能合并是否拼回整句。\n\n\n\n英文断词：The implementation of the algo-\n\nrithm should become one word after purify.\n\n\n\n---\n\n\n\n",
+      "sha256": "d0c3f34aa54cd6476930f8f0c87786e5c656beb03b9d4629034f905d89ba669f",
+      "headings": [
+        {
+          "level": 2,
+          "text": "十一、PDF 假换行样例（可整段划）"
+        }
+      ],
+      "fences": [],
+      "lists": [],
+      "links": [],
+      "table": [],
+      "inline": [],
+      "candidate": "## 十一、PDF 假换行样例（可整段划）\n\n\n\n这是一句很长的英文句子，曾经\n\n被狭窄的栏从中间打断，所以\n\n翻译器曾看到三条断行。\n\n\n\n这是一段被版心\n\n打断的中文句子，用来看智能合并是否拼回整句。\n\n\n\n英文断词：算法的实现应当\n\n在净化后合并为一个词。\n\n\n\n---\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": true,
+      "paragraphs": [
+        "This is a long English sentence that was",
+        "broken in the middle by a narrow column so the",
+        "translator used to see three broken lines.",
+        "这是一段被版心",
+        "打断的中文句子，用来看智能合并是否拼回整句。",
+        "英文断词：The implementation of the algo-",
+        "rithm should become one word after purify."
+      ],
+      "manualEnglish": null
+    },
+    {
+      "name": "十二、信件式空行",
+      "markdown": "## 十二、信件式空行\n\n\n\nDear Sir,\n\n\n\nI hope you are well.\n\n\n\nBest regards,\n\nYahao\n\n\n\n---\n\n\n\n",
+      "sha256": "4ac77fa4c63c1355b5cb3f5d172d3803653036226fb4d88075d1ef4f07eb5444",
+      "headings": [
+        {
+          "level": 2,
+          "text": "十二、信件式空行"
+        }
+      ],
+      "fences": [],
+      "lists": [],
+      "links": [],
+      "table": [],
+      "inline": [],
+      "candidate": "## 十二、信件式空行\n\n\n\n尊敬的先生：\n\n\n\n希望您一切安好。\n\n\n\n此致敬意，\n\n亚豪\n\n\n\n---\n\n\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": true,
+      "paragraphs": [
+        "Dear Sir,",
+        "I hope you are well.",
+        "Best regards,",
+        "Yahao"
+      ],
+      "manualEnglish": null
+    },
+    {
+      "name": "十三、综合一小段（推荐整段划一次）",
+      "markdown": "## 十三、综合一小段（推荐整段划一次）\n\n\n\n## 产品说明\n\n\n\n平台级的交易基础设施我们做不了，但可以：\n\n\n\n- 在豆包、抖音上开小店，做商品详情页的优化；\n- 直接做线索生意：如果你没能力去谈 GEO 大客户，自己做一个垂直平台。比如做一个家教推荐网站，人知道这个平台，再把线索分发给兼职家教老师。\n\n详见 [示例链接](https://example.com) 与代码：\n\n\n\n```Plain Text\nshop.optimize()\nleads.dispatch()\n```\n\n\n\n完。\n\n",
+      "sha256": "1a09ce67b0691cd3e9eee189281ab4424f7f10ec54ddb1fb9319b7883c77fc7f",
+      "headings": [
+        {
+          "level": 2,
+          "text": "十三、综合一小段（推荐整段划一次）"
+        },
+        {
+          "level": 2,
+          "text": "产品说明"
+        }
+      ],
+      "fences": [
+        {
+          "language": "Plain Text",
+          "body": "shop.optimize()\nleads.dispatch()"
+        }
+      ],
+      "lists": [
+        {
+          "text": "在豆包、抖音上开小店，做商品详情页的优化；",
+          "depth": 1,
+          "ordinal": 0
+        },
+        {
+          "text": "直接做线索生意：如果你没能力去谈 GEO 大客户，自己做一个垂直平台。比如做一个家教推荐网站，人知道这个平台，再把线索分发给兼职家教老师。",
+          "depth": 1,
+          "ordinal": 0
+        }
+      ],
+      "links": [
+        {
+          "label": "示例链接",
+          "url": "https://example.com",
+          "image": false
+        }
+      ],
+      "table": [],
+      "inline": [],
+      "candidate": "## 十三、综合一小段（推荐整段划一次）\n\n\n\n## 产品说明\n\n\n\n平台级的交易基础设施我们做不了，但可以：\n\n\n\n- 在豆包、抖音上开小店，做商品详情页的优化；\n- 直接做线索生意：如果你没能力去谈 GEO 大客户，自己做一个垂直平台。比如做一个家教推荐网站，人知道这个平台，再把线索分发给兼职家教老师。\n\n详见 [示例链接](https://example.com) 与代码：\n\n\n\n```Plain Text\nshop.optimize()\nleads.dispatch()\n```\n\n\n\n完。\n\n",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": false,
+      "paragraphs": [
+        "平台级的交易基础设施我们做不了，但可以：",
+        "完。"
+      ],
+      "manualEnglish": "## Thirteen, mixed passage (select the entire passage once)\n\n\n\n## Product description\n\n\n\nWe cannot build platform-scale trading infrastructure, but we can:\n\n\n\n- Open small shops on Doubao and Douyin and optimize product detail pages;\n- Run a lead business directly: if you cannot negotiate with major GEO clients, build a vertical platform yourself. For example, build a tutoring recommendation website, attract visitors, then distribute leads to part-time tutors.\n\nSee [Example link](https://example.com) and code:\n\n\n\n```Plain Text\nshop.optimize()\nleads.dispatch()\n```\n\n\n\nEnd.\n\n"
+    },
+    {
+      "name": "Nine, table",
+      "markdown": "## Nine, table\n\n\n\n| 功能 | 状态 | 备注 |\n|-|-|-|\n| 假换行 | 待测 | PDF 软换行 |\n| 空行 | 待测 | 段间空行 |\n| 列表 | 待测 | `-` / `1.` |",
+      "sha256": "a4a270e3a2b69d32ce6fde1d6cc9639b1f25597440f17f0ea89432a4dcf4d977",
+      "headings": [
+        {
+          "level": 2,
+          "text": "Nine, table"
+        }
+      ],
+      "fences": [],
+      "lists": [],
+      "links": [],
+      "table": [
+        [
+          "功能",
+          "状态",
+          "备注"
+        ],
+        [
+          "假换行",
+          "待测",
+          "PDF 软换行"
+        ],
+        [
+          "空行",
+          "待测",
+          "段间空行"
+        ],
+        [
+          "列表",
+          "待测",
+          "`-` / `1.`"
+        ]
+      ],
+      "inline": [
+        "-",
+        "1."
+      ],
+      "candidate": "## 九、表格\n\n\n\n| 功能 | 状态 | 备注 |\n|-|-|-|\n| 假换行 | 待测 | PDF 软换行 |\n| 空行 | 待测 | 段间空行 |\n| 列表 | 待测 | `-` / `1.` |",
+      "candidateLabel": "synthetic/manual; Chinese target; already-Chinese prose retained; ordinary English translated; code/URLs retained",
+      "rejectEnglish": true,
+      "paragraphs": [],
+      "manualEnglish": null
+    }
+  ],
+  "clipboardHTML": "unavailable; revision 8 HTML is historical only"
+}

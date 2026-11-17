@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Combine
 
@@ -26,6 +27,70 @@ final class TranslationProgress: ObservableObject {
     @Published private(set) var timeoutMessage = ""
     @Published private(set) var displayError: Error?
 
+    @Published private(set) var qualityWarning: TranslationSoftWarning?
+    private var replacedQualityWarning: TranslationSoftWarning?
+    @Published private(set) var qualityFeedbackOwner: QualityFeedbackOwner?
+    private var replacedFeedbackOwner: QualityFeedbackOwner?
+    var feedbackOwnerAtStart: @MainActor () -> QualityFeedbackOwner? = { TrialAccountStore.shared.qualityFeedbackOwner }
+
+    @Published private(set) var sourceDraft: String?
+    @Published private(set) var translationDraft: String?
+    @Published private(set) var replacedTranslationDraft: String?
+    // Focus retains a snapshot for stable editing; only content changes are local edits.
+    @Published private var sourceWasEdited = false
+    @Published private var translationWasEdited = false
+    var hasLocalEdits: Bool { sourceWasEdited || translationWasEdited || replacedTranslationDraft != nil }
+    func focusSource(_ text: String) {
+        if sourceDraft == nil { sourceDraft = text }
+    }
+    func focusTranslation(_ text: String) {
+        guard translationDraft == nil else { return }
+        translationDraft = text
+        cancel() // Freeze even an unmodified streaming snapshot before late events arrive.
+        state = .success(pairs: [.init(original: sourceDraft ?? lastOriginals.joined(separator: "\n"), translated: text)])
+    }
+    var displayedTranslation: String {
+        if let translationDraft { return translationDraft }
+        switch state {
+        case .streaming(let partial): return partial
+        case .success(let pairs): return pairs.map(\.translated).joined(separator: "\n")
+        default: return ""
+        }
+    }
+    func copyTranslation(to pasteboard: NSPasteboard = .general) {
+        pasteboard.clearContents()
+        pasteboard.setString(displayedTranslation, forType: .string)
+    }
+    func editSource(_ text: String) {
+        if text != (sourceDraft ?? lastOriginals.joined(separator: "\n")) { sourceWasEdited = true }
+        sourceDraft = text
+    }
+    func editTranslation(_ text: String) {
+        if text != displayedTranslation { translationWasEdited = true }
+        translationDraft = text
+        cancel() // invalidate requestID before a queued delta/completion can write again
+        state = .success(pairs: [.init(original: sourceDraft ?? lastOriginals.joined(separator: "\n"), translated: text)])
+    }
+    func prepareManualRetranslation() {
+        if translationWasEdited, let translationDraft {
+            replacedTranslationDraft = translationDraft
+            replacedQualityWarning = qualityWarning
+            replacedFeedbackOwner = qualityFeedbackOwner
+        }
+        translationDraft = nil
+        translationWasEdited = false
+    }
+    func restorePreviousTranslation() {
+        guard let replacedTranslationDraft else { return }
+        editTranslation(replacedTranslationDraft)
+        qualityWarning = replacedQualityWarning
+        qualityFeedbackOwner = replacedFeedbackOwner
+        replacedFeedbackOwner = nil
+        replacedQualityWarning = nil
+        translationWasEdited = true // Restored user work remains protected, even if a new result matches it.
+        self.replacedTranslationDraft = nil
+    }
+
     let timeoutSeconds: TimeInterval
     var failureSurface: FailureEvent.Surface = .selectionTranslate
 
@@ -33,6 +98,7 @@ final class TranslationProgress: ObservableObject {
     var mapTranslator: (@Sendable (any Translator) -> any Translator)?
     /// The displayed source can contain formatting that is never sent to the model.
     var retrySourceText: String?
+    var prepareRetry: @MainActor (String) -> TranslationSession.Outcome = { TranslationSession.prepare(sourceText: $0) }
 
     private var task: Task<Void, Never>?
     private var elapsedTimer: Timer?
@@ -58,11 +124,14 @@ final class TranslationProgress: ObservableObject {
         lastWasStreaming = false
         targetLanguage = target
         state = .loading
+        qualityWarning = nil
+        qualityFeedbackOwner = nil
         displayError = nil
         retryReason = nil
         elapsedSeconds = 0
         startElapsedTimer()
         let currentID = requestID
+        let feedbackOwner = feedbackOwnerAtStart()
 
         task = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -79,6 +148,9 @@ final class TranslationProgress: ObservableObject {
                 }
                 self.state = .success(pairs: pairs)
                 AppLog.debug("翻译完成（\(self.elapsedSeconds)s 内）：\(originals.count) 条")
+            } catch let warning as TranslationSoftWarning {
+                guard self.requestID == currentID, !Task.isCancelled else { return }
+                self.finishSoftWarning(warning, originals: originals, owner: feedbackOwner)
             } catch let error as TranslationTimeoutError {
                 guard self.requestID == currentID, !Task.isCancelled else { return }
                 self.displayError = error
@@ -116,6 +188,8 @@ final class TranslationProgress: ObservableObject {
         lastWasStreaming = true
         targetLanguage = target
         state = .loading
+        qualityWarning = nil
+        qualityFeedbackOwner = nil
         displayError = nil
         retryReason = nil
         elapsedSeconds = 0
@@ -123,31 +197,41 @@ final class TranslationProgress: ObservableObject {
 
         let timeoutSeconds = self.timeoutSeconds
         let currentID = requestID
+        let feedbackOwner = feedbackOwnerAtStart()
         task = Task.detached { [weak self, translator, original, target, context, timeoutSeconds, currentID] in
             do {
                 let translated = try await withStreamingTimeout(idleSeconds: timeoutSeconds, totalSeconds: 120) { [weak self, translator, original, target, context] activity in
                     var lastPartial = ""
-                    for try await event in translator.translateStreaming(original, to: target, context: context) {
-                        try Task.checkCancellation()
-                        switch event {
-                        case .delta(let partial):
-                            if partial != lastPartial { await activity.touch() }
-                            lastPartial = partial
-                            await self?.setStreamingPartial(partial, requestID: currentID)
-                        case .reset(let reason):
-                            AppLog.info("Stream reset: \(reason)")
-                            lastPartial = ""
-                            await self?.resetToLoading(requestID: currentID, reason: reason)
+                    var soft: TranslationSoftWarning?
+                    do {
+                        for try await event in translator.translateStreaming(original, to: target, context: context) {
+                            try Task.checkCancellation()
+                            switch event {
+                            case .delta(let partial):
+                                if partial != lastPartial { await activity.touch() }
+                                lastPartial = partial
+                                await self?.setStreamingPartial(partial, requestID: currentID)
+                            case .reset(let reason):
+                                AppLog.info("Stream reset: \(reason)")
+                                lastPartial = ""
+                                await self?.resetToLoading(requestID: currentID, reason: reason)
+                            }
                         }
+                    } catch let warning as TranslationSoftWarning {
+                        guard warning.hasOnlySoftFailures, warning.outputs.count == 1, warning.displaySources.count == 1 else { throw TranslationError.parse("流式候选不完整。") }
+                        lastPartial = warning.outputs[0]
+                        soft = warning
                     }
                     try Task.checkCancellation()
 
                     // 换行兜底：选区多行文本必须保持同样的逻辑行数。
                     // 流式模型有时会压扁换行，或在代码片段未闭合时自行补一行；这种情况改走
                     // JSON 批量逐行翻译，再按原行数拼回去。
-                    let inputNL  = original.filter { $0 == "\n" }.count
+                    let layoutSource = soft?.displaySources.first ?? original
+                    let inputNL  = layoutSource.filter { $0 == "\n" }.count
                     let outputNL = lastPartial.filter { $0 == "\n" }.count
                     if inputNL >= 2 && outputNL != inputNL {
+                        if soft != nil { throw TranslationError.parse("完整候选的换行结构无法对应，请手动重译。") }
                         AppLog.info("流式输出行数不匹配（inNL=\(inputNL) outNL=\(outputNL)），fallback 逐行 JSON 批量")
                         do {
                             return try await translateLineByLine(
@@ -156,23 +240,14 @@ final class TranslationProgress: ObservableObject {
                                 target: target,
                                 context: context
                             )
-                        } catch let error as TranslationError {
-                            // 用户已经在看流式译文。逐行重译只是排版兜底，质量检查失败时不要用报错盖掉它。
-                            if case .quality = error,
-                               TranslationValidator.shouldPreserveReadableOutput(
-                                   input: original,
-                                   output: lastPartial,
-                                   target: target
-                               ) {
-                                AppLog.info("逐行重译未通过质量检查，保留已经显示的译文")
-                                return lastPartial
-                            }
-                            throw error
+                        } catch let warning as TranslationSoftWarning {
+                            throw warning // Complete line-mapped fallback warning; hard failures never preserve a prior draft.
                         }
                     }
                     guard !lastPartial.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                         throw TranslationError.parse("服务返回了空译文，请重试或更换模型。")
                     }
+                    if let soft { throw soft.replacingOutputs([lastPartial]) }
                     return lastPartial
                 }
                 try Task.checkCancellation()
@@ -180,6 +255,13 @@ final class TranslationProgress: ObservableObject {
                     guard let self, self.requestID == currentID else { return }
                     self.state = .success(pairs: [Pair(original: original, translated: translated)])
                     AppLog.debug("流式翻译完成（\(self.elapsedSeconds)s）：\(translated.count) 字符")
+                    self.stopElapsedTimer()
+                    self.task = nil
+                }
+            } catch let warning as TranslationSoftWarning {
+                await MainActor.run { [weak self] in
+                    guard let self, self.requestID == currentID, !Task.isCancelled else { return }
+                    self.finishSoftWarning(warning, originals: [original], owner: feedbackOwner)
                     self.stopElapsedTimer()
                     self.task = nil
                 }
@@ -214,12 +296,24 @@ final class TranslationProgress: ObservableObject {
     /// 重跑：上次走流式则重跑流式，否则重跑批量。
     func retry(target: TargetLanguage? = nil) {
         guard !lastOriginals.isEmpty else { return }
+        cancel()
+        if let sourceDraft {
+            let prepared = SelectionFormatPipeline.prepare(sourceDraft, options: .init(smartPurify: false, preserveMarkdown: true))
+            mapTranslator = { FormatPreservingTranslator(base: $0, prepared: prepared) }
+            lastOriginals = [sourceDraft]
+            retrySourceText = sourceDraft
+            lastWasStreaming = false
+            lastContext = nil // original selection context can be stale after editing
+        }
+        prepareManualRetranslation()
+        qualityWarning = nil
+        qualityFeedbackOwner = nil
         let source = retrySourceText ?? lastOriginals.joined(separator: "\n")
         let target = target ?? targetLanguage ?? TargetLanguage.resolved(
             for: lastOriginals, configured: SettingsStore.shared.targetLanguage
         )
         let translator: any Translator
-        switch TranslationSession.prepare(sourceText: source) {
+        switch prepareRetry(source) {
         case .blocked(_, let message):
             state = .failed(message)
             FailureReporter.report(TranslationError.service(message), surface: failureSurface)
@@ -233,6 +327,27 @@ final class TranslationProgress: ObservableObject {
         } else {
             start(translator: translator, originals: lastOriginals, target: target, context: lastContext)
         }
+    }
+
+    private func finishSoftWarning(_ warning: TranslationSoftWarning, originals: [String], owner: QualityFeedbackOwner?) {
+        guard warning.hasOnlySoftFailures, warning.target == targetLanguage,
+              warning.sourceItems.count == warning.providerCandidates.count,
+              warning.itemFailures.count == warning.sourceItems.count,
+              zip(warning.sourceItems, warning.providerCandidates).allSatisfy({ pair in pair.0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pair.1.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
+              warning.outputs.count == originals.count, warning.displaySources.count == originals.count,
+              !warning.outputs.joined().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            qualityWarning = nil
+            qualityFeedbackOwner = nil
+            let error = TranslationError.parse("候选译文不完整或质量结果无法对应。")
+            displayError = error
+            state = .failed(ServiceErrorMessage.describe(error))
+            return
+        }
+        qualityWarning = warning
+        qualityFeedbackOwner = owner
+        displayError = nil
+        retryReason = nil
+        state = .success(pairs: zip(originals, warning.outputs).map { Pair(original: $0, translated: $1) })
     }
 
     /// 主动取消（关闭窗口时也要调）。
@@ -286,7 +401,12 @@ private func translateLineByLine(
     context: SelectionFetcher.TextContext?
 ) async throws -> String {
     let lines = original.components(separatedBy: "\n")
-    let translated = try await translator.translate(lines, to: target, context: context)
+    let translated: [String]
+    do { translated = try await translator.translate(lines, to: target, context: context) }
+    catch let warning as TranslationSoftWarning {
+        guard warning.hasOnlySoftFailures, warning.outputs.count == lines.count else { throw TranslationError.parse("逐行候选数量不一致。") }
+        throw warning.replacingOutputs([warning.outputs.joined(separator: "\n")], displaySources: [original])
+    }
     guard translated.count == lines.count else {
         throw TranslationError.parse("逐行译文数量与原文不一致，结果不完整。请重试或缩短原文。")
     }

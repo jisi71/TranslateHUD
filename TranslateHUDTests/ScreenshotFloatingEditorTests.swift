@@ -76,7 +76,8 @@ final class ScreenshotFloatingEditorTests: XCTestCase {
         XCTAssertTrue(source.plan.originalMarkdown.contains("| Beta |  |"))
         XCTAssertNil(NSApp.modalWindow)
         XCTAssertTrue(window.isVisible)
-        XCTAssertNil(descendants(content).compactMap { $0 as? ScreenshotInputTextView }.first)
+        XCTAssertNil(source.editor)
+        XCTAssertTrue(descendants(content).compactMap { $0 as? NSTextView }.contains { $0.isEditable })
     }
 }
 

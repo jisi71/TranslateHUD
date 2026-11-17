@@ -306,6 +306,43 @@ final class PanelResizingTests: XCTestCase {
             XCTAssertEqual(window.frame.minX, beforeFrame.minX, accuracy: 1)
             XCTAssertEqual(window.frame.width, beforeFrame.width)
         }
+        // Observations only: do not settle layout or expose private SwiftUI/fitter state.
+        func diagnose(_ stage: String, point: NSPoint? = nil, event: NSEvent? = nil) {
+            func identity(_ object: AnyObject?) -> String {
+                object.map { String(describing: ObjectIdentifier($0)) } ?? "nil"
+            }
+            let current = descendants(content).compactMap { $0 as? SourceResizeView }
+            let data: [String: Any] = [
+                "stage": stage, "handle": identity(handle), "handleWindow": identity(handle.window),
+                "dividers": current.map { identity($0) }, "content": identity(content),
+                "currentContent": identity(window.contentView), "delegate": identity(window.delegate),
+                "handleFrame": NSStringFromRect(handle.frame), "handleBounds": NSStringFromRect(handle.bounds),
+                "sourceMeasured": handle.sourceHeight, "sourceMinimum": handle.minimumSourceHeight,
+                "areas": [PanelArea.header, .source, .translation].map { area in
+                    handle.screenFrame(of: area).map(NSStringFromRect) ?? "nil"
+                },
+                "window": identity(window), "windowNumber": window.windowNumber,
+                "windowFrame": NSStringFromRect(window.frame), "contentFrame": NSStringFromRect(content.frame),
+                "contentBounds": NSStringFromRect(content.bounds),
+                "screenVisible": window.screen.map { NSStringFromRect($0.visibleFrame) } ?? "nil",
+                "keyWindow": identity(NSApp.keyWindow), "mainWindow": identity(NSApp.mainWindow),
+                "firstResponder": identity(window.firstResponder), "isVisible": window.isVisible,
+                "isKey": window.isKeyWindow, "isMain": window.isMainWindow,
+                "resizingSource": panelWindow.isResizingSource, "handlingDrag": panelWindow.isHandlingDrag,
+                "needsLayout": [content.needsLayout, handle.needsLayout], "liveResize": window.inLiveResize,
+                "windows": NSApp.windows.count, "oldWindows": oldWindows.count,
+                "pressedButtons": NSEvent.pressedMouseButtons,
+                "point": point.map(NSStringFromPoint) ?? "nil",
+                "eventLocation": event.map { NSStringFromPoint($0.locationInWindow) } ?? "nil",
+                "eventScreenPointer": event.map { NSStringFromPoint(PanelPointer.screenPoint(for: $0, in: window)) } ?? "nil",
+                "hit": point.map { identity(SourceResizeView.at($0, in: content)) } ?? "unmeasured"
+            ]
+            XCTContext.runActivity(named: "PANEL_DRAG_DIAG \(stage)") { _ in
+                if let json = try? JSONSerialization.data(withJSONObject: data, options: [.sortedKeys]),
+                   let line = String(data: json, encoding: .utf8) { print("PANEL_DRAG_DIAG \(line)") }
+            }
+        }
+        diagnose("baseline")
         func drag(_ distance: CGFloat) async throws {
             let point = handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.maxY + 4), to: nil)
             let screenY = point.y + window.frame.minY
@@ -317,16 +354,21 @@ final class PanelResizingTests: XCTestCase {
             }
             let distances = [0.25, 0.5, 0.75, 1.0].map { distance * $0 }
             let queued = distances.map { event(.leftMouseDragged, offset: $0) }
+            diagnose("\(distance)/before-down", point: point)
             window.sendEvent(event(.leftMouseDown, offset: 0))
+            diagnose("\(distance)/down", point: point)
             XCTAssertFalse(window.isMovableByWindowBackground)
             for e in queued {
                 window.sendEvent(e)
+                diagnose("\(distance)/drag/\(e.locationInWindow)", event: e)
                 content.layoutSubtreeIfNeeded()
                 try checkAnchors()
                 try await Task.sleep(for: .milliseconds(25))
+                diagnose("\(distance)/after-pump/\(e.locationInWindow)", event: e)
                 try checkAnchors()
             }
             window.sendEvent(event(.leftMouseUp, offset: distance))
+            diagnose("\(distance)/up")
             XCTAssertFalse(window.isMovableByWindowBackground)
         }
         try await drag(100)
@@ -447,7 +489,23 @@ final class PanelResizingTests: XCTestCase {
             termProgress: TermExplanationProgress(explainer: ResizeNoTerms(), texts: []),
             rectTopLeft: nil, fallbackPoint: NSPoint(x: 500, y: 800))
         panel.show()
-        defer { panel.close() }
+        defer {
+            // Fail boundedly if an unmodified focus ever regresses to a discard prompt.
+            let deadline = Date().addingTimeInterval(3)
+            let watchdog = Timer(timeInterval: 0.05, repeats: true) { _ in
+                guard NSApp.modalWindow != nil else { return }
+                XCTFail("Divider dragging without text input must not show discard confirmation")
+                NSApp.stopModal(withCode: .alertSecondButtonReturn)
+            }
+            let timeout = Timer(timeInterval: 0.05, repeats: true) { _ in
+                if Date() >= deadline { NSApp.stopModal(withCode: .abort) }
+            }
+            RunLoop.main.add(watchdog, forMode: .modalPanel)
+            RunLoop.main.add(timeout, forMode: .modalPanel)
+            panel.close()
+            watchdog.invalidate()
+            timeout.invalidate()
+        }
         let window = try XCTUnwrap(NSApp.windows.first {
             !oldWindows.contains(ObjectIdentifier($0)) && $0.identifier?.rawValue == "selection-translation-panel"
         })
@@ -493,6 +551,7 @@ final class PanelResizingTests: XCTestCase {
         XCTAssertEqual(window.frame.width, before.width)
         let afterCalls = await translator.requestCount()
         XCTAssertEqual(afterCalls, calls)
+        XCTAssertFalse(progress.hasLocalEdits, "Resizing never changes source or translation content")
     }
 
     func testManualHeightCanUseMoreRoomThanTheAutomaticCap() {

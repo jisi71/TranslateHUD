@@ -13,6 +13,7 @@ const {
 const { handleFeedback, FEEDBACK_MESSAGES, MAX_FEEDBACK_BODY } = require('./feedbackService')
 const { MESSAGES } = require('./trialPolicy')
 const { ErrorReportLimiter, handleErrorReport } = require('./errorLog')
+const { handleQualityFeedback, qualityFeedbackConfig } = require('./qualityFeedbackService')
 
 function routeOf(urlPath) {
   const clean = String(urlPath || '/').split('?')[0]
@@ -22,6 +23,8 @@ function routeOf(urlPath) {
   if (clean.endsWith('/trial/redeem')) return 'redeem'
   if (clean.endsWith('/trial/account')) return 'account'
   if (clean.endsWith('/trial/feedback')) return 'feedback'
+  if (clean.endsWith('/trial/quality-feedback/capability')) return 'quality-capability'
+  if (clean.endsWith('/trial/quality-feedback')) return 'quality-feedback'
   if (clean.endsWith('/chat/completions')) return 'translate'
   return null
 }
@@ -88,6 +91,7 @@ function createRequestListener(deps = {}) {
     const methodOk = req.method === 'POST'
       || (route === 'account' && req.method === 'GET')
       || (route === 'invite-status' && req.method === 'GET')
+      || (route === 'quality-capability' && req.method === 'GET')
     if (!methodOk) {
       res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' })
       res.end(JSON.stringify({ error: { code: 'method', message: '请用 POST。' } }))
@@ -107,11 +111,13 @@ function createRequestListener(deps = {}) {
     try {
       const isFeedback = route === 'feedback'
       const isErrors = route === 'errors'
+      const isQuality = route === 'quality-feedback' || route === 'quality-capability'
+      const qualityConfig = deps.qualityFeedbackConfig || qualityFeedbackConfig()
       const rawBody = req.method === 'GET'
         ? ''
         : await readBody(
           req,
-          isFeedback ? feedbackBodyLimit : (isErrors ? errorBodyLimit : bodyLimit),
+          isQuality ? qualityConfig.maxBytes : (isFeedback ? feedbackBodyLimit : (isErrors ? errorBodyLimit : bodyLimit)),
           isFeedback ? 'FEEDBACK_LIMIT' : 'LIMIT'
         )
       const ctx = {
@@ -129,7 +135,9 @@ function createRequestListener(deps = {}) {
         errorRateLimiter
       }
       let result
-      if (route === 'errors') result = await handleErrorReport(ctx)
+      if (isQuality) result = await handleQualityFeedback({ ...ctx, method: req.method, capability: route === 'quality-capability',
+        qualityFeedbackStore: deps.qualityFeedbackStore, qualityFeedbackConfig: qualityConfig })
+      else if (route === 'errors') result = await handleErrorReport(ctx)
       else if (route === 'account') result = await handleAccount(ctx)
       else if (route === 'redeem') result = await handleRedeem(ctx)
       else if (route === 'invite-status') result = await handleInviteStatus(ctx)

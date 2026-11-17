@@ -731,7 +731,9 @@ enum MarkdownDisplay {
 
     static func isGFMTableRow(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard trimmed.hasPrefix("|"), trimmed.contains("|") else { return false }
+        guard trimmed.contains("|") else { return false }
+        // Outer borders are optional; ignore escaped/code pipes in borderless prose.
+        guard trimmed.hasPrefix("|") || MarkdownTableCells.parse(trimmed).count > 1 else { return false }
         // Separator rows are also "pipe rows" but matchGFMTable treats them separately.
         return true
     }

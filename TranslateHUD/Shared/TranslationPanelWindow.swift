@@ -2,6 +2,17 @@ import AppKit
 
 final class TranslationPanelWindow: NSWindow {
     var escapeHandler: (() -> Void)?
+    /// All native/programmatic close actions must release the owning HUD's tasks and drafts.
+    var closeHandler: (() -> Void)?
+
+    override func close() {
+        endDrag()
+        if let closeHandler { closeHandler() }
+        else { super.close() }
+    }
+
+    override func performClose(_ sender: Any?) { close() }
+    override func cancelOperation(_ sender: Any?) { escapeHandler?() }
     private var sourceDivider: SourceResizeView?
     private var windowDrag: (origin: NSPoint, pointer: NSPoint)?
 

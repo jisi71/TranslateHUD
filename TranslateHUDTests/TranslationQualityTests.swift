@@ -252,4 +252,90 @@ final class TranslationQualityTests: XCTestCase {
         XCTAssertTrue(TranslationValidator.shouldPreserveReadableOutput(input: input, output: output, target: .chinese))
     }
 
+    func testLocalHeadingAndLabelsCannotHideBehindChineseBody() {
+        let body = "\n\n这是已经翻译的中文正文，中文密度不能掩盖普通英文标题。"
+        for unit in ["## Ordinary heading", "[Official repository](https://example.com/docs)", "![Example illustration](https://example.com/icon.png)"] {
+            let input = unit + body
+            for output in [input, "说明：\n" + input] {
+                XCTAssertTrue(TranslationValidator.validate(input: input, output: output, target: .chinese).contains(.underTranslated))
+                XCTAssertFalse(TranslationValidator.shouldPreserveReadableOutput(input: input, output: output, target: .chinese))
+            }
+        }
+        let input = "[Official repository](https://example.com/docs)" + body
+        let output = "[官方仓库](https://example.com/docs)" + body
+        XCTAssertEqual(TranslationValidator.validate(input: input, output: output, target: .chinese), [])
+        XCTAssertTrue(TranslationValidator.shouldPreserveReadableOutput(input: input, output: output, target: .chinese))
+        let protected = "## 说明\n\n`Ordinary heading`\n\n```Plain Text\nOfficial repository\n```\n\nhttps://example.com/docs /usr/local/bin/tool dev@example.com v1.2.0 kQmNpLxRwTzY"
+        XCTAssertEqual(TranslationValidator.validate(input: protected, output: protected, target: .chinese), [])
+        XCTAssertTrue(TranslationValidator.shouldPreserveReadableOutput(input: protected, output: protected, target: .chinese))
+        // A protected literal elsewhere must not exempt ordinary prose, labels or alt text.
+        for unit in ["## Ordinary heading", "[Official repository](https://example.com/docs)",
+                     "![Example illustration](https://example.com/icon.png)", "Please translate this ordinary explanation."] {
+            let mixed = protected + "\n\n" + unit
+            for candidate in [mixed, "说明：\n" + mixed] {
+                XCTContext.runActivity(named: "protected body / rejects \(unit) / \(candidate == mixed ? "echo" : "Chinese shell")") { _ in
+                    XCTAssertTrue(TranslationValidator.validate(input: mixed, output: candidate, target: .chinese).contains(.underTranslated))
+                    XCTAssertFalse(TranslationValidator.shouldPreserveReadableOutput(input: mixed, output: candidate, target: .chinese))
+                }
+            }
+        }
+        XCTContext.runActivity(named: "restore helper / standalone Han link / English rejects") { _ in
+            XCTAssertTrue(TranslationValidator.hasUntranslatedProseUnit(
+                input: "[官方仓库](https://example.com/docs)",
+                output: "[官方仓库](https://example.com/docs)", target: .english))
+        }
+    }
+
+}
+
+extension TranslationQualityTests {
+    func testSoftDisplayPolicyRequiresFullNonemptyUnderTranslatedOnlySet() {
+        let hard: [TranslationValidator.Failure] = [.emptyOutput, .echoedInput, .refusalDetected, .codeFenceWrapped, .missingTargetLanguageContent]
+        XCTAssertFalse(TranslationSoftWarning.isOnlyUnderTranslated([]))
+        XCTAssertTrue(TranslationSoftWarning.isOnlyUnderTranslated([.underTranslated, .underTranslated]))
+        for failure in hard {
+            for failures in [[failure, .underTranslated], [.underTranslated, failure], [failure]] {
+                XCTAssertFalse(TranslationSoftWarning.isOnlyUnderTranslated(failures))
+                XCTAssertNil(TranslationSoftWarning.make(sources: ["source"], candidates: ["candidate"], target: .chinese,
+                    failures: [failures], model: "MANUAL", origin: "unit-policy"))
+            }
+        }
+        XCTAssertNil(TranslationSoftWarning.make(sources: ["source"], candidates: ["candidate"], target: .chinese,
+            failures: [[]], model: "MANUAL", origin: "unit-policy"))
+        XCTAssertNil(TranslationSoftWarning.make(sources: ["source", "missing"], candidates: ["candidate"], target: .chinese,
+            failures: [[.underTranslated]], model: "MANUAL", origin: "unit-policy"))
+        XCTAssertNil(TranslationSoftWarning.make(sources: ["source"], candidates: [""], target: .chinese,
+            failures: [[.underTranslated]], model: "MANUAL", origin: "unit-policy"))
+        let source = "alpha bravo charlie delta", output = "alpha bravo charlie 德尔塔"
+        XCTAssertEqual(TranslationValidator.validate(input: source, output: output, target: .chinese), [.underTranslated], "Validator still rejects ordinary omissions")
+    }
+}
+
+
+extension TranslationQualityTests {
+    func testSoftSnapshotRequiresRealNonemptyItemsButAllowsRenderedSingleDisplaySlot() throws {
+        XCTAssertNil(TranslationSoftWarning.make(sources: [], candidates: [], target: .chinese, failures: [],
+            additional: [.underTranslated], model: "MANUAL", origin: "no-provider-items",
+            outputs: ["显示内容"], displaySources: ["原文"]))
+        let fabricated = TranslationSoftWarning(resultID: UUID(), sourceItems: [], providerCandidates: [], target: .chinese,
+            itemFailures: [], additionalFailures: [.underTranslated], providerModel: "MANUAL-STUB", origin: "malformed-zero-items",
+            appVersion: "test", outputs: ["显示内容"], displaySources: ["原文"], styledOutputs: nil, settled: nil)
+        XCTAssertFalse(fabricated.hasCompleteSnapshot)
+        XCTAssertFalse(fabricated.hasOnlySoftFailures, "existing final acceptance gates must reject a manually fabricated empty snapshot")
+        XCTAssertNil(TranslationSoftWarning.make(sources: [" "], candidates: ["候选"], target: .chinese,
+            failures: [[.underTranslated]], model: "MANUAL", origin: "empty-source"))
+        XCTAssertNil(TranslationSoftWarning.make(sources: ["source"], candidates: ["候选"], target: .chinese, failures: [],
+            additional: [.underTranslated], model: "MANUAL", origin: "missing-failure-group"))
+        let mapped = try XCTUnwrap(TranslationSoftWarning.make(sources: ["heading", "cell"], candidates: ["标题", "cell 单元"],
+            target: .chinese, failures: [[], [.underTranslated]], model: "MANUAL", origin: "rendered-items",
+            outputs: ["## 标题\n\n| cell 单元 |"], displaySources: ["## heading\n\n| cell |"]))
+        XCTAssertTrue(mapped.hasCompleteSnapshot)
+        XCTAssertTrue(mapped.hasOnlySoftFailures)
+        XCTAssertEqual(mapped.sourceItems.count, 2)
+        XCTAssertEqual(mapped.outputs.count, 1, "raw item count must not be confused with final display slots")
+        XCTAssertFalse(mapped.replacingOutputs([]).hasOnlySoftFailures)
+        XCTAssertFalse(mapped.replacingOutputs([" "]).hasOnlySoftFailures)
+        XCTAssertFalse(mapped.replacingOutputs(mapped.outputs, displaySources: []).hasOnlySoftFailures)
+        XCTAssertFalse(mapped.replacingOutputs(mapped.outputs, additional: [.refusalDetected]).hasOnlySoftFailures)
+    }
 }

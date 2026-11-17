@@ -1,7 +1,8 @@
 # TranslateHUD Privacy Policy
 
-Updated: October 26, 2026  
-Effective: October 26, 2026
+Updated: November 17, 2026
+
+Effective: November 17, 2026
 
 This English translation is provided for convenience. The Chinese version is the original.
 
@@ -15,7 +16,7 @@ Agreeing to this policy does not mean we process all information listed here. We
 2. **Trial ledger:** When you redeem trial credit or use the official trial translation service, we record accounting information such as balance changes, token usage and time for billing, reconciliation and fraud prevention.
 3. **Translation content in the official trial service:** To translate your source text and text recognized from screenshots, we send it to cloud services including Tencent CloudBase (Shanghai) personal edition and deduct trial credit accordingly. We do not sell this content or use it for purposes unrelated to providing translation.
 4. **Your own API key:** A key you provide is stored only on your device and is not uploaded to our servers. Your input is sent directly to your selected third-party provider, which processes it independently and returns the result. We do not relay the body of your content in this process.
-5. **Feedback:** When you submit feedback, we collect the title, text and images you choose to upload to handle the issue and improve the product. Feedback is stored in cloud services such as Tencent CloudBase.
+5. **Feedback:** When you submit feedback, we collect the title, text and images you choose to upload to handle the issue and improve the product. Feedback is stored in cloud services such as Tencent CloudBase. Translation quality feedback is submitted only after you click Feedback and confirm the preview. It includes the original source, model candidate, displayed content, target language, quality flags, app version, entry point, model name and submitting account identifier for that result. It excludes screenshots, API keys, session credentials, other clipboard content and later edits. It is never uploaded or retried automatically. This separate feature helps investigate missing translations and improve translation quality.
 6. **Device information and logs:** For security and stability, we may collect necessary device information and operational logs, such as device model, OS and app versions, crash logs and approximate operation times. We do not use these to identify your precise location. If a version does not actually collect some of this information, its actual behavior governs; we will not collect beyond the stated scope.
 
 We do not proactively collect identity card numbers, contacts or precise location. If future features involve additional personal information, we will explain them separately and obtain consent when required.
@@ -36,7 +37,7 @@ We do not use your source text to train our own general-purpose language models.
 
 ## 4. Storage location and retention
 
-Personal information collected or generated in mainland China is stored there. We retain it for the shortest time necessary for the purpose. For example, phone numbers or email addresses and ledger records are retained while an account exists; after account deletion, we delete or anonymize relevant information unless law requires retention. Feedback is deleted or anonymized within a reasonable period after it is handled, according to internal rules.
+Personal information collected or generated in mainland China is stored there. We retain it for the shortest time necessary for the purpose. For example, phone numbers or email addresses and ledger records are retained while an account exists; after account deletion, we delete or anonymize relevant information unless law requires retention. General feedback is deleted or anonymized within a reasonable period after it is handled, according to internal rules. Translation quality feedback, including the entire source and candidate record, is retained for 30 days and then deleted by an hourly cleanup job. The schedule or a processing backlog may delay deletion.
 
 ## 5. Security
 

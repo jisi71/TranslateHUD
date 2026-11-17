@@ -21,6 +21,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
     private struct QualityRejected: Error {
         let failures: [TranslationValidator.Failure]
         let output: String
+        var complete = false
     }
 
     private struct ConnectionInterrupted: Error {
@@ -38,8 +39,6 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
 
         var strict = false
         var retrySession: URLSession?
-        var preserved: [String]?
-        var preservedScore = -1
         defer { retrySession?.invalidateAndCancel() }
         for attemptIndex in 0..<TranslationAttemptPolicy.maximumAttempts {
             try Task.checkCancellation()
@@ -64,65 +63,20 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                 continue
             }
             let failures = batchValidate(originals: texts, translations: result, target: target)
-            let batchUnder = TranslationValidator.isBatchUnderTranslated(
-                originals: texts,
-                translations: result,
-                target: target
-            )
-            let hasFailures = !failures.isEmpty || batchUnder
-            if !hasFailures { return result }
-
-            if let candidate = readableBatchFallback(originals: texts, translations: result, target: target) {
-                let score = TranslationValidator.readableScore(
-                    input: texts.joined(separator: "\n"),
-                    output: candidate.joined(separator: "\n"),
-                    target: target
-                )
-                if score > preservedScore {
-                    preserved = candidate
-                    preservedScore = score
-                }
+            let batchUnder = TranslationValidator.isBatchUnderTranslated(originals: texts, translations: result, target: target)
+            if failures.applied.flatMap({ $0 }).isEmpty && !batchUnder { return result }
+            if let warning = TranslationSoftWarning.make(sources: texts, candidates: result, target: target,
+                failures: failures.warningFailures, additional: batchUnder ? [.underTranslated] : [], model: config.model, origin: "provider.batch") {
+                throw warning // Entire mapped batch has completed; no extra paid quality retry.
             }
-
             if TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) {
                 AppLog.info("批量第 \(attemptIndex + 1) 轮质量校验失败 → 最后一次严格重试")
                 strict = true
                 continue
             }
-            if let preserved {
-                AppLog.info("批量质量检查未通过，保留可读译文")
-                return preserved
-            }
             throw TranslationError.quality("已尝试两次，仍有未翻译内容；请缩短原文或更换模型后重试")
         }
-        if let preserved {
-            AppLog.info("批量质量检查未通过，保留可读译文")
-            return preserved
-        }
         throw TranslationError.quality("翻译未能在请求次数上限内完成，请重新发起；若持续失败，请更换模型。")
-    }
-
-    /// 整批都没有空译文、回吐原文或拒绝翻译时，才把这轮结果留作兜底。
-    private func readableBatchFallback(
-        originals: [String],
-        translations: [String],
-        target: TargetLanguage
-    ) -> [String]? {
-        guard originals.count == translations.count else { return nil }
-        for (original, translated) in zip(originals, translations) {
-            let lineFailures = TranslationValidator.validate(input: original, output: translated, target: target)
-            if lineFailures.contains(.emptyOutput)
-                || lineFailures.contains(.echoedInput)
-                || lineFailures.contains(.refusalDetected) {
-                return nil
-            }
-        }
-        let joinedIn = originals.joined(separator: "\n")
-        let joinedOut = translations.joined(separator: "\n")
-        guard TranslationValidator.shouldPreserveReadableOutput(input: joinedIn, output: joinedOut, target: target) else {
-            return nil
-        }
-        return translations
     }
 
     private func performBatch(
@@ -296,7 +250,12 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                                              boldRanges: items.map(\.boldRanges), screenshotDiagnostics: screenshotDiagnostics)
         let failures = batchValidate(originals: items.map(\.text), translations: results.map(\.text), target: target,
                                      screenshotItems: items)
-        if !failures.isEmpty || TranslationValidator.isBatchUnderTranslated(originals: items.map(\.text), translations: results.map(\.text), target: target) {
+        let batchUnder = TranslationValidator.isBatchUnderTranslated(originals: items.map(\.text), translations: results.map(\.text), target: target)
+        if let warning = TranslationSoftWarning.make(sources: items.map(\.text), candidates: results.map(\.text), target: target,
+            failures: failures.warningFailures, additional: batchUnder ? [.underTranslated] : [], model: config.model, origin: "provider.styledBatch", styled: results) {
+            throw warning
+        }
+        if !failures.applied.flatMap({ $0 }).isEmpty || batchUnder {
             if screenshotDiagnostics { throw ScreenshotFailureStage.quality }
             throw TranslationError.quality("译文未通过质量检查，请重试。")
         }
@@ -315,17 +274,34 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
         let results = try markers.restore(response.map(\.text))
         let failures = batchValidate(originals: items.map(\.text), translations: results.map(\.text), target: target,
                                      screenshotItems: items)
-        if !failures.isEmpty || TranslationValidator.isBatchUnderTranslated(originals: items.map(\.text), translations: results.map(\.text), target: target) {
+        let batchUnder = TranslationValidator.isBatchUnderTranslated(originals: items.map(\.text), translations: results.map(\.text), target: target)
+        if let warning = TranslationSoftWarning.make(sources: items.map(\.text), candidates: results.map(\.text), target: target,
+            failures: failures.warningFailures, additional: batchUnder ? [.underTranslated] : [], model: config.model, origin: "provider.styledBatch", styled: results) {
+            throw warning
+        }
+        if !failures.applied.flatMap({ $0 }).isEmpty || batchUnder {
             throw TranslationError.quality("译文未通过质量检查，请重试。")
         }
         return results
     }
 
+    private struct BatchQuality {
+        let raw: [[TranslationValidator.Failure]]
+        let applied: [[TranslationValidator.Failure]]
+        var warningFailures: [[TranslationValidator.Failure]] {
+            // Union raw flags with context-added hard flags; neither removal nor later
+            // table checks may hide a hard failure from the new warning policy.
+            zip(raw, applied).map { pair in pair.0 + pair.1.filter { !pair.0.contains($0) } }
+        }
+    }
+
     private func batchValidate(originals: [String], translations: [String], target: TargetLanguage,
-                               screenshotItems: [ScreenshotStyledText] = []) -> [Int] {
-        var failed: [Int] = []
+                               screenshotItems: [ScreenshotStyledText] = []) -> BatchQuality {
+        var raw: [[TranslationValidator.Failure]] = []
+        var all: [[TranslationValidator.Failure]] = []
         for (i, (o, t)) in zip(originals, translations).enumerated() {
             var r = TranslationValidator.validate(input: o, output: t, target: target)
+            raw.append(r) // Never discard hard flags when deciding eligibility for a new soft warning.
             if screenshotItems.indices.contains(i), screenshotItems[i].isTableCell {
                 if screenshotItems[i].mayKeepTableLabel, o.utf8.elementsEqual(t.utf8) {
                     r.removeAll { $0 == .echoedInput || $0 == .missingTargetLanguageContent }
@@ -343,10 +319,10 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
             }
             if !r.isEmpty {
                 AppLog.info("批量第 \(i) 条校验失败：\(r)")
-                failed.append(i)
             }
+            all.append(r)
         }
-        return failed
+        return BatchQuality(raw: raw, applied: all)
     }
 
     // MARK: - 流式
@@ -360,7 +336,6 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
             let task = Task {
                 var strict = false
                 var retrySession: URLSession?
-                var preservedOutput: String?
                 defer { retrySession?.invalidateAndCancel() }
                 do {
                     for attemptIndex in 0..<TranslationAttemptPolicy.maximumAttempts {
@@ -377,12 +352,10 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                             continuation.finish()
                             return
                         } catch let rejection as QualityRejected {
-                            preservedOutput = TranslationValidator.preferredReadableOutput(
-                                current: preservedOutput,
-                                candidate: rejection.output,
-                                input: text,
-                                target: target
-                            )
+                            if rejection.complete, let warning = TranslationSoftWarning.make(sources: [text], candidates: [rejection.output], target: target,
+                                failures: [rejection.failures], model: config.model, origin: "provider.completedStream") {
+                                throw warning
+                            }
                             let shouldRetry = TranslationAttemptPolicy.shouldRetry(
                                 afterAttempt: attemptIndex,
                                 hasFailures: !rejection.failures.isEmpty
@@ -392,12 +365,6 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                                 AppLog.info("流式最后一次严格重试")
                                 continuation.yield(.reset(reason: "首轮译文未通过校验，重试中"))
                                 continue
-                            }
-                            if let preservedOutput {
-                                AppLog.info("流式质量检查未通过，保留可读译文 outLen=\(preservedOutput.count)")
-                                continuation.yield(.delta(preservedOutput))
-                                continuation.finish()
-                                return
                             }
                             throw TranslationError.qualityFailures(rejection.failures)
                         } catch let failure as ConnectionInterrupted {
@@ -409,12 +376,6 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                             retrySession = URLSession(configuration: session.configuration)
                             try await Task.sleep(for: .milliseconds(300))
                         }
-                    }
-                    if let preservedOutput {
-                        AppLog.info("流式质量检查未通过，保留可读译文 outLen=\(preservedOutput.count)")
-                        continuation.yield(.delta(preservedOutput))
-                        continuation.finish()
-                        return
                     }
                     throw TranslationError.quality("翻译未能在请求次数上限内完成，请重新发起；若持续失败，请更换模型。")
                 } catch {
@@ -599,7 +560,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
             let failures = TranslationValidator.validate(input: text, output: accumulated, target: target)
             if !failures.isEmpty {
                 AppLog.info("流式第 \(strict ? 2 : 1) 轮终末校验失败 \(failures)")
-                throw QualityRejected(failures: failures, output: accumulated)
+                throw QualityRejected(failures: failures, output: accumulated, complete: true)
             }
             return accumulated
         } catch {

@@ -27,6 +27,8 @@ struct TranslationPanel: View {
     var onLayoutChange: @MainActor () -> Void = {}
     var onSourceResizeStart: @MainActor (NSSize, CGFloat) -> Void = { _, _ in }
 
+    @State private var qualityFeedback: QualityFeedbackPreview?
+    @State private var submittedFeedbackID: UUID?
     @State private var isPinned = false
     @State private var isOriginalExpanded = false
     @State private var showsContext = false
@@ -40,11 +42,7 @@ struct TranslationPanel: View {
     }
 
     private var translated: String {
-        switch progress.state {
-        case .streaming(let partial): return partial
-        case .success(let pairs): return pairs.map(\.translated).joined(separator: "\n")
-        default: return ""
-        }
+        progress.displayedTranslation
     }
 
     var body: some View {
@@ -89,7 +87,7 @@ struct TranslationPanel: View {
                     .frame(height: 12)
                     .panelSectionRole(.divider)
                     statusSection
-                    if !translated.isEmpty {
+                    if !translated.isEmpty || progress.translationDraft != nil {
                         translationSection.background(PanelAreaMarker(area: .translation))
                     }
                     if termProgress.isExpanded { termsSection }
@@ -102,8 +100,10 @@ struct TranslationPanel: View {
                 .clipped()
             }
             separator
+            if progress.replacedTranslationDraft != nil {
+                Button("恢复上次手改译文") { progress.restorePreviousTranslation() }
+            }
             footer
-                .disabled(sourceEditor != nil)
         }
         .fixedSize(horizontal: false, vertical: !isUserSized)
         .foregroundStyle(colors.primaryText)
@@ -117,6 +117,17 @@ struct TranslationPanel: View {
         .background(PanelWindowAppearanceAnchor(scheme: colors.scheme, followsSystem: settings.appearancePreference == .system))
         .onChange(of: progress.targetLanguage) { _, _ in termProgress.targetLanguageChanged() }
         .onChange(of: layoutSignature) { _, _ in onLayoutChange() }
+        .sheet(item: $qualityFeedback) { model in
+            QualityFeedbackSheet(model: model) {
+                if progress.qualityWarning?.resultID == model.id { submittedFeedbackID = model.id }
+            }
+        }
+        .onChange(of: progress.qualityWarning?.resultID) { _, newID in
+            if qualityFeedback?.id != newID { qualityFeedback?.invalidate(); qualityFeedback = nil }
+            if submittedFeedbackID != newID { submittedFeedbackID = nil }
+        }
+        .onChange(of: trial.qualityFeedbackOwner) { _, _ in qualityFeedback?.invalidateIfOwnerChanged() }
+        .onDisappear { qualityFeedback?.invalidate() }
         .task(id: hasCopied) {
             guard hasCopied else { return }
             try? await Task.sleep(for: .seconds(1.5))
@@ -154,6 +165,7 @@ struct TranslationPanel: View {
             isOriginalExpanded ? "source-open" : "source-closed",
             showsContext ? "context-open" : "context-closed",
             termProgress.isExpanded ? "terms-open" : "terms-closed",
+            sourceBody, translated, progress.qualityWarning?.resultID.uuidString ?? "no-quality-warning",
             sourceEditor == nil ? "source-view" : "source-edit"
         ].joined(separator: "\u{1e}")
     }
@@ -166,7 +178,7 @@ struct TranslationPanel: View {
     private static let sourceControlGap: CGFloat = 8
 
     private var sourceBody: String {
-        original.isEmpty ? interfaceLanguage.text("未识别到文字，请重新框选包含清晰文字的区域。") : original
+        progress.sourceDraft ?? original
     }
     private var tableSpans: [[ScreenshotCellSpan]] { screenshotSource?.plan.tableSpans ?? [] }
 
@@ -181,17 +193,18 @@ struct TranslationPanel: View {
             sourceBody, role: .source, colors: colors, width: openWidth, maxLines: Self.collapsedSourceLines, tableSpans: tableSpans
         )
         let showsExpand = full > capped + 1
-        guard showsExpand else { return (full, false) }
+        guard showsExpand else {
+            return (DirectMarkdownEditor.height(sourceBody, role: .source, colors: colors, width: openWidth, tableSpans: tableSpans), false)
+        }
         let narrow = sourceTextWidth(showsExpand: true)
-        let visible = MarkdownDisplay.height(
-            sourceBody,
-            role: .source,
-            colors: colors,
-            width: narrow,
-            maxLines: isOriginalExpanded || sourceHeight != nil ? nil : Self.collapsedSourceLines,
-            tableSpans: tableSpans
+        let editorHeight = DirectMarkdownEditor.height(
+            sourceBody, role: .source, colors: colors, width: narrow, tableSpans: tableSpans
         )
-        return (visible, true)
+        let collapsedHeight = MarkdownDisplay.height(
+            sourceBody, role: .source, colors: colors, width: narrow,
+            maxLines: Self.collapsedSourceLines, tableSpans: tableSpans
+        ) + DirectMarkdownEditor.textVerticalInset
+        return (isOriginalExpanded || sourceHeight != nil ? editorHeight : min(editorHeight, collapsedHeight), true)
     }
 
     private func sourceTextWidth(showsExpand: Bool) -> CGFloat {
@@ -223,14 +236,8 @@ struct TranslationPanel: View {
                         isOriginalExpanded.toggle()
                     }
                 }
-                SpeechButton(text: MarkdownDisplay.plainText(from: original), id: "translation.original", speech: speech)
+                SpeechButton(text: MarkdownDisplay.plainText(from: sourceBody), id: "translation.original", speech: speech)
                     .frame(width: Self.sourceSpeechSide, height: Self.sourceSpeechSide)
-                if let screenshotSource {
-                    iconButton("pencil", help: "编辑原文") {
-                        speech.stop()
-                        screenshotSource.beginEditing()
-                    }
-                }
             }
         }
         .panelSectionRole(.source)
@@ -238,10 +245,18 @@ struct TranslationPanel: View {
 
     /// Keep the scroll view's identity while its viewport changes during a drag.
     private func sourceText(_ layout: (textHeight: CGFloat, showsExpand: Bool)) -> some View {
-        let label = MarkdownDisplay.BlocksView(markdown: sourceBody, role: .source, colors: colors,
-                                               width: sourceTextWidth(showsExpand: layout.showsExpand), tableSpans: tableSpans)
+        let label = DirectMarkdownEditor(markdown: sourceBody, role: .source, colors: colors,
+                                         width: sourceTextWidth(showsExpand: layout.showsExpand), tableSpans: tableSpans, onFocus: progress.focusSource) { value in
+            progress.editSource(value)
+            termProgress.cancel()
+        }
         return MaxHeightLayout(maxHeight: layout.textHeight) {
-            HeightFitting { label }
+            ScrollView {
+                ProposedWidth { label }
+            }
+            .defaultScrollAnchor(.top)
+            .scrollBounceBehavior(.basedOnSize)
+            .accessibilityIdentifier("translation-source-scroll")
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .clipped()
@@ -262,12 +277,38 @@ struct TranslationPanel: View {
             maxLines: nil,
             tableSpans: tableSpans
         )
-        // Stay on the first line while text streams in. Do not follow the tail.
-        return HeightFitting {
-            MarkdownDisplay.BlocksView(markdown: translated, role: .translation, colors: colors, width: width, tableSpans: tableSpans)
+        let editorHeight = DirectMarkdownEditor.height(
+            translated, role: .translation, colors: colors, width: width, tableSpans: tableSpans
+        ) + (progress.qualityWarning == nil ? 0 : 24)
+        let viewportLimit = translationHeight ?? (isUserSized ? heightBudget.contentMax : max(textHeight, editorHeight))
+        return MaxHeightLayout(maxHeight: viewportLimit) {
+            ScrollView {
+                ProposedWidth {
+                    VStack(alignment: .leading, spacing: 6) {
+                        DirectMarkdownEditor(markdown: translated, role: .translation, colors: colors, width: width, tableSpans: tableSpans, onFocus: progress.focusTranslation, onChange: progress.editTranslation)
+                        if let warning = progress.qualityWarning {
+                            HStack(spacing: 8) {
+                                Text("可能存在漏译")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityIdentifier("translation-undertranslated-warning")
+                                Button(submittedFeedbackID == warning.resultID ? "已反馈" : "反馈") {
+                                    qualityFeedback = QualityFeedbackPreview(warning: warning, owner: progress.qualityFeedbackOwner)
+                                }
+                                .font(.caption2)
+                                .buttonStyle(.borderless)
+                                .disabled(submittedFeedbackID == warning.resultID)
+                                .accessibilityIdentifier("translation-quality-feedback-preview")
+                            }
+                        }
+                    }
+                }
+            }
+            .defaultScrollAnchor(.top)
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .frame(maxHeight: translationHeight == nil ? (isUserSized ? .infinity : textHeight) : nil, alignment: .topLeading)
         .frame(height: translationHeight, alignment: .topLeading)
+        .clipped()
         .panelSectionRole(.translation)
     }
 
@@ -316,9 +357,7 @@ struct TranslationPanel: View {
             Menu {
                 ForEach(TargetLanguage.allCases) { language in
                     Button {
-                        settings.targetLanguage = language
-                        speech.stop()
-                        progress.retry(target: language)
+                        retranslate(target: language)
                     } label: {
                         if language == progress.targetLanguage {
                             Label(interfaceLanguage.text(language.displayName), systemImage: "checkmark")
@@ -365,7 +404,7 @@ struct TranslationPanel: View {
                 Button("取消", action: onClose).buttonStyle(.plain)
             case .success(let pairs):
                 Image(systemName: "checkmark.circle")
-                Text(interfaceLanguage.text(pairs.isEmpty ? "未识别到文字，请重新框选文字区域" : "翻译完成"))
+                Text(interfaceLanguage.text(progress.translationDraft != nil ? "译文已手动修改" : pairs.isEmpty ? "未识别到文字，请重新框选文字区域" : "翻译完成"))
                 Spacer()
             case .timedOut:
                 Image(systemName: "clock")
@@ -422,8 +461,7 @@ struct TranslationPanel: View {
 
     private var copyButton: some View {
         iconButton(hasCopied ? "checkmark" : "doc.on.doc", help: hasCopied ? "已复制" : "复制译文") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(translated, forType: .string)
+            progress.copyTranslation()
             hasCopied = true
         }
         .disabled(translated.isEmpty)
@@ -433,7 +471,8 @@ struct TranslationPanel: View {
         iconButton("text.book.closed", help: "名词解释", active: termProgress.isExpanded) {
             termProgress.toggleExpanded()
         }
-        .disabled(original.isEmpty)
+        .disabled(progress.sourceDraft != nil || sourceBody.isEmpty)
+        .help("修改原文后请先使用重新翻译；名词解释使用原始识别快照。")
     }
 
     private var screenshotButton: some View {
@@ -442,12 +481,25 @@ struct TranslationPanel: View {
         }
     }
 
+    private func retranslate(target: TargetLanguage? = nil) {
+        if let input = NSApp.keyWindow?.firstResponder as? NSTextView, input.hasMarkedText() {
+            NSSound.beep()
+            return
+        }
+        if let target { settings.targetLanguage = target }
+        speech.stop()
+        if let screenshotSource, let draft = progress.sourceDraft {
+            screenshotSource.retranslate(markdown: draft, target: target)
+        } else if let target { progress.retry(target: target) }
+        else { onRetry() }
+    }
+
     private var retryButton: some View {
         iconButton("arrow.clockwise", help: "重新翻译") {
             speech.stop()
-            onRetry()
+            retranslate()
         }
-        .disabled(original.isEmpty)
+        .disabled(sourceBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     private func modelMenu(titleLimit: CGFloat?) -> some View {
@@ -621,6 +673,23 @@ enum TextBlockMetrics {
         return height(attributed: ns, fallbackFont: fallback, width: width, maxLines: maxLines)
     }
 
+    /// Only line spacing changes; font leading, baseline placement, attachments,
+    /// and mixed-run line heights remain under TextKit's control.
+    private final class TerminalLineSpacing: NSObject, NSLayoutManagerDelegate {
+        let glyphs: NSRange
+
+        init(glyphs: NSRange) { self.glyphs = glyphs }
+
+        func layoutManager(_ layoutManager: NSLayoutManager, lineSpacingAfterGlyphAt glyphIndex: Int,
+                           withProposedLineFragmentRect rect: NSRect) -> CGFloat {
+            if NSLocationInRange(glyphIndex, glyphs) { return 0 }
+            let character = layoutManager.characterIndexForGlyph(at: glyphIndex)
+            let style = layoutManager.textStorage?.attribute(.paragraphStyle, at: character,
+                                                             effectiveRange: nil) as? NSParagraphStyle
+            return style?.lineSpacing ?? 0
+        }
+    }
+
     private static func height(
         attributed: NSAttributedString,
         fallbackFont: NSFont,
@@ -637,8 +706,38 @@ enum TextBlockMetrics {
         manager.usesFontLeading = true
         manager.addTextContainer(container)
         storage.addLayoutManager(manager)
-        _ = manager.glyphRange(for: container)
-        let used = manager.usedRect(for: container).height
+        let visibleGlyphs = manager.glyphRange(for: container)
+        // A line cap does not make TextKit's last visible line a terminal line:
+        // it still includes spacing for the hidden next line. Keep the original
+        // text/shaping and let TextKit lay out that line again without that gap.
+        // Do not change unlimited layouts or strings that already fit the cap.
+        var terminalSpacing: TerminalLineSpacing?
+        if let maxLines, maxLines > 0, NSMaxRange(visibleGlyphs) < manager.numberOfGlyphs {
+            var lastLine = NSRange(location: 0, length: 0)
+            manager.enumerateLineFragments(forGlyphRange: visibleGlyphs) { _, _, _, range, _ in
+                lastLine = range
+            }
+            if lastLine.length > 0 {
+                terminalSpacing = TerminalLineSpacing(glyphs: lastLine)
+                manager.delegate = terminalSpacing
+                manager.invalidateLayout(forCharacterRange: NSRange(location: 0, length: storage.length),
+                                         actualCharacterRange: nil)
+                manager.ensureLayout(for: container)
+            }
+        }
+        let used = withExtendedLifetime(terminalSpacing) {
+            guard terminalSpacing != nil else { return manager.usedRect(for: container).height }
+            // The container aggregate can retain the following gap even when
+            // TextKit has removed it from the terminal fragment. Measure the
+            // laid-out visible line boxes instead, preserving their origins,
+            // font leading and mixed-run heights (including empty lines).
+            var bottom: CGFloat = 0
+            let laidOutGlyphs = manager.glyphRange(for: container)
+            manager.enumerateLineFragments(forGlyphRange: laidOutGlyphs) { rect, used, _, _, _ in
+                bottom = max(bottom, max(rect.maxY, used.maxY))
+            }
+            return bottom
+        }
         let line = fallbackFont.ascender - fallbackFont.descender + fallbackFont.leading
         // SwiftUI's line spacing can sit a couple of points above TextKit.
         return max(ceil(used), ceil(line)) + 4
@@ -873,5 +972,37 @@ private struct PanelSectionsLayout: Layout {
             translationHeight: translationHeight,
             fillTranslation: fillTranslation
         )
+    }
+}
+
+
+/// Plain text only: no Markdown, links, remote images, attachment/clipboard readers.
+private struct QualityFeedbackSheet: View {
+    @ObservedObject var model: QualityFeedbackPreview
+    var onSubmitted: @MainActor () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("翻译质量反馈预览").font(.headline)
+            Text("上传原始当次快照，不含后续编辑。仅在确认后发送，不含图片或其他剪贴板内容。")
+                .font(.caption).foregroundStyle(.secondary)
+            ScrollView {
+                Text(verbatim: model.previewText).font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Text(verbatim: model.message).font(.caption).accessibilityIdentifier("quality-feedback-state")
+            HStack {
+                Button("关闭") { model.invalidate(); dismiss() }
+                Spacer()
+                Button(model.phase == .submitting ? "正在提交…" : (model.phase == .failed ? "手动重试原始快照" : "确认上传原始快照")) { model.confirm() }
+                    .disabled(model.phase != .ready && model.phase != .failed)
+                    .accessibilityIdentifier("quality-feedback-confirm")
+            }
+        }
+        .padding(20).frame(width: 600, height: 480)
+        .task { model.open() }
+        .onChange(of: model.phase) { _, phase in if phase == .submitted { onSubmitted() } }
+        .onDisappear { model.invalidate() }
     }
 }

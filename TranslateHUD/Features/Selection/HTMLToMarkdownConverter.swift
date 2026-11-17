@@ -89,7 +89,7 @@ enum HTMLToMarkdownConverter {
     private static func appendBlocks(from node: Node, into blocks: inout [String]) {
         switch node {
         case .text(let raw):
-            let text = collapseInlineWhitespace(decodeEntities(raw))
+            let text = collapseInlineWhitespace(escapeLiteral(decodeEntities(raw)))
             if !text.isEmpty {
                 appendParagraph(text, into: &blocks)
             }
@@ -140,7 +140,9 @@ enum HTMLToMarkdownConverter {
                 blocks.append("---")
             case "pre":
                 let code = plainText(el.children)
-                blocks.append("```\n\(code)\n```")
+                let language = codeLanguage(el)
+                let fence = String(repeating: "`", count: max(3, longestBacktickRun(code) + 1))
+                blocks.append("\(fence)\(language)\n\(code)\n\(fence)")
             case "table":
                 appendTable(el, into: &blocks)
             case "thead", "tbody", "tfoot", "tr", "td", "th", "colgroup", "col":
@@ -158,7 +160,7 @@ enum HTMLToMarkdownConverter {
                 // 未识别标签：有直接块级子节点才下钻，避免把 b/strong 等拆成独立段落
                 if hasDirectBlockChild(el.children) {
                     appendBlocks(from: el.children, into: &blocks)
-                } else if isInlineEmphasisName(el.name) || el.name == "code" {
+                } else if isInlineEmphasisName(el.name) || el.name == "code" || el.name == "img" {
                     let body = inlineMarkdown([.element(el)]).trimmingCharacters(in: .whitespacesAndNewlines)
                     if !body.isEmpty { appendParagraph(body, into: &blocks) }
                 } else {
@@ -204,7 +206,7 @@ enum HTMLToMarkdownConverter {
             }
 
             var contentNodes: [Node] = []
-            var nestedLists: [Element] = []
+            var nestedLists: [(element: Element, blankBefore: Bool)] = []
             var trailingSpacerBlank = false
             for node in el.children {
                 if case .element(let childEl) = node, childEl.name == "ul" || childEl.name == "ol" {
@@ -212,7 +214,14 @@ enum HTMLToMarkdownConverter {
                     if isBlankSpacerList(childEl) {
                         trailingSpacerBlank = true
                     } else {
-                        nestedLists.append(childEl)
+                        let blankBefore = contentNodes.last(where: { node in
+                            if case .text(let raw) = node { return !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                            return true
+                        }).map { node in
+                            if case .element(let spacer) = node { return isBlankSpacerElement(spacer) }
+                            return false
+                        } ?? false
+                        nestedLists.append((childEl, blankBefore))
                     }
                 } else {
                     contentNodes.append(node)
@@ -254,9 +263,10 @@ enum HTMLToMarkdownConverter {
             }
 
             for nested in nestedLists {
+                if nested.blankBefore { blocks.append("") }
                 appendList(
-                    nested.children,
-                    ordered: nested.name == "ol",
+                    nested.element.children,
+                    ordered: nested.element.name == "ol",
                     into: &blocks,
                     depth: depth + 1
                 )
@@ -282,12 +292,13 @@ enum HTMLToMarkdownConverter {
         return plainText(el.children).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// CommonMark loose list：任一 li 直接含 <p> 时，项与项之间保留空行。
+    /// Nonblank item paragraphs make a list loose; a blank spacer before a child list
+    /// belongs to that child boundary, not to every sibling boundary.
     private static func isLooseList(_ children: [Node]) -> Bool {
         for child in children {
             guard case .element(let li) = child, li.name == "li" else { continue }
             for node in li.children {
-                if case .element(let el) = node, el.name == "p" {
+                if case .element(let el) = node, el.name == "p", !isBlankSpacerElement(el) {
                     return true
                 }
             }
@@ -362,7 +373,7 @@ enum HTMLToMarkdownConverter {
         case .text(let raw):
             let decoded = decodeEntities(raw)
             let indent = leadingIndentCount(decoded)
-            let text = collapseInlineWhitespace(decoded).trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = collapseInlineWhitespace(escapeLiteral(decoded)).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return }
             if indent >= 2 {
                 blocks.append("  " + text)
@@ -383,7 +394,9 @@ enum HTMLToMarkdownConverter {
                 appendList(el.children, ordered: true, into: &blocks)
             case "pre":
                 let code = plainText(el.children)
-                blocks.append("```\n\(code)\n```")
+                let language = codeLanguage(el)
+                let fence = String(repeating: "`", count: max(3, longestBacktickRun(code) + 1))
+                blocks.append("\(fence)\(language)\n\(code)\n\(fence)")
             case "table":
                 appendTable(el, into: &blocks)
             case "h1", "h2", "h3", "h4", "h5", "h6":
@@ -545,7 +558,7 @@ enum HTMLToMarkdownConverter {
         for node in nodes {
             switch node {
             case .text(let raw):
-                appendInlineText(decodeEntities(raw), into: &out)
+                appendInlineText(escapeLiteral(decodeEntities(raw)), into: &out)
             case .element(let el):
                 switch el.name {
                 case "br":
@@ -558,15 +571,23 @@ enum HTMLToMarkdownConverter {
                     if !inner.isEmpty { out += "*\(inner)*" }
                 case "code":
                     let inner = plainText(el.children)
-                    if !inner.isEmpty { out += "`\(inner)`" }
+                    if !inner.isEmpty {
+                        let fence = String(repeating: "`", count: longestBacktickRun(inner) + 1)
+                        let pad = inner.hasPrefix("`") || inner.hasSuffix("`") || (inner.hasPrefix(" ") && inner.hasSuffix(" ") && !inner.allSatisfy(\.isWhitespace)) ? " " : ""
+                        out += "\(fence)\(pad)\(inner)\(pad)\(fence)"
+                    }
                 case "a":
                     let inner = inlineMarkdown(el.children)
-                    let href = el.attributes["href"] ?? ""
+                    let href = markdownDestination(el.attributes["href"] ?? "")
                     if href.isEmpty {
                         out += inner
                     } else {
                         out += "[\(inner)](\(href))"
                     }
+                case "img":
+                    let alt = escapeLiteral(decodeEntities(el.attributes["alt"] ?? ""))
+                    let src = markdownDestination(el.attributes["src"] ?? "")
+                    out += src.isEmpty ? alt : "![\(alt)](\(src))"
                 case "s", "strike", "del":
                     let inner = inlineMarkdown(el.children).trimmingCharacters(in: .whitespacesAndNewlines)
                     if !inner.isEmpty { out += "~~\(inner)~~" }
@@ -599,6 +620,67 @@ enum HTMLToMarkdownConverter {
         if hasTrailingSpace, !piece.isEmpty, !out.hasSuffix(" "), !out.hasSuffix("\n") {
             out += " "
         }
+    }
+
+    // Escape only HTML text/labels; generated Markdown and code never pass through here.
+    // Pipes remain the table serializer's responsibility.
+    private static func escapeLiteral(_ text: String) -> String {
+        var result = ""
+        for ch in text {
+            if "\\`*_~[]<>".contains(ch) { result.append("\\") }
+            result.append(ch)
+        }
+        return result
+    }
+
+    private static func markdownDestination(_ raw: String) -> String {
+        let decoded = decodeEntities(raw)
+        var result = ""
+        for scalar in decoded.unicodeScalars {
+            if CharacterSet.whitespacesAndNewlines.contains(scalar) || CharacterSet.controlCharacters.contains(scalar)
+                || "()<>\\\"".unicodeScalars.contains(scalar) {
+                for byte in String(scalar).utf8 { result += String(format: "%%%02X", byte) }
+            } else { result.unicodeScalars.append(scalar) }
+        }
+        return result
+    }
+
+    private static func longestBacktickRun(_ text: String) -> Int {
+        var longest = 0
+        var current = 0
+        for ch in text {
+            current = ch == "`" ? current + 1 : 0
+            longest = max(longest, current)
+        }
+        return longest
+    }
+
+    private static func codeLanguage(_ pre: Element) -> String {
+        let code = pre.children.compactMap { node -> Element? in
+            if case .element(let el) = node, el.name == "code" { return el }
+            return nil
+        }.first
+        // Explicit metadata may contain spaces; class fallbacks are single tokens.
+        for element in [pre, code].compactMap({ $0 }) {
+            for key in ["data-language", "data-lang"] {
+                if let raw = element.attributes[key], let value = safeCodeLanguage(raw) { return value }
+            }
+        }
+        for element in [code, pre].compactMap({ $0 }) {
+            for token in (element.attributes["class"] ?? "").split(whereSeparator: \.isWhitespace) {
+                for prefix in ["language-", "lang-"] where token.hasPrefix(prefix) {
+                    if let value = safeCodeLanguage(String(token.dropFirst(prefix.count))) { return value }
+                }
+            }
+        }
+        return ""
+    }
+
+    private static func safeCodeLanguage(_ raw: String) -> String? {
+        let value = decodeEntities(raw)
+        guard !value.isEmpty, !value.contains("`"),
+              !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0) }) else { return nil }
+        return value
     }
 
     private static func plainText(_ nodes: [Node]) -> String {
@@ -932,7 +1014,7 @@ enum HTMLToMarkdownConverter {
             let start = index
             while index < input.endIndex {
                 let c = input[index]
-                if c.isWhitespace || c == ">" || c == "/" { break }
+                if c.isWhitespace || c == ">" { break }
                 index = input.index(after: index)
             }
             return String(input[start..<index])

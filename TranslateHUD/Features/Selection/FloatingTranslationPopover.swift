@@ -79,6 +79,7 @@ final class FloatingTranslationPopover {
         window.contentView = host.view
         self.hostingController = host
 
+        window.closeHandler = { [weak self] in self?.close() }
         window.escapeHandler = { [weak self] in self?.close() }
 
         closeRef = { [weak self] in self?.close() }
@@ -100,11 +101,15 @@ final class FloatingTranslationPopover {
     }
 
     func close() {
+        guard hostingController != nil else { return }
         progress.cancel()
         termProgress.cancel()
         speech.stop()
         removeDismissMonitors()
-        window.orderOut(nil)
+        window.closeHandler = nil
+        window.escapeHandler = nil
+        window.close()
+        window.contentView = nil
         // 主动释放 hosting controller，断开 SwiftUI ↔ Combine 依赖
         hostingController = nil
         WindowRegistry.shared.remove(self)

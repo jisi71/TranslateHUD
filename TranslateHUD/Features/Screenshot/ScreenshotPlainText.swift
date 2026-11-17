@@ -3,8 +3,28 @@ import Foundation
 
 /// Groups the text-only OCR results without inferring document styles.
 enum ScreenshotPlainText {
-    static func plan(from lines: [OCRService.Line]) -> ScreenshotTranslationPlan {
-        let text = blocks(from: lines)
+    // Per-call opt-in observation only; no persistence or global OCR sink.
+    struct JoinDecision: Codable {
+        let previousVisualOrdinal: Int
+        let nextVisualOrdinal: Int
+        let gap: CGFloat
+        let xOffset: CGFloat
+        let medianHeight: CGFloat
+        let gapLimit: CGFloat
+        let aligned: Bool
+        let similarSize: Bool
+        let nextStartsList: Bool? // nil when geometry short-circuited that predicate
+        let joined: Bool
+    }
+    struct Observation {
+        let input: [OCRService.Line]
+        let visual: [OCRService.Line]
+        let decisions: [JoinDecision]
+        let blocks: [ScreenshotTextBlock]
+    }
+
+    static func plan(from lines: [OCRService.Line], observe: ((Observation) throws -> Void)? = nil) -> ScreenshotTranslationPlan {
+        let text = blocks(from: lines, observe: observe)
         return ScreenshotTranslationPlan(blocks: text.map { .text(runs: [.init(text: $0.text, isStrong: false)], heading: nil) })
     }
 
@@ -12,18 +32,20 @@ enum ScreenshotPlainText {
         blocks(from: lines).map(\.text)
     }
 
-    static func blocks(from lines: [OCRService.Line]) -> [ScreenshotTextBlock] {
+    static func blocks(from lines: [OCRService.Line], observe: ((Observation) throws -> Void)? = nil) -> [ScreenshotTextBlock] {
         let ordered = visualLines(from: lines)
+        var decisions: [JoinDecision] = []
+        var result: [ScreenshotTextBlock] = []
+        defer { try? observe?(Observation(input: lines, visual: ordered, decisions: decisions, blocks: result)) }
         guard let first = ordered.first else { return [] }
         let heights = ordered.map { $0.normalizedBox.height }.filter { $0 > 0 }.sorted()
-        guard !heights.isEmpty else { return ordered.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) } }
+        guard !heights.isEmpty else { result = ordered.map { ScreenshotTextBlock(text: $0.text, box: $0.normalizedBox) }; return result }
         let median = heights[heights.count / 2]
-        var result: [ScreenshotTextBlock] = []
         var current = first.text
         var currentBox = first.normalizedBox
         var previous = first
 
-        for line in ordered.dropFirst() {
+        for (offset, line) in ordered.dropFirst().enumerated() {
             let a = previous.normalizedBox.standardized
             let b = line.normalizedBox.standardized
             let gap = a.minY - b.maxY
@@ -31,7 +53,15 @@ enum ScreenshotPlainText {
             let aligned = xOffset <= max(0.015, min(a.width, b.width) * 0.2)
             let similarSize = abs(a.height - b.height) <= median * 0.6
             let limit = isContinuation(previous.text, line.text) ? median * 1.5 : median * 0.8
-            if gap >= -median * 0.15 && gap <= limit && aligned && similarSize && !startsListItem(line.text) {
+            let geometryAllowsJoin = gap >= -median * 0.15 && gap <= limit && aligned && similarSize
+            let listStart: Bool? = geometryAllowsJoin ? startsListItem(line.text) : nil
+            let joined = geometryAllowsJoin && listStart == false
+            if observe != nil {
+                decisions.append(.init(previousVisualOrdinal: offset, nextVisualOrdinal: offset + 1,
+                    gap: gap, xOffset: xOffset, medianHeight: median, gapLimit: limit,
+                    aligned: aligned, similarSize: similarSize, nextStartsList: listStart, joined: joined))
+            }
+            if joined {
                 current = join(current, line.text)
                 currentBox = currentBox.union(line.normalizedBox)
             } else {

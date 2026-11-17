@@ -205,8 +205,8 @@
               <span class="lang-en">Quick screenshot translation</span>
             </h2>
             <p>
-              <span class="lang-zh">没有选中文字时，用快捷键或菜单框选屏幕上的一块区域，即可在浮窗中查看译文。识别出的原文可直接在浮窗中编辑，再重新翻译。</span>
-              <span class="lang-en">With nothing selected, use the shortcut or the menu to capture a region and see the translation in the floating panel. Edit the recognized source text in the panel and translate it again.</span>
+              <span class="lang-zh">没有选中文字时，用快捷键或菜单框选屏幕上的一块区域，即可在浮窗中查看译文。符合条件的倾斜截图会在本机校正；无法确认时沿用原图识别。识别错了，也可以直接改原文再译。</span>
+              <span class="lang-en">With nothing selected, use the shortcut or menu to capture a region and see its translation in the panel. Eligible tilted captures are corrected on device; uncertain cases keep the original image. You can also edit the recognized source and translate again.</span>
             </p>
           </div>
           <figure
@@ -476,6 +476,97 @@
           </figure>
         </article>
 
+        <article class="feature" id="feature-edit">
+          <div class="feature-text">
+            <p class="tag"><span class="lang-zh">直接编辑</span><span class="lang-en">Edit in place</span></p>
+            <h2><span class="lang-zh">原文译文，<br>点哪里改哪里</span><span class="lang-en">Click to edit<br>either side</span></h2>
+            <p><span class="lang-zh">识别错了一个词，不用重新截图。在浮窗里直接修改原文，再点「重新翻译」。译文也能直接改，调整好措辞后复制使用。</span><span class="lang-en">Fix a recognized word right in the panel, then click Retranslate. No need to capture again. You can also edit the translation to get the wording you want, then copy it.</span></p>
+          </div>
+          <figure class="feature-stage stage-sky stage-new stage-edit" role="img" aria-label="界面示意：将原文中的登机口改为 Gate B，再点底栏的重新翻译，得到「9:00 在 B 号登机口见。」。" data-aria-zh="界面示意：将原文中的登机口改为 Gate B，再点底栏的重新翻译，得到「9:00 在 B 号登机口见。」。" data-aria-en="Illustration: change the source gate to Gate B, then click Retranslate in the toolbar to get the updated translation.">
+            <div class="feature-example" aria-hidden="true">
+              <div class="hud-panel">
+                <div class="hud-head">
+                  <svg class="hud-logo" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#translate"/></svg>
+                  <span class="hud-title">TranslateHUD</span>
+                  <span class="hud-lang">
+                  <span class="pair-src-en">简体中文</span>
+                  <span class="pair-src-zh">English</span>
+                  <svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg>
+                </span>
+                  <span class="hud-tools" aria-hidden="true">
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#pin"/></svg>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#settings"/></svg>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#close"/></svg>
+                </span>
+                </div>
+                <div class="hud-source-row">
+                  <p class="hud-source"><span class="lang-zh">Meet at <span class="edit-word">Gate B<span class="edit-caret"></span></span> at 9:00.</span><span class="lang-en">9:00 在 <span class="edit-word">B 号登机口<span class="edit-caret"></span></span>见。</span></p>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#speaker"/></svg>
+                </div>
+                <p class="hud-status"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#check"/></svg><span class="lang-zh">翻译完成</span><span class="lang-en">Translation complete</span></p>
+                <p class="hud-out"><span class="lang-zh">9:00 在 B 号登机口见。</span><span class="lang-en">Meet at Gate B at 9:00.</span></p>
+                <div class="hud-foot">
+                  <span class="hud-foot-tools"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#copy"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#terms"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#photo"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#speaker"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#refresh"/></svg></span>
+                  <span class="hud-provider"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chip"/></svg>DeepSeek<svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg></span>
+                </div>
+              </div>
+              <p class="example-note"><span class="lang-zh">改原文 → 重新翻译 → 复制译文</span><span class="lang-en">Edit source → retranslate → copy</span></p>
+            </div>
+          </figure>
+        </article>
+
+        <article class="feature feature-flip" id="feature-format">
+          <div class="feature-text">
+            <p class="tag"><span class="lang-zh">文档格式</span><span class="lang-en">Document formatting</span></p>
+            <h2><span class="lang-zh">翻译内容，<br>也保留阅读层次</span><span class="lang-en">Keep the words<br>and the structure</span></h2>
+            <p><span class="lang-zh">阅读技术文档或工作笔记，标题、列表、引用和表格都有各自的位置。支持 Markdown 格式显示与编辑，长内容也能按层次读下去。</span><span class="lang-en">Translate technical docs and work notes with headings, lists, quotes and tables in place. Markdown display and editing help longer content stay readable.</span></p>
+          </div>
+          <figure class="feature-stage stage-linen stage-new stage-format" role="img" aria-label="界面示意：发布前检查的标题、两条列表与一段引用，原文和译文保留相同的内容层次。" data-aria-zh="界面示意：发布前检查的标题、两条列表与一段引用，原文和译文保留相同的内容层次。" data-aria-en="Illustration: a release checklist with a heading, two list items and a quote keeps the same structure in the source and translation.">
+            <div class="feature-example" aria-hidden="true">
+              <div class="hud-panel">
+                <div class="hud-head">
+                  <svg class="hud-logo" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#translate"/></svg>
+                  <span class="hud-title">TranslateHUD</span>
+                  <span class="hud-lang">
+                  <span class="pair-src-en">简体中文</span>
+                  <span class="pair-src-zh">English</span>
+                  <svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg>
+                </span>
+                  <span class="hud-tools" aria-hidden="true">
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#pin"/></svg>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#settings"/></svg>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#close"/></svg>
+                </span>
+                </div>
+                <div class="hud-source-row">
+                  <div class="hud-source">
+                    <strong><span class="lang-zh">Release checklist</span><span class="lang-en">发布前检查</span></strong>
+                    <ul class="format-list">
+                      <li><span class="lang-zh">Review the draft</span><span class="lang-en">核对草稿</span></li>
+                      <li><span class="lang-zh">Publish the update</span><span class="lang-en">发布更新</span></li>
+                    </ul>
+                    <blockquote><span class="lang-zh">Review first, then publish.</span><span class="lang-en">先核对，再发布。</span></blockquote>
+                  </div>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#speaker"/></svg>
+                </div>
+                <p class="hud-status"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#check"/></svg><span class="lang-zh">翻译完成</span><span class="lang-en">Translation complete</span></p>
+                <div class="hud-out formatted-copy">
+                  <h3><span class="lang-zh">发布前检查</span><span class="lang-en">Release checklist</span></h3>
+                  <ul>
+                    <li><span class="lang-zh">核对草稿</span><span class="lang-en">Review the draft</span></li>
+                    <li><span class="lang-zh">发布更新</span><span class="lang-en">Publish the update</span></li>
+                  </ul>
+                  <blockquote><span class="lang-zh">先核对，再发布。</span><span class="lang-en">Review first, then publish.</span></blockquote>
+                </div>
+                <div class="hud-foot">
+                  <span class="hud-foot-tools"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#copy"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#terms"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#speaker"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#refresh"/></svg></span>
+                  <span class="hud-provider"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chip"/></svg>DeepSeek<svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg></span>
+                </div>
+              </div>
+            </div>
+          </figure>
+        </article>
+
         <article class="feature">
           <div class="feature-text">
             <p class="tag"><span class="lang-zh">朗读</span><span class="lang-en">Speech</span></p>
@@ -616,6 +707,88 @@
             </div>
           </figure>
         </article>
+        <article class="feature" id="feature-qr">
+          <div class="feature-text">
+            <p class="tag"><span class="lang-zh">二维码</span><span class="lang-en">QR codes</span></p>
+            <h2><span class="lang-zh">屏幕上的二维码，<br>截图就能读</span><span class="lang-en">Read a QR code<br>from your screen</span></h2>
+            <p><span class="lang-zh">网页或图片里的二维码，不用再拿手机扫。框选截图后，在电脑上查看内容、复制文字，或主动打开网页链接。识别在本机完成，二维码内容不会自动送去翻译。</span><span class="lang-en">Capture a QR code in a page or image to read its contents on your Mac. Copy the text or choose to open a web link. Recognition happens on device; QR contents are not automatically sent for translation.</span></p>
+          </div>
+          <figure class="feature-stage stage-mist stage-new stage-qr" role="img" aria-label="界面示意：框选指向 TranslateHUD 官网的二维码，截图二维码窗口显示同一个网址，并提供打开链接与复制内容选项。" data-aria-zh="界面示意：框选指向 TranslateHUD 官网的二维码，截图二维码窗口显示同一个网址，并提供打开链接与复制内容选项。" data-aria-en="Illustration: capture a QR code for the TranslateHUD website. The QR result window shows the same URL with Open link and Copy content options.">
+            <div class="feature-example" aria-hidden="true">
+              <div class="qr-paper">
+                <p class="qr-paper-brand">TranslateHUD</p>
+                <p class="qr-paper-title"><span class="lang-zh">把官网留在手边</span><span class="lang-en">Keep the site handy</span></p>
+                <div class="qr-capture">
+                  <img src="assets/website-qr.svg" width="148" height="148" loading="lazy" alt="">
+                </div>
+                <p class="qr-paper-url">translatehud.com</p>
+              </div>
+              <div class="qr-result">
+                <div class="qr-result-head">
+                  <span class="lang-zh">截图二维码</span>
+                  <span class="lang-en">Screenshot QR code</span>
+                </div>
+                <div class="qr-result-body">
+                  <p class="qr-result-kicker"><span class="lang-zh">二维码 1</span><span class="lang-en">QR code 1</span></p>
+                  <p class="qr-result-url">https://translatehud.com/</p>
+                  <div class="qr-result-actions">
+                    <span><span class="lang-zh">打开链接</span><span class="lang-en">Open link</span></span>
+                    <span><span class="lang-zh">复制内容</span><span class="lang-en">Copy content</span></span>
+                  </div>
+                  <p class="qr-result-note"><span class="lang-zh">链接仅在点击后打开</span><span class="lang-en">Links open only when you click</span></p>
+                </div>
+              </div>
+            </div>
+          </figure>
+        </article>
+
+        <article class="feature feature-flip" id="feature-feedback">
+          <div class="feature-text">
+            <p class="tag"><span class="lang-zh">质量反馈</span><span class="lang-en">Quality feedback</span></p>
+            <h2><span class="lang-zh">翻译有疑问，<br>先核对再反馈</span><span class="lang-en">Review a problem,<br>then send feedback</span></h2>
+            <p><span class="lang-zh">检测到可能漏译时，完整译文仍会保留，并在结尾提示你核对。登录后可以点「反馈」，预览当次原文、候选译文和质量诊断，确认后再上传。反馈保留 30 天后定时清理，不会自动提交。</span><span class="lang-en">When a complete result may contain untranslated text, it stays visible with a note to review it. Once signed in, click Feedback to preview the source, candidate translation and quality details before confirming an upload. Feedback is scheduled for deletion after 30 days and is never submitted automatically.</span></p>
+          </div>
+          <figure class="feature-stage stage-frost stage-new stage-feedback" role="img" aria-label="界面示意：完整候选译文后有「可能存在漏译」与反馈入口，打开预览后还需明确确认才会上传。" data-aria-zh="界面示意：完整候选译文后有「可能存在漏译」与反馈入口，打开预览后还需明确确认才会上传。" data-aria-en="Illustration: the complete candidate translation has a review warning and Feedback option. The preview requires explicit confirmation before upload.">
+            <div class="feature-example" aria-hidden="true">
+              <div class="hud-panel">
+                <div class="hud-head">
+                  <svg class="hud-logo" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#translate"/></svg>
+                  <span class="hud-title">TranslateHUD</span>
+                  <span class="hud-lang">
+                  <span class="pair-src-en">简体中文</span>
+                  <span class="pair-src-zh">English</span>
+                  <svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg>
+                </span>
+                  <span class="hud-tools" aria-hidden="true">
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#pin"/></svg>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#settings"/></svg>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#close"/></svg>
+                </span>
+                </div>
+                <div class="hud-source-row">
+                  <p class="hud-source"><span class="lang-zh">Save your work before you close the window.</span><span class="lang-en">关闭窗口前，先保存你的工作。</span></p>
+                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#speaker"/></svg>
+                </div>
+                <p class="hud-status"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#check"/></svg><span class="lang-zh">翻译完成</span><span class="lang-en">Translation complete</span></p>
+                <p class="hud-out"><span class="lang-zh">关闭窗口前，Save your work。</span><span class="lang-en">关闭窗口前，Save your work。</span></p>
+                <p class="quality-notice"><span class="lang-zh">可能存在漏译</span><span class="lang-en">Some text may be untranslated</span><span><span class="lang-zh">反馈</span><span class="lang-en">Feedback</span></span></p>
+                <div class="hud-foot">
+                  <span class="hud-foot-tools"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#copy"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#terms"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#speaker"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#refresh"/></svg></span>
+                  <span class="hud-provider"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chip"/></svg>DeepSeek<svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg></span>
+                </div>
+              </div>
+              <div class="feedback-preview">
+                <p class="feedback-preview-title"><span class="lang-zh">翻译质量反馈预览</span><span class="lang-en">Translation quality feedback preview</span></p>
+                <p><span class="lang-zh">当次原文 · 候选译文 · 质量诊断</span><span class="lang-en">Source · candidate translation · quality details</span></p>
+                <div class="feedback-preview-actions">
+                  <span><span class="lang-zh">关闭</span><span class="lang-en">Close</span></span>
+                  <strong><span class="lang-zh">确认上传原始快照</span><span class="lang-en">Confirm upload</span></strong>
+                </div>
+              </div>
+            </div>
+          </figure>
+        </article>
+
       </section>
 
       <section class="install" id="install" aria-labelledby="install-title">

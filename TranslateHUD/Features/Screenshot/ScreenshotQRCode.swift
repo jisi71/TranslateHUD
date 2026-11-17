@@ -67,46 +67,27 @@ enum ScreenshotQRCode {
     }
 }
 
-/// Retained by its controller until closed; opening a link requires an explicit click.
-@MainActor
-final class ScreenshotQRCodeWindow: NSWindowController, NSWindowDelegate {
-    private static var visible: [ScreenshotQRCodeWindow] = []
+struct ScreenshotQRCodeContents: View {
+    let codes: [ScreenshotQRCode.Code]
 
-    static func show(codes: [ScreenshotQRCode.Code]) {
-        guard !codes.isEmpty else { return }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 300),
-                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = "截图二维码"
-        window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("二维码内容 · 链接仅在点击后打开").font(.headline)
-                ForEach(Array(codes.enumerated()), id: \.offset) { index, code in
-                    VStack(alignment: .leading, spacing: 6) {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(codes.enumerated()), id: \.offset) { index, code in
+                VStack(alignment: .leading, spacing: 6) {
+                    if codes.count > 1 {
                         Text("二维码 \(index + 1)").font(.caption).foregroundStyle(.secondary)
-                        Text(verbatim: code.displayText).textSelection(.enabled)
-                        HStack {
-                            if let url = code.link { Link("打开链接：\(url.absoluteString)", destination: url) }
-                            if let payload = code.payload {
-                                Button("复制内容") {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(payload, forType: .string)
-                                }
-                            }
-                        }
+                    }
+                    Text(verbatim: code.displayText)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("screenshot-qrcode-content-\(index)")
+                    if let url = code.link {
+                        Link("打开链接", destination: url)
+                            .font(.caption)
                     }
                 }
-            }.padding().frame(maxWidth: .infinity, alignment: .leading)
-        })
-        let controller = ScreenshotQRCodeWindow(window: window)
-        window.delegate = controller
-        visible.append(controller)
-        window.center()
-        controller.showWindow(nil)
-        window.orderFrontRegardless()
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        Self.visible.removeAll { $0 === self }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

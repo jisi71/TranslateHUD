@@ -7,7 +7,18 @@ final class ScreenshotSourceState: ObservableObject {
     @Published private(set) var editor: ScreenshotProofreadState?
     @Published private(set) var termProgress: TermExplanationProgress
     @Published private(set) var editError: String?
+    @Published private(set) var isRecognizing = false
+    @Published private(set) var codes: [ScreenshotQRCode.Code] = []
+    @Published private(set) var recognitionNotice: String?
     let progress: TranslationProgress
+    private(set) var isCancelled = false
+    var recognitionTask: Task<Void, Never>?
+
+    var canTranslate: Bool { !isRecognizing && !isCancelled && !plan.sourceItems.isEmpty }
+    var isQRCodeOnly: Bool { !isRecognizing && !codes.isEmpty && plan.sourceItems.isEmpty }
+    var resultText: String {
+        (codes.map(\.displayText) + [progress.displayedTranslation]).filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
 
     private let prepare: @MainActor (String) -> TranslationSession.Outcome
 
@@ -23,13 +34,34 @@ final class ScreenshotSourceState: ObservableObject {
         self.termProgress = Self.makeTerms(plan: plan, progress: progress)
     }
 
+    func beginRecognition() { isRecognizing = true }
+
+    func showCodes(_ codes: [ScreenshotQRCode.Code]) {
+        guard !isCancelled else { return }
+        self.codes = codes
+    }
+
+    func finishRecognition(plan: ScreenshotTranslationPlan?, notice: String? = nil, error: String? = nil) {
+        guard !isCancelled else { return }
+        isRecognizing = false
+        recognitionNotice = notice
+        if let plan {
+            self.plan = plan
+            termProgress = Self.makeTerms(plan: plan, progress: progress)
+            start()
+        } else {
+            progress.finishWithoutTranslation(error: error)
+        }
+    }
+
     func start() {
+        guard canTranslate else { return }
         let target = TargetLanguage.resolved(for: plan.sourceTexts, configured: SettingsStore.shared.targetLanguage)
         translate(plan, target: target)
     }
 
     func beginEditing() {
-        guard editor == nil else { return }
+        guard canTranslate, editor == nil else { return }
         do {
             editor = try ScreenshotProofreadState(plan: plan)
             editError = nil
@@ -67,6 +99,9 @@ final class ScreenshotSourceState: ObservableObject {
     }
 
     func cancel() {
+        isCancelled = true
+        recognitionTask?.cancel()
+        recognitionTask = nil
         progress.cancel()
         termProgress.cancel()
     }

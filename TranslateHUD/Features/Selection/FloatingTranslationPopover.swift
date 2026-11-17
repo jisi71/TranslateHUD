@@ -86,7 +86,6 @@ final class FloatingTranslationPopover {
         retryRef = { [weak self] in self?.progress.retry() }
         pinRef = { [weak self] pinned in
             self?.isPinned = pinned
-            self?.window.level = pinned ? .floating : .normal
         }
         layoutRef = { [weak self] in self?.scheduleContentSizeAdjustment() }
     }

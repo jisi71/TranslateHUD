@@ -34,7 +34,7 @@ final class FloatingScreenshotWindow {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = true
-        window.level = .normal
+        window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.hidesOnDeactivate = false
         window.title = "TranslateHUD"
@@ -75,7 +75,6 @@ final class FloatingScreenshotWindow {
         retryRef = { [weak self] in self?.source.progress.retry() }
         pinRef = { [weak self] pinned in
             self?.isPinned = pinned
-            self?.window.level = pinned ? .floating : .normal
         }
         layoutRef = { [weak self] in self?.scheduleContentSizeAdjustment() }
     }
@@ -201,7 +200,7 @@ private struct ResultView: View {
             panelWidth: sizeBudget.width,
             isUserSized: sizeBudget.userSize != nil,
             translationHeight: sizeBudget.translationHeight,
-            recognitionNotice: recognitionNotice,
+            recognitionNotice: source.recognitionNotice ?? recognitionNotice,
             screenshotSource: source,
             sourceEditor: source.editor,
             sourceEditError: source.editError,

@@ -88,6 +88,12 @@ node --env-file=.env server.js
 
 构建通过只证明本地候选符合记录的基线和测试，并不执行部署。正式部署前须重新获取当前线上包并核对哈希、路由和函数配置；若线上已变更，应重新审查差异并更新补丁，不能硬套旧基线。密钥和运行配置单独保管，不放进候选源码包或 Git。
 
+## 独立翻译质量反馈
+
+`POST /v1/trial/quality-feedback` 和 `GET /v1/trial/quality-feedback/capability` 指向独立的 `quality-feedback-receiver`，不依赖重新部署原翻译函数。只在登录用户预览确认后接收原译文快照，事务去重、每账号每小时最多10条，30天后由私有 `quality-feedback-cleanup` 小时任务清理。两张集合禁止普通用户直接读写。
+
+源文件、开关、timer、权限、实际提交/去重和定时清理验收见[质量反馈部署说明](deployment-tests/quality-feedback-20261117.md)。这不是原来的图文问题反馈接口，也不调用翻译模型或计入翻译账本。
+
 ## 线上云函数
 
 目前 `trial` 和 `trial-stream` 的线上源码不同，也不同于这里的历史 `src/`。不要用旧的 `npm run stage` 和 `cloudbaserc.json` 直接覆盖线上。修改、验证和后续部署前，请先阅读 [线上基线补丁与验证](deployment-tests/README.md)，分别核验两个函数当前的代码包及目标网关路由。

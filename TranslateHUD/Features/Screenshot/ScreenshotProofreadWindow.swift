@@ -510,6 +510,13 @@ struct ScreenshotProofreadView: View {
 
 final class ScreenshotInputTextView: NSTextView {
     var didCommitText: (() -> Void)?
+    var didFocus: (() -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted { didFocus?() }
+        return accepted
+    }
     private(set) var isUpdatingInput = false
     private weak var observedUndoManager: UndoManager?
 
@@ -536,9 +543,10 @@ final class ScreenshotInputTextView: NSTextView {
     deinit { NotificationCenter.default.removeObserver(self) }
 
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        let wasUpdating = isUpdatingInput
         isUpdatingInput = true
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
-        isUpdatingInput = false
+        isUpdatingInput = wasUpdating
     }
 
     override func unmarkText() {

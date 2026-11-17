@@ -113,3 +113,56 @@ private struct PlainParagraphTranslator: Translator {
         return texts.map { _ in "在电子表格中输入公式，汇总每月支出。" }
     }
 }
+
+extension ScreenshotParagraphLayoutTests {
+    func testPlainTraceUsesActualNormalizationAndDoesNotChangeWrapOrSeparation() throws {
+        let cases: [[OCRService.Line]] = [
+            [],
+            [line("中文正常换行", x: 0.05, y: 0.8, width: 0.4, height: 0.04),
+             line("继续同一段。", x: 0.05, y: 0.74, width: 0.4, height: 0.04)],
+            [line("A wrapped sentence", x: 0.05, y: 0.8, width: 0.5, height: 0.04),
+             line("continues here.", x: 0.05, y: 0.74, width: 0.4, height: 0.04)],
+            [line("Separated body.", x: 0.05, y: 0.8, width: 0.4, height: 0.04),
+             line("Other body.", x: 0.05, y: 0.5, width: 0.4, height: 0.04)],
+            [line("• First item", x: 0.05, y: 0.8, width: 0.4, height: 0.04),
+             line("• Second item", x: 0.05, y: 0.74, width: 0.4, height: 0.04)]
+        ]
+        enum ConsumerFailure: Error { case expected }
+        for input in cases {
+            let ordinary = ScreenshotPlainText.plan(from: input)
+            var actual: ScreenshotPlainText.Observation?
+            let traced = ScreenshotPlainText.plan(from: input, observe: { actual = $0; throw ConsumerFailure.expected })
+            XCTAssertEqual(traced.originalMarkdown, ordinary.originalMarkdown)
+            XCTAssertEqual(traced.sourceTexts, ordinary.sourceTexts)
+            let observed = try XCTUnwrap(actual)
+            XCTAssertEqual(observed.input.map(\.text), input.map(\.text))
+            XCTAssertEqual(observed.blocks.map(\.text), ordinary.sourceTexts)
+            XCTAssertEqual(observed.decisions.count, max(0, observed.visual.count - 1))
+        }
+        XCTAssertEqual(ScreenshotPlainText.paragraphs(from: cases[1]), ["中文正常换行继续同一段。"])
+        XCTAssertEqual(ScreenshotPlainText.paragraphs(from: cases[2]), ["A wrapped sentence continues here."])
+        XCTAssertEqual(ScreenshotPlainText.paragraphs(from: cases[3]).count, 2)
+        XCTAssertEqual(ScreenshotPlainText.paragraphs(from: cases[4]).count, 2)
+    }
+
+    @MainActor
+    func testPipelineTraceThrowingConsumerPreservesRealPlainPlan() async throws {
+        let context = try XCTUnwrap(CGContext(data: nil, width: 200, height: 100, bitsPerComponent: 8,
+            bytesPerRow: 800, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(gray: 1, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: 200, height: 100))
+        let image = NSImage(cgImage: try XCTUnwrap(context.makeImage()), size: NSSize(width: 200, height: 100))
+        let input = [line("Ordinary source", x: 0.1, y: 0.8, width: 0.5, height: 0.04),
+                     line("continues here.", x: 0.1, y: 0.74, width: 0.5, height: 0.04)]
+        enum ConsumerFailure: Error { case expected }
+        var observations: [ScreenshotTablePipeline.Observation] = []
+        let ordinary = await ScreenshotTablePipeline.makePlan(image: image, lines: input)
+        let traced = await ScreenshotTablePipeline.makePlan(image: image, lines: input, observe: {
+            observations.append($0); throw ConsumerFailure.expected
+        })
+        guard case .ready(let a) = ordinary, case .ready(let b) = traced else { return XCTFail("Expected real plain plans") }
+        XCTAssertEqual(a.plan.originalMarkdown, b.plan.originalMarkdown)
+        XCTAssertTrue(observations.contains { $0.stage == "plainRoute" })
+        let normalization = try XCTUnwrap(observations.first { $0.plain != nil }?.plain)
+        XCTAssertEqual(normalization.blocks.map(\.text), a.plan.sourceTexts)
+    }
+}

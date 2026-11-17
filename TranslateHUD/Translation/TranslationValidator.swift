@@ -24,14 +24,47 @@ enum TranslationValidator {
         }
     }
 
+    /// Numeric metadata only, emitted solely to an explicit per-call observer.
+    struct Observation: Codable {
+        struct Event: Codable {
+            let phase: String
+            let outcome: String
+            var total: Int? = nil
+            var unresolved: Int? = nil
+            var unitOrdinal: Int? = nil
+            var unitUTF16: Int? = nil
+            var result: Bool? = nil
+            var targetScriptCount: Int? = nil
+            var targetDensity: Double? = nil
+        }
+        var events: [Event] = []
+        var failures: [String] = []
+    }
+
     /// 单条文本验证。
-    static func validate(input: String, output: String, target: TargetLanguage) -> [Failure] {
+    static func validate(input: String, output: String, target: TargetLanguage,
+                         observe: ((Observation) throws -> Void)? = nil) -> [Failure] {
         var failures: [Failure] = []
+        var observation = Observation()
+        let record: ((Observation.Event) throws -> Void)?
+        if observe != nil {
+            record = { event in observation.events.append(event) }
+        } else {
+            record = nil
+        }
+        defer {
+            observation.failures = failures.map { String(describing: $0) }
+            try? observe?(observation)
+        }
 
         let trimmedIn  = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedOut = output.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if !trimmedIn.isEmpty, trimmedOut.isEmpty { return [.emptyOutput] }
+        if !trimmedIn.isEmpty, trimmedOut.isEmpty {
+            failures = [.emptyOutput]
+            observation.events.append(.init(phase: "whole/local", outcome: "notReached_emptyOutput"))
+            return failures
+        }
 
         if isEcho(input: trimmedIn, output: trimmedOut, target: target) {
             failures.append(.echoedInput)
@@ -43,7 +76,17 @@ enum TranslationValidator {
            !trimmedIn.hasPrefix("```") {
             failures.append(.codeFenceWrapped)
         }
-        if isUnderTranslated(input: trimmedIn, output: trimmedOut, target: target) {
+        let whole = isUnderTranslated(input: trimmedIn, output: trimmedOut, target: target, observe: record)
+        // Keep the original OR short-circuit: never invent a local result not reached.
+        let local: Bool?
+        if whole {
+            local = nil
+            if observe != nil { observation.events.append(.init(phase: "local", outcome: "notReached_wholeTrue")) }
+        } else {
+            local = hasUntranslatedProseUnit(input: trimmedIn, output: trimmedOut, target: target, observe: record)
+            if observe != nil { observation.events.append(.init(phase: "local", outcome: "completed", result: local)) }
+        }
+        if whole || local == true {
             failures.append(.underTranslated)
         }
         if isMissingTargetLanguageContent(input: trimmedIn, output: trimmedOut, target: target) {
@@ -57,19 +100,29 @@ enum TranslationValidator {
     /// 不靠词表。不算进去的：围栏代码（``` / ~~~）、行内代码（`…`）、Markdown 结构占位符
     /// （⟦MD:fence|icode|link|table|bound|pipe:N⟧）、邮箱、网址、路径、版本号，以及无序字母串、密码类随机串。
     /// 「原名（中文）」或「中文（原名）」算这个词已经翻译。
-    static func isUnderTranslated(input: String, output: String, target: TargetLanguage) -> Bool {
+    static func isUnderTranslated(input: String, output: String, target: TargetLanguage,
+                                  observe: ((Observation.Event) throws -> Void)? = nil) -> Bool {
+        var measuredScript: Int? = nil
+        var measuredDensity: Double? = nil
+        func finish(_ result: Bool, _ reason: String, _ counts: (unresolved: Int, total: Int)? = nil) -> Bool {
+            try? observe?(.init(phase: "whole", outcome: reason, total: counts?.total, unresolved: counts?.unresolved,
+                               result: result, targetScriptCount: measuredScript, targetDensity: measuredDensity))
+            return result
+        }
         let nonLatinTargets: Set<TargetLanguage> = [.chinese, .japanese, .korean, .russian, .arabic]
-        guard nonLatinTargets.contains(target) else { return false }
-        guard !isProtectedLiteral(input) else { return false }
+        guard nonLatinTargets.contains(target) else { return finish(false, "targetUnsupported") }
+        guard !isProtectedLiteral(input) else { return finish(false, "wholeInputProtected") }
 
         let counts = unresolvedOrdinaryWords(input: input, output: output, target: target)
-        guard counts.total >= 3 else { return false }
-        guard Double(counts.unresolved) / Double(counts.total) >= 0.7 else { return false }
+        guard counts.total >= 3 else { return finish(false, "insufficientTokens", counts) }
+        guard Double(counts.unresolved) / Double(counts.total) >= 0.7 else { return finish(false, "belowUnresolvedFraction", counts) }
         // 主体已经是目标语言时，不把这轮判成没翻。要抓的是普通词大多没动、几乎没有中文。
         let script = targetScriptCount(in: output, target: target)
         let density = Double(script) / Double(max(output.count, 1))
-        if script >= 12 && density >= 0.34 { return false }
-        return true
+        measuredScript = script
+        measuredDensity = density
+        if script >= 12 && density >= 0.34 { return finish(false, "targetDensitySufficient", counts) }
+        return finish(true, "underTranslated", counts)
     }
 
     /// 质量检查偏严时，是否仍把这段译文留给用户看。
@@ -82,6 +135,7 @@ enum TranslationValidator {
         if failures.contains(.emptyOutput) || failures.contains(.echoedInput) || failures.contains(.refusalDetected) {
             return false
         }
+        if hasUntranslatedProseUnit(input: input, output: trimmed, target: target) { return false }
         if failures.isEmpty { return true }
         guard targetScriptCount(in: trimmed, target: target) >= 8 else { return false }
         if isNearVerbatim(input: input, output: trimmed, target: target) { return false }
@@ -208,8 +262,56 @@ enum TranslationValidator {
             in: work,
             pattern: #"⟦MD:(fence|icode|link|table|bound|pipe):\d+⟧"#
         )
+        // Mask Markdown destinations separately so a URL cannot consume the closing
+        // delimiter (or its title); the label remains available to local prose QC.
+        if let links = try? NSRegularExpression(pattern: #"(!?\[[^\]\n]*\])\([^\n)]*\)"#) {
+            work = links.stringByReplacingMatches(in: work,
+                range: NSRange(work.startIndex..<work.endIndex, in: work), withTemplate: "$1( )")
+        }
         let range = NSRange(work.startIndex..<work.endIndex, in: work)
         return protectedSpans.stringByReplacingMatches(in: work, range: range, withTemplate: " ")
+    }
+
+    /// Companion inspection for explicit local replay only; uses the same mask helper.
+    /// Not evidence that a short-circuited decision stage was reached.
+    static func lexicalMaskForLocalReplay(_ text: String) -> String { maskingLexicalProtection(text) }
+
+    /// Check local prose before whole-document language/density can hide an unchanged
+    /// heading or link label. Reuse lexical protection; code and destinations never count.
+    /// Two ordinary words (or Han text for English) avoid treating isolated brands as prose.
+    static func hasUntranslatedProseUnit(input: String, output: String, target: TargetLanguage,
+                                         observe: ((Observation.Event) throws -> Void)? = nil) -> Bool {
+        // Classify units after masking destinations. A complete Markdown link can
+        // look like a standalone path to isProtectedLiteral because it contains '/'.
+        guard target == .chinese || target == .english else { return false }
+        let source = maskingLexicalProtection(input)
+        let result = maskingResolvedSpans(maskingLexicalProtection(output), target: target)
+        var units = source.components(separatedBy: .newlines).map {
+            $0.replacingOccurrences(of: #"^[ \t]*(?:#{1,6}[ \t]+|>[ \t]*|[-*+][ \t]+|\d+\.[ \t]+)"#,
+                                   with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // Destination masking leaves brackets intact; ordinary labels/alt text remain prose.
+        if let regex = try? NSRegularExpression(pattern: #"!?\[([^\]\n]+)\]\([^\n)]*\)"#) {
+            let ns = source as NSString
+            units += regex.matches(in: source, range: NSRange(location: 0, length: ns.length)).map {
+                ns.substring(with: $0.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return units.enumerated().contains { ordinal, unit in
+            func finish(_ value: Bool, _ reason: String, _ counts: (unresolved: Int, total: Int)? = nil) -> Bool {
+                try? observe?(.init(phase: "localUnit", outcome: reason, total: counts?.total,
+                                   unresolved: counts?.unresolved, unitOrdinal: ordinal, unitUTF16: unit.utf16.count, result: value))
+                return value
+            }
+            guard !unit.isEmpty else { return finish(false, "emptyUnit") }
+            guard !isProtectedLiteral(unit) else { return finish(false, "protectedUnit") }
+            guard result.contains(unit) else { return finish(false, "unitNotRetainedVerbatim") }
+            if target == .english { return finish(containsHan(unit), "englishTargetHanCheck") }
+            guard !containsHan(unit) else { return finish(false, "unitHasHan") }
+            let counts = unresolvedOrdinaryWords(input: unit, output: result, target: target)
+            return finish(counts.total >= 2 && counts.unresolved == counts.total, "ordinaryTokenCheck", counts)
+        }
     }
 
     private static func replaceMatchesWithSpaces(
@@ -534,7 +636,19 @@ enum TranslationValidator {
     private static func isEcho(input: String, output: String, target: TargetLanguage) -> Bool {
         guard input == output else { return false }
         guard !isProtectedLiteral(input) else { return false }
-        let lexical = maskingLexicalProtection(input)
+        var lexical = maskingLexicalProtection(input)
+        // Opaque identifiers are legal retained literals too. Do not let them
+        // dominate language recognition of a short already-target caption.
+        if let regex = try? NSRegularExpression(pattern: #"[A-Za-z_][A-Za-z_0-9]*"#) {
+            let ns = lexical as NSString
+            for match in regex.matches(in: lexical, range: NSRange(location: 0, length: ns.length)).reversed() {
+                let token = ns.substring(with: match.range)
+                if isOpaqueSecret(token), let range = Range(match.range, in: lexical) {
+                    lexical.replaceSubrange(range, with: String(repeating: " ", count: token.count))
+                }
+            }
+        }
+        lexical = lexical.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         // 必须有足够字母才考虑「该被翻译」——纯数字 / 纯标点 / 版本号 / 仅剩代码结构原样返回是正常的
         let letterCount = lexical.unicodeScalars.filter { CharacterSet.letters.contains($0) }.count

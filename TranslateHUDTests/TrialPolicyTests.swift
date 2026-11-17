@@ -413,6 +413,59 @@ final class CloudBaseLoginTests: XCTestCase {
         XCTAssertFalse(CloudBaseHTTPStub.requests.contains { $0.url?.path == "/auth/v1/signup" })
     }
 
+    // Synthetic addresses only: URLProtocol intercepts every request, including unexpected paths.
+    func testNonGmailProvidersCompleteLoginAndRecoverFromStaleUserHint() async throws {
+        let domains = ["qq.com", "163.com", "126.com", "outlook.com", "hotmail.com", "icloud.com", "yahoo.com", "foxmail.com"]
+        for domain in domains {
+            for existing in [false, true] {
+                CloudBaseHTTPStub.requests = []
+                let identifier = try XCTUnwrap(TrialLoginIdentifier.parse("  Mock.User+tag@\(domain.uppercased())  "))
+                let address = "Mock.User+tag@\(domain)"
+                CloudBaseHTTPStub.responder = { request in
+                    XCTAssertEqual(request.value(forHTTPHeaderField: "x-device-id"), "test-device")
+                    let body = Self.json(request)
+                    switch request.url?.path {
+                    case "/auth/v1/verification":
+                        XCTAssertEqual(body["email"] as? String, address)
+                        XCTAssertNil(body["phone_number"])
+                        XCTAssertEqual(body["target"] as? String, "ANY")
+                        return (200, ["verification_id": "mock-vid", "is_user": existing])
+                    case "/auth/v1/verification/verify":
+                        XCTAssertEqual(body["verification_id"] as? String, "mock-vid")
+                        XCTAssertEqual(body["verification_code"] as? String, "000000")
+                        return (200, ["verification_token": "mock-proof"])
+                    case "/auth/v1/signup":
+                        XCTAssertEqual(body["email"] as? String, address)
+                        XCTAssertNil(body["phone_number"])
+                        XCTAssertEqual(body["verification_token"] as? String, "mock-proof")
+                        if !existing { return (409, ["error": "email_already_in_use"]) }
+                        return (200, ["access_token": "mock-access", "refresh_token": "mock-refresh"])
+                    case "/auth/v1/signin":
+                        XCTAssertEqual(body["verification_token"] as? String, "mock-proof")
+                        if existing { return (404, ["error": "user_not_found"]) }
+                        return (200, ["access_token": "mock-access", "refresh_token": "mock-refresh"])
+                    case "/auth/v1/user/me":
+                        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer mock-access")
+                        return (200, ["sub": "mock-user"])
+                    default:
+                        XCTFail("unexpected request")
+                        return (500, [:])
+                    }
+                }
+                let api = makeAPI()
+                defer { api.session.invalidateAndCancel() }
+                let ticket = try await api.sendCode(identifier: identifier)
+                let session = try await api.completeLogin(identifier: identifier, code: "000000",
+                    verificationId: ticket.verificationId, isExistingUser: ticket.isExistingUser)
+                XCTAssertEqual(session.userId, "mock-user")
+                XCTAssertEqual(session.refreshToken, "mock-refresh")
+                let authPaths = existing ? ["signin", "signup"] : ["signup", "signin"]
+                XCTAssertEqual(CloudBaseHTTPStub.requests.compactMap { $0.url?.path },
+                    ["/auth/v1/verification", "/auth/v1/verification/verify"] + authPaths.map { "/auth/v1/\($0)" } + ["/auth/v1/user/me"])
+            }
+        }
+    }
+
     func testInviteEligibilityDecodesOnlyActualBooleans() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CloudBaseHTTPStub.self]

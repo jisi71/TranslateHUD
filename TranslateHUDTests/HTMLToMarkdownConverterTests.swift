@@ -297,6 +297,49 @@ final class HTMLToMarkdownConverterTests: XCTestCase {
     }
 
 
+    func testLiteralTextEscapesOnceWhileSemanticEmphasisRemainsMarkup() {
+        XCTAssertEqual(HTMLToMarkdownConverter.convert(#"<p>*literal* ~~plain~~ [label] &lt;tag&gt; \* <em>styled</em> <strong>bold</strong></p>"#),
+                       #"\*literal\* \~\~plain\~\~ \[label\] \<tag\> \\\* *styled* **bold**"#)
+    }
+
+    func testNestedListSpacerStaysBeforeChildrenWithoutLooseningSiblings() {
+        let html = "<ul><li>Parent<p><br></p> \n<ul><li>Child</li><li>Next</li></ul></li><li>Other<p><br></p><ul><li>Last</li></ul></li></ul>"
+        XCTAssertEqual(HTMLToMarkdownConverter.convert(html), "- Parent\n\n  - Child\n  - Next\n- Other\n\n  - Last")
+    }
+
+    func testFenceLanguageMetadataFallbacksPreserveCaseAndCodeWhitespace() {
+        for metadata in [#"data-language="Mixed Case""#, #"data-lang="Mixed Case""#] {
+            XCTAssertEqual(HTMLToMarkdownConverter.convert("<pre \(metadata)><code>  a &lt; b\n\nend  </code></pre>"),
+                           "```Mixed Case\n  a < b\n\nend  \n```")
+        }
+        XCTAssertEqual(HTMLToMarkdownConverter.convert(#"<pre><code data-language="Type Script">x</code></pre>"#), "```Type Script\nx\n```")
+        XCTAssertEqual(HTMLToMarkdownConverter.convert(#"<pre><code class="highlight language-Rust other">x</code></pre>"#), "```Rust\nx\n```")
+        XCTAssertEqual(HTMLToMarkdownConverter.convert(#"<pre class="lang-Go"><code>x</code></pre>"#), "```Go\nx\n```")
+        XCTAssertEqual(HTMLToMarkdownConverter.convert("<pre data-language=\"bad&#10;injection\"><code class=\"language-Safe\">x</code></pre>"), "```Safe\nx\n```")
+    }
+
+    func testCodeDelimitersDoNotEscapeOrTerminateLiteralBodies() {
+        XCTAssertEqual(HTMLToMarkdownConverter.convert("<p><code>a`b *x* [y]</code></p>"), "``a`b *x* [y]``")
+        XCTAssertEqual(HTMLToMarkdownConverter.convert("<pre>```\n*x*\n</pre>"), "````\n```\n*x*\n\n````")
+        XCTAssertEqual(HTMLToMarkdownConverter.convert("<p><code>`x`</code></p>"), "`` `x` ``")
+    }
+
+    func testImageAndLinkLabelsAndDestinationsUseSeparateEscaping() {
+        XCTAssertEqual(HTMLToMarkdownConverter.convert(#"<p><img alt="[*icon*] &amp; x" src="https://example.test/a(b) c?x=1&amp;y=2"> <a href="https://example.test/(x)">[label]</a></p>"#),
+                       #"![\[\*icon\*\] & x](https://example.test/a%28b%29%20c?x=1&y=2) [\[label\]](https://example.test/%28x%29)"#)
+        XCTAssertEqual(HTMLToMarkdownConverter.convert(#"<img alt="visible" src=https://example.test/icon.png>"#), "![visible](https://example.test/icon.png)")
+        XCTAssertEqual(HTMLToMarkdownConverter.convert(#"<img alt="*missing source*">"#), #"\*missing source\*"#)
+    }
+
+    func testQuoteLiteralTextAndFenceMetadataUseTheSameSerialization() {
+        XCTAssertEqual(HTMLToMarkdownConverter.convert("<blockquote>*literal*<pre data-language=\"Case\">x</pre></blockquote>"), "> \\*literal\\*\n> ```Case\n> x\n> ```")
+    }
+
+    func testTableTextEscapingDoesNotDoubleEscapePipesOrCode() {
+        XCTAssertEqual(HTMLToMarkdownConverter.convert("<table><tr><th>*Header*</th><th>Code</th></tr><tr><td>a|b</td><td><code>*x*</code></td></tr></table>"),
+                       "| \\*Header\\* | Code |\n| --- | --- |\n| a\\|b | `*x*` |")
+    }
+
     private static func loadFixture(_ name: String) throws -> String {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

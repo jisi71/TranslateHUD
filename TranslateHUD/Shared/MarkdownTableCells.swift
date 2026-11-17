@@ -46,6 +46,35 @@ enum MarkdownTableCells {
         return cells
     }
 
+    /// Match parse's escape and balanced-backtick semantics; code content stays literal.
+    static func escapingCellPipes(_ value: String) -> String {
+        let characters = Array(value)
+        var result = "", delimiterLength: Int?, index = 0
+        while index < characters.count {
+            let character = characters[index]
+            if character == "\\", index + 1 < characters.count {
+                result.append(character)
+                index += 1
+                result.append(characters[index])
+            } else if character == "`" {
+                var end = index
+                while end < characters.count, characters[end] == "`" { end += 1 }
+                let length = end - index
+                if delimiterLength == length { delimiterLength = nil }
+                else if delimiterLength == nil && hasClosingDelimiter(characters, from: end, length: length) {
+                    delimiterLength = length
+                }
+                result += String(repeating: "`", count: length)
+                index = end - 1
+            } else {
+                if character == "|", delimiterLength == nil { result.append("\\") }
+                result.append(character)
+            }
+            index += 1
+        }
+        return result
+    }
+
     private static func hasClosingDelimiter(_ characters: [Character], from start: Int, length: Int) -> Bool {
         var index = start
         while index < characters.count {

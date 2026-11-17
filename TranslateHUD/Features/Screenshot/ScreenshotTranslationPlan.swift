@@ -425,21 +425,55 @@ struct ScreenshotPlanTranslator: Translator {
         let items = plan.sourceItems
         let translated: [ScreenshotStyledText]
         var didSettle = false
-        if let trial = base as? any ScreenshotTrialBillingRoute {
-            let result = try await trial.translateScreenshot(items, to: target, context: context)
-            translated = result.items
-            didSettle = result.didSettle
-        } else if let styled = base as? any ScreenshotStyledTranslator,
-                  items.contains(where: { !$0.boldRanges.isEmpty }) || plan.blocks.contains(where: { block in
-                      if case .table = block { return true }
-                      return false
-                  }) {
-            translated = try await styled.translateStyled(items, to: target, context: context)
-        } else if items.contains(where: { !$0.boldRanges.isEmpty }) {
-            throw TranslationError.service("当前翻译服务暂不支持保留截图中的粗体。")
-        } else {
-            translated = try await base.translate(plan.sourceTexts, to: target, context: context)
-                .map { .init(text: $0, boldRanges: []) }
+        do {
+            if let trial = base as? any ScreenshotTrialBillingRoute {
+                let result = try await trial.translateScreenshot(items, to: target, context: context)
+                translated = result.items
+                didSettle = result.didSettle
+            } else if let styled = base as? any ScreenshotStyledTranslator,
+                      items.contains(where: { !$0.boldRanges.isEmpty }) || plan.blocks.contains(where: { block in
+                          if case .table = block { return true }
+                          return false
+                      }) {
+                translated = try await styled.translateStyled(items, to: target, context: context)
+            } else if items.contains(where: { !$0.boldRanges.isEmpty }) {
+                throw TranslationError.service("当前翻译服务暂不支持保留截图中的粗体。")
+            } else {
+                translated = try await base.translate(plan.sourceTexts, to: target, context: context)
+                    .map { .init(text: $0, boldRanges: []) }
+            }
+        } catch let warning as TranslationSoftWarning {
+            guard warning.hasOnlySoftFailures else {
+                if warning.settled == true { throw screenshotSettledFailure(.quality) }
+                throw TranslationError.qualityFailures(warning.itemFailures.flatMap { $0 } + warning.additionalFailures)
+            }
+            let sourcesMatch = warning.sourceItems.count == items.count && zip(warning.sourceItems, items).allSatisfy { pair in pair.0.utf8.elementsEqual(pair.1.text.utf8) }
+            guard sourcesMatch, warning.target == target else {
+                if warning.settled == true { throw screenshotSettledFailure(.itemMapping) }
+                throw TranslationError.parse("截图候选原文无法逐项对应。")
+            }
+            let candidates: [ScreenshotStyledText]
+            if let styled = warning.styledOutputs {
+                candidates = styled
+            } else {
+                guard items.allSatisfy({ $0.boldRanges.isEmpty }), warning.outputs.count == items.count else {
+                    if warning.settled == true { throw screenshotSettledFailure(.itemMapping) }
+                    throw TranslationError.parse("截图候选无法逐项对应。")
+                }
+                candidates = warning.outputs.map { .init(text: $0, boldRanges: []) }
+            }
+            guard candidates.count == items.count else {
+                if warning.settled == true { throw screenshotSettledFailure(.itemMapping) }
+                throw TranslationError.parse("截图候选数量不完整。")
+            }
+            do {
+                let markdown = try plan.render(candidates) // Same real render/structure guard before display.
+                throw warning.replacingOutputs([markdown], displaySources: [plan.originalMarkdown])
+            } catch let result as TranslationSoftWarning { throw result }
+            catch {
+                if warning.settled == true { throw screenshotSettledFailure(.rendering) }
+                throw error
+            }
         }
         do {
             return [try plan.render(translated)]

@@ -69,6 +69,7 @@ final class FloatingScreenshotWindow {
         window.contentView = host.view
         hostingController = host
 
+        window.closeHandler = { [weak self] in self?.close(reason: .explicit) }
         window.escapeHandler = { [weak self] in self?.close(reason: .escape) }
         closeRef = { [weak self] in self?.close(reason: .explicit) }
         retryRef = { [weak self] in self?.source.progress.retry() }
@@ -88,12 +89,31 @@ final class FloatingScreenshotWindow {
         AppLog.info("screenshot_panel_shown")
     }
 
+    /// Explicitly requested local snapshot; no persistence or global observer.
+    /// Strings are actual hosted NSTextViews, in view-tree order (not inferred roles).
+    func contentTextSnapshot() -> [String] {
+        guard let view = hostingController?.view else { return [] }
+        view.layoutSubtreeIfNeeded()
+        func texts(_ view: NSView) -> [String] {
+            if let text = view as? NSTextView { return [text.string] }
+            return view.subviews.flatMap(texts)
+        }
+        return texts(view)
+    }
+
+    func dismiss() { close(reason: .explicit) }
+
     private func close(reason: CloseReason) {
         guard hostingController != nil else { return }
+
         source.cancel()
+        source.cancelEditing()
         speech.stop()
         removeDismissMonitors()
-        window.orderOut(nil)
+        window.closeHandler = nil
+        window.escapeHandler = nil
+        window.close()
+        window.contentView = nil
         hostingController = nil
         WindowRegistry.shared.remove(self)
         AppLog.info("screenshot_panel_closed reason=\(reason.rawValue)")
@@ -123,7 +143,7 @@ final class FloatingScreenshotWindow {
             Task { @MainActor in
                 guard let self else { return }
                 guard FloatingPanelDismissPolicy.shouldCloseOnMouseDown(
-                    isPinned: self.isPinned || self.source.editor != nil,
+                    isPinned: self.isPinned,
                     occurredOutsideThisApp: true,
                     clickedWindow: nil,
                     panelWindow: self.window
@@ -133,7 +153,7 @@ final class FloatingScreenshotWindow {
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseDown) { [weak self] event in
             if let self, FloatingPanelDismissPolicy.shouldCloseOnMouseDown(
-                isPinned: self.isPinned || self.source.editor != nil,
+                isPinned: self.isPinned,
                 occurredOutsideThisApp: false,
                 clickedWindow: event.window,
                 panelWindow: self.window

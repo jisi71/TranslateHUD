@@ -242,3 +242,226 @@ private final class FeedbackHTTPStub: URLProtocol {
         return data
     }
 }
+
+extension FeedbackAndLegalTests {
+    @MainActor
+    private func qualityWarning() throws -> TranslationSoftWarning {
+        let source = "alpha bravo charlie delta", candidate = "alpha bravo charlie 德尔塔"
+        let flags = TranslationValidator.validate(input: source, output: candidate, target: .chinese)
+        XCTAssertEqual(flags, [.underTranslated], "MANUAL synthetic fixture, never an actual model observation")
+        return try XCTUnwrap(TranslationSoftWarning.make(sources: [source], candidates: [candidate], target: .chinese,
+            failures: [flags], model: "MANUAL-OFFLINE", origin: "feedback-test"))
+    }
+
+    @MainActor
+    private func awaitFeedback(_ model: QualityFeedbackPreview, _ phase: QualityFeedbackPreview.Phase) async {
+        for _ in 0..<500 {
+            if model.phase == phase { return }
+            await Task.yield()
+        }
+        XCTFail("feedback state did not reach expected phase")
+    }
+
+    @MainActor
+    func testQualityFeedbackPreviewRequiresConfirmationAndManualRetryReusesSnapshot() async throws {
+        let owner = QualityFeedbackOwner(accountID: "OFFLINE-owner", generation: UUID())
+        let warning = try qualityWarning()
+        let fake = QualityFeedbackTransportStub(ownerID: owner.accountID, failures: 1)
+        let model = QualityFeedbackPreview(warning: warning, owner: owner, transport: fake,
+            currentOwner: { owner }, token: { "OFFLINE-FAKE" })
+        let before = await fake.stats()
+        XCTAssertEqual(before.capabilities, 0); XCTAssertEqual(before.bodies.count, 0)
+        model.open()
+        await awaitFeedback(model, .ready)
+        let previewed = await fake.stats()
+        XCTAssertEqual(previewed.capabilities, 1); XCTAssertEqual(previewed.bodies.count, 0, "opening preview cannot POST")
+        XCTAssertTrue(model.previewText.contains("上传原始当次快照，不含后续编辑"))
+        model.confirm(); model.confirm() // In-flight double click must not submit twice.
+        await awaitFeedback(model, .failed)
+        for _ in 0..<10 { await Task.yield() }
+        let failed = await fake.stats()
+        XCTAssertEqual(failed.bodies.count, 1, "failure must never trigger background retry")
+        model.confirm()
+        await awaitFeedback(model, .submitted)
+        XCTAssertEqual(model.message, "已反馈")
+        let retried = await fake.stats()
+        XCTAssertEqual(retried.bodies.count, 2)
+        XCTAssertEqual(retried.bodies[0], retried.bodies[1], "same immutable body/idempotency identity on manual retry")
+        XCTAssertEqual(retried.digests[0], retried.digests[1])
+    }
+
+    @MainActor
+    func testQualityFeedbackOwnerChangeAndCloseRejectLateAcknowledgement() async throws {
+        let owner = QualityFeedbackOwner(accountID: "OFFLINE-owner", generation: UUID())
+        var current: QualityFeedbackOwner? = owner
+        let fake = QualityFeedbackTransportStub(ownerID: owner.accountID, hold: true)
+        let model = QualityFeedbackPreview(warning: try qualityWarning(), owner: owner, transport: fake,
+            currentOwner: { current }, token: { "OFFLINE-FAKE" })
+        model.open(); await awaitFeedback(model, .ready)
+        model.confirm()
+        for _ in 0..<500 {
+            if await fake.isWaiting() { break }
+            await Task.yield()
+        }
+        XCTAssertEqual(model.phase, .submitting)
+        current = .init(accountID: owner.accountID, generation: UUID()) // Same uid, different login generation.
+        model.invalidateIfOwnerChanged()
+        await fake.release()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(model.phase, .capabilityUnavailable)
+        XCTAssertNotEqual(model.message, "已反馈")
+        let unavailable = QualityFeedbackPreview(warning: try qualityWarning(), owner: owner, transport: fake,
+            currentOwner: { current }, token: { XCTFail("changed account must not request a token"); return "" })
+        unavailable.open(); unavailable.confirm()
+        XCTAssertEqual(unavailable.phase, .capabilityUnavailable)
+        let stats = await fake.stats()
+        XCTAssertEqual(stats.bodies.count, 1)
+
+        let closedFake = QualityFeedbackTransportStub(ownerID: owner.accountID, hold: true)
+        let closed = QualityFeedbackPreview(warning: try qualityWarning(), owner: owner, transport: closedFake,
+            currentOwner: { owner }, token: { "OFFLINE-FAKE" })
+        closed.open(); await awaitFeedback(closed, .ready); closed.confirm()
+        for _ in 0..<500 { if await closedFake.isWaiting() { break }; await Task.yield() }
+        closed.invalidate(); await closedFake.release()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(closed.phase, .capabilityUnavailable)
+    }
+
+    @MainActor
+    func testQualityFeedbackSnapshotUsesOriginalResultNotEditorOrNewRequest() async throws {
+        let owner = QualityFeedbackOwner(accountID: "OFFLINE-owner", generation: UUID())
+        var current: QualityFeedbackOwner? = owner
+        let warning = try qualityWarning()
+        let progress = TranslationProgress(timeoutSeconds: 5)
+        progress.feedbackOwnerAtStart = { current }
+        progress.start(translator: QualityFeedbackWarningStub(warning: warning), originals: warning.sourceItems, target: warning.target)
+        for _ in 0..<500 { if progress.qualityWarning != nil { break }; await Task.yield() }
+        XCTAssertEqual(progress.qualityFeedbackOwner, owner)
+        let fake = QualityFeedbackTransportStub(ownerID: owner.accountID)
+        let model = QualityFeedbackPreview(warning: try XCTUnwrap(progress.qualityWarning), owner: progress.qualityFeedbackOwner,
+            transport: fake, currentOwner: { current }, token: { "OFFLINE-FAKE" })
+        let originalBytes = try XCTUnwrap(model.snapshot).body
+        progress.editSource("later local source edit")
+        progress.editTranslation("later local translation edit")
+        let board = NSPasteboard(name: .init(UUID().uuidString))
+        progress.copyTranslation(to: board)
+        XCTAssertEqual(board.string(forType: .string), "later local translation edit")
+        XCTAssertEqual(model.snapshot?.body, originalBytes)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: originalBytes) as? [String: Any])
+        XCTAssertEqual(payload["sourceItems"] as? [String], warning.sourceItems)
+        XCTAssertEqual(payload["providerCandidates"] as? [String], warning.providerCandidates)
+        XCTAssertEqual(payload["displayCandidates"] as? [String], warning.outputs)
+        XCTAssertEqual(payload["target"] as? String, warning.target.rawValue)
+        XCTAssertEqual(payload["resultID"] as? String, warning.resultID.uuidString.lowercased())
+        XCTAssertFalse(String(decoding: originalBytes, as: UTF8.self).contains("later local"))
+        XCTAssertFalse(board.string(forType: .string)?.contains("可能存在漏译") ?? true)
+        let untouched = await fake.stats(); XCTAssertEqual(untouched.bodies.count, 0)
+        progress.prepareManualRetranslation() // Save this edited body with its original warning/owner.
+        current = .init(accountID: "new-account", generation: UUID())
+        progress.start(translator: QualityFeedbackCleanStub(), originals: ["新请求"], target: .english)
+        XCTAssertNil(progress.qualityWarning); XCTAssertNil(progress.qualityFeedbackOwner)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(model.snapshot?.owner, owner)
+        model.open(); XCTAssertEqual(model.phase, .capabilityUnavailable)
+        progress.cancel()
+        progress.restorePreviousTranslation()
+        XCTAssertEqual(progress.displayedTranslation, "later local translation edit")
+        XCTAssertEqual(progress.qualityWarning?.resultID, warning.resultID)
+        XCTAssertEqual(progress.qualityWarning?.sourceItems, warning.sourceItems)
+        XCTAssertEqual(progress.qualityWarning?.providerCandidates, warning.providerCandidates)
+        XCTAssertEqual(progress.qualityFeedbackOwner, owner, "restore pairs the old warning with its old owner, never the new login")
+        let restored = QualityFeedbackPreview(warning: try XCTUnwrap(progress.qualityWarning), owner: progress.qualityFeedbackOwner,
+            transport: fake, currentOwner: { current }, token: { XCTFail("new login cannot upload an old owner's restored snapshot"); return "" })
+        restored.open(); restored.confirm()
+        XCTAssertEqual(restored.phase, .capabilityUnavailable)
+        XCTAssertEqual(restored.snapshot?.body, originalBytes)
+        let finalStats = await fake.stats()
+        XCTAssertEqual(finalStats.bodies.count, 0)
+        progress.cancel()
+    }
+
+    @MainActor
+    func testQualityFeedbackHTTPFailsClosedForUnavailableSchemaAndMismatchedAck() async throws {
+        let owner = QualityFeedbackOwner(accountID: "OFFLINE-owner", generation: UUID())
+        let warning = try qualityWarning()
+        let snapshot = try QualityFeedbackSnapshot(warning: warning, owner: owner)
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [FeedbackHTTPStub.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel(); FeedbackHTTPStub.responder = nil }
+        let client = QualityFeedbackHTTPClient(proxyBase: "https://feedback-offline.invalid/v1", session: session)
+        let cap: [String: Any] = ["schemaVersion": 1, "enabled": true, "ownerID": owner.accountID,
+            "maxBytes": 262144, "hourlyLimit": 10, "retentionDays": 30, "contentTrust": "authenticated-submitter"]
+        for mode in 0..<3 {
+            var value = cap
+            if mode == 1 { value["enabled"] = false }
+            if mode == 2 { value["schemaVersion"] = 99 }
+            let data = try JSONSerialization.data(withJSONObject: value)
+            FeedbackHTTPStub.responder = { request in
+                XCTAssertEqual(request.httpMethod, "GET"); XCTAssertNil(request.httpBody)
+                return (mode == 0 ? 404 : 200, data)
+            }
+            do { _ = try await client.capability(token: "OFFLINE-FAKE"); XCTFail("unavailable must stay closed") } catch { }
+        }
+        FeedbackHTTPStub.requests = []; FeedbackHTTPStub.bodies = []
+        FeedbackHTTPStub.responder = { _ in (404, Data()) }
+        let disabled = QualityFeedbackPreview(warning: warning, owner: owner, transport: client,
+            currentOwner: { owner }, token: { "OFFLINE-FAKE" })
+        disabled.open(); await awaitFeedback(disabled, .capabilityUnavailable); disabled.confirm()
+        XCTAssertEqual(FeedbackHTTPStub.requests.count, 1)
+        XCTAssertTrue(FeedbackHTTPStub.requests.allSatisfy { $0.httpMethod == "GET" })
+        XCTAssertTrue(FeedbackHTTPStub.bodies.allSatisfy { $0.isEmpty })
+        let unowned = QualityFeedbackPreview(warning: warning, owner: nil, transport: client,
+            currentOwner: { owner }, token: { XCTFail("a new login cannot adopt an unowned historical result"); return "" })
+        unowned.open(); unowned.confirm()
+        XCTAssertEqual(unowned.phase, .capabilityUnavailable)
+        XCTAssertEqual(FeedbackHTTPStub.requests.count, 1)
+        let ack: [String: Any] = ["schemaVersion": 1, "resultID": snapshot.resultID, "snapshotSHA256": snapshot.digest,
+            "ownerID": owner.accountID, "status": "submitted", "expiresAt": (Date().timeIntervalSince1970 + 3600) * 1000]
+        for field in ["resultID", "snapshotSHA256", "ownerID", "schemaVersion"] {
+            var changed = ack
+            if field == "schemaVersion" { changed[field] = 99 } else { changed[field] = "wrong" }
+            let data = try JSONSerialization.data(withJSONObject: changed)
+            FeedbackHTTPStub.responder = { _ in (200, data) }
+            do { try await client.submit(snapshot, token: "OFFLINE-FAKE"); XCTFail("wrong ACK cannot mean submitted") } catch { }
+        }
+        let good = try JSONSerialization.data(withJSONObject: ack)
+        FeedbackHTTPStub.responder = { request in
+            XCTAssertEqual(request.url?.path, "/v1/trial/quality-feedback")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Feedback-Snapshot"), snapshot.digest)
+            return (200, good)
+        }
+        try await client.submit(snapshot, token: "OFFLINE-FAKE")
+    }
+}
+
+/// OFFLINE only. This actor never performs HTTP, provider or billing requests.
+private actor QualityFeedbackTransportStub: QualityFeedbackTransport {
+    let ownerID: String
+    var failures: Int
+    let hold: Bool
+    var capabilities = 0
+    var bodies: [Data] = []
+    var digests: [String] = []
+    var continuation: CheckedContinuation<Void, Never>?
+    init(ownerID: String, failures: Int = 0, hold: Bool = false) { self.ownerID = ownerID; self.failures = failures; self.hold = hold }
+    func capability(token: String) async throws -> QualityFeedbackCapability {
+        capabilities += 1
+        return .init(schemaVersion: 1, enabled: true, ownerID: ownerID, maxBytes: 262144,
+                     hourlyLimit: 10, retentionDays: 30, contentTrust: "authenticated-submitter")
+    }
+    func submit(_ snapshot: QualityFeedbackSnapshot, token: String) async throws {
+        bodies.append(snapshot.body); digests.append(snapshot.digest)
+        if hold { await withCheckedContinuation { continuation = $0 } }
+        if failures > 0 { failures -= 1; throw QualityFeedbackError.unavailable }
+    }
+    func stats() -> (capabilities: Int, bodies: [Data], digests: [String]) { (capabilities, bodies, digests) }
+    func isWaiting() -> Bool { continuation != nil }
+    func release() { continuation?.resume(); continuation = nil }
+}
+private struct QualityFeedbackWarningStub: Translator {
+    let warning: TranslationSoftWarning
+    func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] { throw warning }
+}
+private struct QualityFeedbackCleanStub: Translator {
+    func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] { texts.map { _ in "clean result" } }
+}

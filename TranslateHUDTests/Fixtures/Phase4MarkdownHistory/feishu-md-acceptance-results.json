@@ -1,0 +1,98 @@
+[
+  {
+    "case": "一、标题层级",
+    "pass": true,
+    "fails": [],
+    "note": "H1–H6 与正文均在"
+  },
+  {
+    "case": "二、强调与行内样式",
+    "pass": true,
+    "fails": [],
+    "note": "HTML→MD 同行保留；弹窗渲染另需手测确认"
+  },
+  {
+    "case": "三、空行与段落",
+    "pass": true,
+    "fails": [],
+    "note": null
+  },
+  {
+    "case": "四、无序列表",
+    "pass": false,
+    "fails": [
+      "带空行列表：项间空行未保留（飞书用嵌套 ul+br 表示空行）"
+    ],
+    "note": null
+  },
+  {
+    "case": "五、有序列表",
+    "pass": false,
+    "fails": [
+      "带空行有序列表：项间空行未保留"
+    ],
+    "note": null
+  },
+  {
+    "case": "六、引用",
+    "pass": false,
+    "fails": [
+      "引用未转成 > 前缀（blockquote/quote_container 被拍扁）",
+      "全文无任何引用标记"
+    ],
+    "note": null
+  },
+  {
+    "case": "七、代码",
+    "pass": true,
+    "fails": [],
+    "note": null
+  },
+  {
+    "case": "八、链接与图片语法",
+    "pass": true,
+    "fails": [],
+    "note": null
+  },
+  {
+    "case": "九、表格",
+    "pass": false,
+    "fails": [
+      "表格未转成 Markdown | 语法，单元格被拍成独立段落"
+    ],
+    "note": null
+  },
+  {
+    "case": "十、分隔线与任务列表",
+    "pass": false,
+    "fails": [
+      "任务完成项未保留 [x]（data-list=done 变成普通 -）",
+      "任务未完成项未保留 [ ]（data-list=check 变成普通 -）"
+    ],
+    "note": null
+  },
+  {
+    "case": "十一、PDF 假换行样例",
+    "pass": true,
+    "fails": [],
+    "note": "原文结构在；智能合并需走划词保格式管线另测"
+  },
+  {
+    "case": "十二、信件式空行",
+    "pass": true,
+    "fails": [],
+    "note": null
+  },
+  {
+    "case": "十三、综合一小段",
+    "pass": true,
+    "fails": [],
+    "note": null
+  },
+  {
+    "case": "全局：飞书噪声不泄漏",
+    "pass": true,
+    "fails": [],
+    "note": null
+  }
+]

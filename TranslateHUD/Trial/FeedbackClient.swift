@@ -1,5 +1,7 @@
 import AppKit
 import Foundation
+import CryptoKit
+import Combine
 
 enum FeedbackLimits {
     static let maxImages = 4
@@ -287,5 +289,217 @@ enum FeedbackImagePrep {
         )
         NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .jpeg, properties: [.compressionFactor: quality])
+    }
+}
+
+// Quality feedback is separate from generic image feedback. No startup collection,
+// provider requests, file reads, persistence, or automatic submission/retry.
+struct QualityFeedbackOwner: Equatable, Sendable {
+    let accountID: String
+    let generation: UUID
+}
+
+extension TrialAccountStore {
+    var qualityFeedbackOwner: QualityFeedbackOwner? {
+        guard isLoggedIn, !userId.isEmpty else { return nil }
+        return .init(accountID: userId, generation: sessionGeneration)
+    }
+}
+
+struct QualityFeedbackSnapshot: Sendable {
+    let resultID: String
+    let owner: QualityFeedbackOwner
+    let body: Data
+    let digest: String
+
+    init(warning: TranslationSoftWarning, owner: QualityFeedbackOwner) throws {
+        guard warning.hasOnlySoftFailures else { throw QualityFeedbackError.unavailable }
+        let id = warning.resultID.uuidString.lowercased()
+        let payload: [String: Any] = [
+            "schemaVersion": 1, "resultID": id, "ownerID": owner.accountID,
+            "sourceItems": warning.sourceItems, "providerCandidates": warning.providerCandidates,
+            "displaySources": warning.displaySources, "displayCandidates": warning.outputs,
+            "target": warning.target.rawValue, "itemFailures": warning.itemFailures.map { $0.map { String(describing: $0) } },
+            "additionalFailures": warning.additionalFailures.map { String(describing: $0) },
+            "appVersion": warning.appVersion, "origin": warning.origin, "providerModel": warning.providerModel
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
+        guard data.count <= 256 * 1024 else { throw QualityFeedbackError.tooLarge }
+        resultID = id
+        self.owner = owner
+        body = data
+        digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+enum QualityFeedbackError: Error { case unavailable, ownerChanged, tooLarge, invalidAck }
+struct QualityFeedbackCapability: Decodable, Sendable {
+    let schemaVersion: Int
+    let enabled: Bool
+    let ownerID: String
+    let maxBytes: Int
+    let hourlyLimit: Int
+    let retentionDays: Int
+    let contentTrust: String
+}
+private struct QualityFeedbackAck: Decodable {
+    let schemaVersion: Int
+    let resultID: String
+    let snapshotSHA256: String
+    let ownerID: String
+    let status: String
+    let expiresAt: Double
+}
+protocol QualityFeedbackTransport: Sendable {
+    func capability(token: String) async throws -> QualityFeedbackCapability
+    func submit(_ snapshot: QualityFeedbackSnapshot, token: String) async throws
+}
+private final class QualityFeedbackNoRedirect: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+}
+struct QualityFeedbackHTTPClient: QualityFeedbackTransport {
+    let proxyBase: String
+    let session: URLSession
+    init(proxyBase: String = TrialConfig.plistProxy, session: URLSession? = nil) {
+        self.proxyBase = proxyBase
+        self.session = session ?? URLSession(configuration: .ephemeral, delegate: QualityFeedbackNoRedirect(), delegateQueue: nil)
+    }
+    private func endpoint(capability: Bool) throws -> URL {
+        guard var url = URLComponents(string: proxyBase), url.scheme == "https", url.host != nil,
+              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else { throw QualityFeedbackError.unavailable }
+        while url.path.hasSuffix("/") { url.path.removeLast() }
+        url.path += "/trial/quality-feedback" + (capability ? "/capability" : "")
+        guard let result = url.url else { throw QualityFeedbackError.unavailable }
+        return result
+    }
+    private func request(token: String, capability: Bool) throws -> URLRequest {
+        guard !token.isEmpty else { throw QualityFeedbackError.unavailable }
+        var request = URLRequest(url: try endpoint(capability: capability), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        request.httpMethod = capability ? "GET" : "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return request
+    }
+    func capability(token: String) async throws -> QualityFeedbackCapability {
+        let request = try request(token: token, capability: true)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200, http.url == request.url, data.count <= 4096,
+              let value = try? JSONDecoder().decode(QualityFeedbackCapability.self, from: data),
+              value.schemaVersion == 1, value.enabled, value.maxBytes > 0, value.maxBytes <= 256 * 1024,
+              (1...100).contains(value.hourlyLimit), (1...90).contains(value.retentionDays),
+              value.contentTrust == "authenticated-submitter" else { throw QualityFeedbackError.unavailable }
+        return value
+    }
+    func submit(_ snapshot: QualityFeedbackSnapshot, token: String) async throws {
+        var request = try request(token: token, capability: false)
+        request.httpBody = snapshot.body
+        request.setValue(snapshot.digest, forHTTPHeaderField: "X-Feedback-Snapshot")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200, http.url == request.url, data.count <= 4096,
+              let ack = try? JSONDecoder().decode(QualityFeedbackAck.self, from: data),
+              ack.schemaVersion == 1, ack.status == "submitted", ack.resultID == snapshot.resultID,
+              ack.snapshotSHA256 == snapshot.digest, ack.ownerID == snapshot.owner.accountID,
+              ack.expiresAt > Date().timeIntervalSince1970 * 1000 else { throw QualityFeedbackError.invalidAck }
+    }
+}
+
+@MainActor
+final class QualityFeedbackPreview: ObservableObject, Identifiable {
+    enum Phase: Equatable { case preview, capabilityUnavailable, ready, submitting, submitted, failed }
+    let id: UUID
+    let warning: TranslationSoftWarning
+    let snapshot: QualityFeedbackSnapshot?
+    @Published private(set) var phase: Phase = .preview
+    @Published private(set) var message = "上传原始当次快照，不含后续编辑。"
+    private let currentOwner: @MainActor () -> QualityFeedbackOwner?
+    private let token: @MainActor () async throws -> String
+    private let transport: any QualityFeedbackTransport
+    private var task: Task<Void, Never>?
+    private var generation = UUID()
+    private var capabilityLimit: Int?
+
+    init(warning: TranslationSoftWarning, owner: QualityFeedbackOwner?, transport: any QualityFeedbackTransport = QualityFeedbackHTTPClient(),
+         currentOwner: @escaping @MainActor () -> QualityFeedbackOwner? = { TrialAccountStore.shared.qualityFeedbackOwner },
+         token: @escaping @MainActor () async throws -> String = { try await TrialAccountStore.shared.validAccessToken() }) {
+        id = warning.resultID
+        self.warning = warning
+        self.currentOwner = currentOwner
+        self.token = token
+        self.transport = transport
+        snapshot = owner.flatMap { try? QualityFeedbackSnapshot(warning: warning, owner: $0) }
+    }
+    var previewText: String {
+        var lines = ["上传原始当次快照，不含后续编辑。", "提交账号：\(snapshot?.owner.accountID ?? "无可用原始账号绑定")", "结果：\(id.uuidString)", "目标：\(warning.target.rawValue)",
+                     "入口：\(warning.origin)", "版本：\(warning.appVersion)", "模型：\(warning.providerModel)"]
+        for i in warning.sourceItems.indices {
+            lines += ["原文项 \(i + 1)：", warning.sourceItems[i], "原始候选项 \(i + 1)：", warning.providerCandidates[i],
+                      "QC：\(warning.itemFailures[i].map { String(describing: $0) }.joined(separator: ", "))"]
+        }
+        for i in warning.displaySources.indices {
+            lines += ["最终显示原文槽 \(i + 1)：", warning.displaySources[i], "最终显示候选槽 \(i + 1)：", warning.outputs[i]]
+        }
+        lines.append("附加 QC：\(warning.additionalFailures.map { String(describing: $0) }.joined(separator: ", "))")
+        return lines.joined(separator: "\n\n")
+    }
+    func open() {
+        guard phase == .preview, task == nil else { return }
+        guard let snapshot, currentOwner() == snapshot.owner else {
+            phase = .capabilityUnavailable; message = "服务未启用、快照过大或当前账号与原始结果不匹配，不能上传。"; return
+        }
+        let run = generation
+        message = "正在检查反馈服务（不含正文）…"
+        task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let access = try await token()
+                guard generation == run, currentOwner() == snapshot.owner, !Task.isCancelled else { return invalidate() }
+                let capability = try await transport.capability(token: access)
+                guard generation == run, currentOwner() == snapshot.owner, !Task.isCancelled else { return invalidate() }
+                guard capability.schemaVersion == 1, capability.enabled, capability.contentTrust == "authenticated-submitter",
+                      capability.ownerID == snapshot.owner.accountID, capability.maxBytes > 0, capability.maxBytes <= 256 * 1024,
+                      (1...100).contains(capability.hourlyLimit), (1...90).contains(capability.retentionDays),
+                      snapshot.body.count <= capability.maxBytes else { throw QualityFeedbackError.unavailable }
+                capabilityLimit = capability.maxBytes
+                phase = .ready
+                message = "上传原始当次快照，不含后续编辑。服务声明的保留期为 \(capability.retentionDays) 天；服务只确认提交账号，不认证模型内容。"
+            } catch {
+                guard generation == run, !Task.isCancelled else { return }
+                phase = .capabilityUnavailable; message = "反馈服务尚未启用或不可用，未上传正文。"
+            }
+            task = nil
+        }
+    }
+    // This method is called only by the explicit confirmation/retry button.
+    func confirm() {
+        guard phase == .ready || phase == .failed, let snapshot, let capabilityLimit,
+              snapshot.body.count <= capabilityLimit, currentOwner() == snapshot.owner, task == nil else { invalidateIfOwnerChanged(); return }
+        phase = .submitting
+        message = "正在提交原始当次快照…"
+        let run = generation
+        task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let access = try await token()
+                guard generation == run, currentOwner() == snapshot.owner, !Task.isCancelled else { return invalidate() }
+                try await transport.submit(snapshot, token: access)
+                guard generation == run, currentOwner() == snapshot.owner, !Task.isCancelled else { return invalidate() }
+                phase = .submitted; message = "已反馈"
+            } catch {
+                guard generation == run, !Task.isCancelled else { return }
+                phase = .failed; message = "提交未确认成功。可手动重试原始同次快照，不会自动补传。"
+            }
+            task = nil
+        }
+    }
+    func invalidateIfOwnerChanged() {
+        if currentOwner() != snapshot?.owner { invalidate() }
+    }
+    func invalidate() {
+        generation = UUID(); task?.cancel(); task = nil
+        guard phase != .submitted else { return }
+        phase = .capabilityUnavailable; message = "预览已关闭或账号已变化，未继续上传。"
     }
 }

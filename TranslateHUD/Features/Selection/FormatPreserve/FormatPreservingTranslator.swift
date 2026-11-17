@@ -26,10 +26,13 @@ struct FormatPreservingTranslator: Translator, @unchecked Sendable {
     ) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
         let segments = prepared.segmentsToTranslate
         if segments.isEmpty {
-            let restored = prepared.restore(translatedSegments: [])
             return AsyncThrowingStream { continuation in
-                continuation.yield(.delta(restored))
-                continuation.finish()
+                do {
+                    continuation.yield(.delta(try checkedRestored([], target: target)))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
             }
         }
         if segments.count != 1 {
@@ -50,14 +53,25 @@ struct FormatPreservingTranslator: Translator, @unchecked Sendable {
         return AsyncThrowingStream { continuation in
             Task {
                 do {
-                    for try await event in base.translateStreaming(segment, to: target, context: context) {
-                        switch event {
-                        case .delta(let partial):
-                            continuation.yield(.delta(prepared.restore(translatedSegments: [partial])))
-                        case .reset(let reason):
-                            continuation.yield(.reset(reason: reason))
+                    var lastPartial = ""
+                    var inherited: TranslationSoftWarning?
+                    do {
+                        for try await event in base.translateStreaming(segment, to: target, context: context) {
+                            switch event {
+                            case .delta(let partial):
+                                lastPartial = partial
+                                continuation.yield(.delta(prepared.restore(translatedSegments: [partial])))
+                            case .reset(let reason):
+                                lastPartial = ""
+                                continuation.yield(.reset(reason: reason))
+                            }
                         }
+                    } catch let warning as TranslationSoftWarning {
+                        guard warning.outputs.count == 1 else { throw TranslationError.parse("保格式候选数量不一致。") }
+                        inherited = warning
+                        lastPartial = warning.outputs[0]
                     }
+                    _ = try checkedRestored([lastPartial], target: target, inherited: inherited)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -72,9 +86,58 @@ struct FormatPreservingTranslator: Translator, @unchecked Sendable {
     ) async throws -> String {
         let segments = prepared.segmentsToTranslate
         if segments.isEmpty {
-            return prepared.restore(translatedSegments: [])
+            return try checkedRestored([], target: target)
         }
-        let translated = try await base.translate(segments, to: target, context: context)
-        return prepared.restore(translatedSegments: translated)
+        let translated: [String]
+        let inherited: TranslationSoftWarning?
+        do {
+            translated = try await base.translate(segments, to: target, context: context)
+            inherited = nil
+        } catch let warning as TranslationSoftWarning {
+            translated = warning.outputs
+            inherited = warning
+        }
+        return try checkedRestored(translated, target: target, inherited: inherited)
+    }
+
+    /// Validate the complete restored display, including prose hidden from base segments.
+    /// Preserve every base flag; restoration cannot downgrade a hard failure.
+    private func checkedRestored(_ translations: [String], target: TargetLanguage,
+                                 inherited: TranslationSoftWarning? = nil) throws -> String {
+        let segments = prepared.segmentsToTranslate
+        guard translations.count == segments.count,
+              translations.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            throw TranslationError.parse("保格式译文数量不一致或包含空项，结果不完整。")
+        }
+        if let inherited {
+            guard inherited.hasCompleteSnapshot, inherited.target == target,
+                  inherited.sourceItems.count == segments.count,
+                  zip(inherited.sourceItems, segments).allSatisfy({ $0.0.utf8.elementsEqual($0.1.utf8) }) else {
+                throw TranslationError.parse("保格式候选原文或质量结果无法对应。")
+            }
+        }
+        let restored = prepared.restore(translatedSegments: translations)
+        var complete = TranslationValidator.validate(input: prepared.displayOriginal, output: restored, target: target)
+        if TranslationValidator.hasUntranslatedProseUnit(input: prepared.displayOriginal, output: restored, target: target),
+           !complete.contains(.underTranslated) {
+            complete.append(.underTranslated)
+        }
+        let baseFailures: [TranslationValidator.Failure] = inherited.map { warning in
+            warning.itemFailures.flatMap { $0 } + warning.additionalFailures
+        } ?? []
+        let all = baseFailures + complete
+        guard !all.isEmpty else { return restored }
+        guard TranslationSoftWarning.isOnlyUnderTranslated(all) else { throw TranslationError.qualityFailures(all) }
+        if let inherited {
+            throw inherited.replacingOutputs([restored], additional: complete, displaySources: [prepared.displayOriginal])
+        }
+        // No provider items means no actual provider snapshot to attach to a soft result.
+        guard let warning = TranslationSoftWarning.make(sources: segments,
+            candidates: translations, target: target, failures: translations.map { _ in [] }, additional: complete,
+            model: (base as? OpenAICompatibleTranslator)?.config.model ?? "abstract-translator",
+            origin: "selection.restore.completeQC", outputs: [restored], displaySources: [prepared.displayOriginal]) else {
+            throw TranslationError.qualityFailures(all)
+        }
+        throw warning
     }
 }

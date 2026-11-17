@@ -11,6 +11,7 @@ const {
   defaultVerifyUser
 } = require('./trialService')
 const { handleFeedback, FEEDBACK_MESSAGES } = require('./feedbackService')
+const { handleQualityFeedback } = require('./qualityFeedbackService')
 const { defaultForward } = require('./upstream')
 const { MESSAGES } = require('./trialPolicy')
 const { handleErrorReport, sharedLimiter } = require('./errorLog')
@@ -62,6 +63,16 @@ async function dispatchUnsafe(event, deps) {
     verifyUser: deps.verifyUser || defaultVerifyUser,
     env: deps.env || readEnv(),
     now: deps.now || (() => Date.now())
+  }
+  const isQuality = clean.endsWith('/trial/quality-feedback')
+  const isQualityCapability = clean.endsWith('/trial/quality-feedback/capability')
+  if (clean.includes('/trial/quality-feedback') && !isQuality && !isQualityCapability) {
+    return { statusCode: 404, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: { code: 'not_found' } }) }
+  }
+  if (isQuality || isQualityCapability) {
+    const result = await handleQualityFeedback({ ...shared, method, capability: isQualityCapability,
+      qualityFeedbackStore: deps.qualityFeedbackStore, qualityFeedbackConfig: deps.qualityFeedbackConfig })
+    return { statusCode: result.status, headers: result.headers, body: result.body }
   }
   if (isFeedback) {
     try {

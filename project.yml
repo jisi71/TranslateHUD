@@ -93,6 +93,10 @@ targets:
     platform: macOS
     sources:
       - path: TranslateHUDTests
+        excludes:
+          # Source-only fixture documentation; both otherwise flatten to Resources/README.md.
+          - "Fixtures/Phase4MarkdownHistory/README.md"
+          - "Fixtures/ScreenshotTables/README.md"
     dependencies:
       - target: TranslateHUD
     settings:

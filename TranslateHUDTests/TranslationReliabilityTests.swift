@@ -1,5 +1,7 @@
 import XCTest
 import Network
+import CryptoKit
+import Darwin
 @testable import TranslateHUD
 
 @MainActor
@@ -756,12 +758,14 @@ final class TranslationReliabilityTests: XCTestCase {
         do {
             _ = try await collect(translator, source: source)
             XCTFail("Ordinary words left in English must remain an error")
-        } catch TranslationError.qualityFailures(let failures) {
-            XCTAssertTrue(failures.contains(.underTranslated))
+        } catch let warning as TranslationSoftWarning {
+            XCTAssertTrue(warning.hasOnlySoftFailures)
+            XCTAssertEqual(warning.outputs, [output])
+            XCTAssertTrue(TranslationValidator.validate(input: source, output: warning.outputs[0], target: .chinese).contains(.underTranslated))
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
-        XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
     }
 
     func testStreamAcceptsChineseGlossAroundTechnicalTerms() async throws {
@@ -773,20 +777,24 @@ final class TranslationReliabilityTests: XCTestCase {
         XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
     }
 
-    func testStreamKeepsRicherReadableDraftWhenQualityStillFails() async throws {
+    func testStreamHardFenceCannotOutrankFinalSoftWarning() async throws {
         let source = "Please update the configuration before restarting the service today"
         let richer = "```\n请先更新配置，然后再重启这项服务\n```"
         let thinner = "请更新后再看 update configuration before restarting service"
         let translator = mockTranslator(responses: [streamResult(richer), streamResult(thinner)])
         var resets = 0
         var result = ""
-        for try await event in translator.translateStreaming(source, to: .chinese) {
-            switch event {
-            case .reset: resets += 1
-            case .delta(let partial): result = partial
+        do {
+            for try await event in translator.translateStreaming(source, to: .chinese) {
+                switch event { case .reset: resets += 1; case .delta(let partial): result = partial }
             }
+            XCTFail("Complete underTranslated output must carry warning metadata")
+        } catch let warning as TranslationSoftWarning {
+            XCTAssertEqual(warning.outputs, [thinner])
+            XCTAssertNotEqual(warning.outputs, [richer], "A codeFenceWrapped result cannot be retained as fallback")
+            XCTAssertTrue(warning.hasOnlySoftFailures)
         }
-        XCTAssertEqual(result, richer)
+        XCTAssertEqual(result, thinner)
         XCTAssertEqual(resets, 1)
         XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
     }
@@ -798,12 +806,14 @@ final class TranslationReliabilityTests: XCTestCase {
         do {
             _ = try await collect(translator, source: source)
             XCTFail("A caption around the original must remain an error")
-        } catch TranslationError.qualityFailures(let failures) {
-            XCTAssertTrue(failures.contains(.underTranslated))
+        } catch let warning as TranslationSoftWarning {
+            XCTAssertTrue(warning.hasOnlySoftFailures)
+            XCTAssertEqual(warning.outputs, [caption])
+            XCTAssertTrue(TranslationValidator.validate(input: source, output: warning.outputs[0], target: .chinese).contains(.underTranslated))
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
-        XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
     }
 
     func testStreamStillRejectsBarelyTranslatedCode() async {
@@ -813,22 +823,29 @@ final class TranslationReliabilityTests: XCTestCase {
         do {
             _ = try await collect(translator, source: source)
             XCTFail("Barely translated code must remain an error")
-        } catch TranslationError.qualityFailures(let failures) {
-            XCTAssertTrue(failures.contains(.underTranslated))
+        } catch let warning as TranslationSoftWarning {
+            XCTAssertTrue(warning.hasOnlySoftFailures)
+            XCTAssertEqual(warning.outputs, [output])
+            XCTAssertTrue(TranslationValidator.validate(input: source, output: warning.outputs[0], target: .chinese).contains(.underTranslated))
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
-        XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
     }
 
-    func testBatchKeepsTheRicherReadableDraft() async throws {
+    func testBatchCompleteSoftWarningDoesNotRetryIntoHardFence() async throws {
         let source = "Please update the configuration before restarting the service today"
         let thinner = "请更新后再看 update configuration before restarting service"
         let richer = "```\n请先更新配置，然后再重启这项服务\n```"
         let translator = mockTranslator(responses: [batchResult(thinner), batchResult(richer)])
-        let result = try await translator.translate([source], to: .chinese)
-        XCTAssertEqual(result, [richer])
-        XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+        do {
+            _ = try await translator.translate([source], to: .chinese)
+            XCTFail("Complete underTranslated output must carry warning metadata")
+        } catch let warning as TranslationSoftWarning {
+            XCTAssertEqual(warning.outputs, [thinner])
+            XCTAssertTrue(warning.hasOnlySoftFailures)
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1, "No quality retry for a complete soft-only result")
     }
 
     func testBatchRejectsEchoAfterTwoAttempts() async {
@@ -845,7 +862,7 @@ final class TranslationReliabilityTests: XCTestCase {
         XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
     }
 
-    func testLineFallbackKeepsReadableStreamWhenBatchQualityFails() async throws {
+    func testLineFallbackHardFailureCannotRetainPriorStream() async throws {
         let original = "Error: HTTP 401 Unauthorized\npassword authentication failed\ninvalid credentials"
         let streamed = "错误：HTTP 401 未授权。密码认证失败。凭据无效。"
         let lines = original.components(separatedBy: "\n")
@@ -865,10 +882,9 @@ final class TranslationReliabilityTests: XCTestCase {
             if case .failed = progress.state { break }
             try await Task.sleep(for: .milliseconds(10))
         }
-        guard case .success(let pairs) = progress.state else {
-            return XCTFail("Expected the streamed translation to stay visible")
-        }
-        XCTAssertEqual(pairs.first?.translated, streamed)
+        guard case .failed = progress.state else { return XCTFail("A hard echo in structural fallback must remain hard") }
+        XCTAssertNil(progress.qualityWarning)
+        XCTAssertEqual(progress.displayedTranslation, "")
         XCTAssertEqual(TranslationURLProtocol.requests().count, 3)
     }
 
@@ -1474,5 +1490,443 @@ private final class HoldingSSEServer: @unchecked Sendable {
         chunk.append(bytes)
         chunk.append(Data("\r\n".utf8))
         return chunk
+    }
+}
+
+extension TranslationReliabilityTests {
+    private struct LocalQCFixture: Codable {
+        let id: String
+        let source: String
+        let candidate: String
+        let humanExpectation: String
+    }
+
+    private func localQCFixtures() -> [LocalQCFixture] {
+        let prefix = "desktop welcome: Web RPC failed 诊断报告："
+        let translated = "桌面欢迎界面：网页远程调用失败。诊断报告："
+        let path = "/Users/demo/Project Files/logs/run.log"
+        return [
+            .init(id: "space_in_component", source: prefix + " " + path, candidate: translated + " " + path, humanExpectation: "positive: translated prose, retained complete spaced path"),
+            .init(id: "slash_space", source: prefix + " " + path.replacingOccurrences(of: "/logs", with: "/ logs"), candidate: translated + " " + path.replacingOccurrences(of: "/logs", with: "/ logs"), humanExpectation: "positive intent; deliberately supplied slash-space bytes, NOT a visual wrap"),
+            .init(id: "adjacent_label", source: prefix + path, candidate: translated + path, humanExpectation: "positive: no whitespace between label and path"),
+            .init(id: "hard_newline", source: prefix + " " + path.replacingOccurrences(of: "Files/", with: "Files/\n"), candidate: translated + " " + path.replacingOccurrences(of: "Files/", with: "Files/\n"), humanExpectation: "positive intent; explicit LF inside supplied literal, NOT inferred visual wrapping"),
+            .init(id: "protected_inline", source: "Open report `" + path + "` and https://example.com/a", candidate: "打开报告 `" + path + "` 和 https://example.com/a", humanExpectation: "positive: code, URL, complete spaced path retained"),
+            .init(id: "echo", source: prefix + " " + path, candidate: prefix + " " + path, humanExpectation: "negative: ordinary English echo"),
+            .init(id: "chinese_shell", source: prefix + " " + path, candidate: "以下为诊断信息：" + prefix + " " + path, humanExpectation: "negative: Chinese shell does not translate prose"),
+            .init(id: "heading", source: "desktop welcome failed\n正文说明", candidate: "desktop welcome failed\n正文已经完整翻译并有足够的中文说明文字。", humanExpectation: "negative: unchanged English heading despite Chinese body")
+        ]
+    }
+
+    func testQCObservationIsEquivalentAndDoesNotWeakenProtectedOrProseContracts() throws {
+        for fixture in localQCFixtures() {
+            let baseline = TranslationValidator.validate(input: fixture.source, output: fixture.candidate, target: .chinese)
+            var observation: TranslationValidator.Observation?
+            let observed = TranslationValidator.validate(input: fixture.source, output: fixture.candidate, target: .chinese, observe: {
+                observation = $0
+                throw NSError(domain: "intentional-local-QC-observer", code: 1)
+            })
+            XCTAssertEqual(observed, baseline)
+            XCTAssertNotNil(observation)
+            if !["echo", "chinese_shell", "heading"].contains(fixture.id) {
+                XCTAssertTrue(baseline.isEmpty, "All five previously observed MANUAL positives retain their real validator contract")
+            }
+            if ["echo", "chinese_shell", "heading"].contains(fixture.id) { XCTAssertTrue(baseline.contains(.underTranslated)) }
+            // Unquoted spaced-path positives are measurements, not manufactured passing assertions.
+        }
+        var empty: TranslationValidator.Observation?
+        XCTAssertEqual(TranslationValidator.validate(input: "source", output: "", target: .chinese, observe: { empty = $0 }), [.emptyOutput])
+        XCTAssertEqual(empty?.events.first?.outcome, "notReached_emptyOutput")
+    }
+
+    func testExportOptInLocalSpacedLiteralQCReplay() async throws {
+        let env = ProcessInfo.processInfo.environment
+        let outputKey = "TRANSLATEHUD_QC_REPLAY_OUTPUT"
+        let fixtureKey = "TRANSLATEHUD_QC_REPLAY_FIXTURE"
+        guard let outputPath = env[outputKey] else {
+            if env[fixtureKey] != nil { throw NSError(domain: "QCReplay output required", code: 1) }
+            throw XCTSkip("Local QC replay not explicitly requested")
+        }
+        guard outputPath.hasPrefix("/") else { throw NSError(domain: "QCReplay absolute output required", code: 2) }
+        func rejectAliases(_ url: URL) throws {
+            var component = URL(fileURLWithPath: "/", isDirectory: true)
+            for part in url.pathComponents.dropFirst() {
+                component.appendPathComponent(part)
+                let values = try component.resourceValues(forKeys: [.isSymbolicLinkKey, .isAliasFileKey])
+                guard values.isSymbolicLink != true, values.isAliasFile != true else { throw NSError(domain: "QCReplay alias refused", code: 3) }
+            }
+        }
+        let output = URL(fileURLWithPath: outputPath).standardizedFileURL
+        try rejectAliases(output.deletingLastPathComponent())
+        var fixtures = localQCFixtures()
+        var provenance = "HUMAN/MANUAL fixed synthetic fixtures; not historical source/candidate or model responses"
+        if let path = env[fixtureKey] {
+            guard path.hasPrefix("/") else { throw NSError(domain: "QCReplay absolute fixture required", code: 4) }
+            let url = URL(fileURLWithPath: path).standardizedFileURL
+            try rejectAliases(url)
+            let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+            guard attrs[.type] as? FileAttributeType == .typeRegular,
+                  (attrs[.referenceCount] as? NSNumber)?.intValue == 1,
+                  ((attrs[.size] as? NSNumber)?.intValue ?? 65_537) <= 65_536 else { throw NSError(domain: "QCReplay single regular bounded fixture required", code: 5) }
+            let data = try Data(contentsOf: url)
+            guard data.count <= 65_536 else { throw NSError(domain: "QCReplay fixture size", code: 6) }
+            fixtures = [try JSONDecoder().decode(LocalQCFixture.self, from: data)]
+            provenance = "EXPLICIT caller-supplied single local fixture; source/candidate provenance is caller's claim, NOT recovered historical response"
+        }
+        guard fixtures.count <= 8,
+              (try? FileManager.default.attributesOfItem(atPath: output.path)) == nil,
+              Darwin.mkdir(output.path, 0o700) == 0 else { throw NSError(domain: "QCReplay fresh exclusive output required", code: 7) }
+        try await writeLocalQCReplay(fixtures: fixtures, output: output, provenance: provenance)
+        print("LOCAL_QC_REPLAY_EVIDENCE=VALID; offline observations, NOT historical reproduction or acceptance")
+    }
+
+    private func qcError(_ error: Error) -> [String: Any] {
+        var result: [String: Any] = ["outcome": "otherError", "errorType": String(reflecting: type(of: error))]
+        if let failure = error as? ScreenshotSettledFailure {
+            result["outcome"] = "settledFailure"
+            result["stage"] = String(describing: failure.stage)
+        } else if let failure = error as? ScreenshotUnconfirmedFailure {
+            result["outcome"] = "unconfirmedFailure"
+            result["stage"] = String(describing: failure.stage)
+        } else if let failure = error as? TranslationError {
+            switch failure {
+            case .parse: result["outcome"] = "parseError"
+            case .quality: result["outcome"] = "qualityError"
+            default: result["outcome"] = "otherTranslationError"
+            }
+        } else if let failure = error as? URLError {
+            result["outcome"] = "transportError"
+            result["urlErrorCode"] = failure.code.rawValue
+        }
+        return result // No arbitrary localized descriptions or provider bodies.
+    }
+
+    private func captureQCTrial(_ operation: @MainActor () async throws -> [String: Any]) async -> [String: Any] {
+        do { return try await operation() } catch { return qcError(error) }
+    }
+
+    private func localQCTrial(_ fixture: LocalQCFixture) async throws -> [String: Any] {
+        // Raw constructor is a separate representability probe, NEVER the primary trial plan.
+        let raw = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: fixture.source, isStrong: false)], heading: nil)])
+        XCTAssertEqual(raw.sourceTexts, [fixture.source])
+        var rawRender: [String: Any]
+        do { rawRender = ["outcome": "rendered", "markdown": try raw.render(raw.sourceItems)] }
+        catch { rawRender = qcError(error) }
+        var planning: [String: Any] = [
+            "primaryRoute": "ScreenshotPlainText.plan(from:) -- same text-only planner used by ScreenshotTablePipeline.plainPlan; NOT Vision/image/table routing",
+            "rawConstructorProbe_NOT_primary": ["sourceItems": raw.sourceTexts, "sourceIsRepresentable": raw.sourceIsRepresentable, "render": rawRender] as [String: Any],
+            "geometryProvenance": "SYNTHETIC: LF-separated source components, x=.1,width=.8,height=.02,y=.94-.055*ordinal; LF separators are not line text. CR remains in component bytes. Max16 lines."]
+        let components = fixture.source.components(separatedBy: "\n")
+        planning["inputLFComponentCount"] = components.count
+        func notReached(_ reason: String) -> [String: Any] {
+            var result = planning
+            result["outcome"] = "notReached"
+            result["reason"] = reason
+            result["trialReach"] = "notReached"
+            result["transportReach"] = "notReached"
+            result["responseReach"] = "notReached"
+            result["requestCount"] = 0
+            result["fakeReceiptCount"] = 0
+            return result
+        }
+        guard components.count <= 16 else { return notReached("syntheticGeometryLimit_noPlannerInvocation") }
+        let lines = components.enumerated().map { ordinal, text in
+            OCRService.Line(text: text, normalizedBox: CGRect(x: 0.1, y: CGFloat(0.94 - Double(ordinal) * 0.055), width: 0.8, height: 0.02), confidence: 1)
+        }
+        var normalization: ScreenshotPlainText.Observation?
+        let plan = ScreenshotPlainText.plan(from: lines, observe: { normalization = $0 })
+        planning["syntheticLineInputs"] = lines.enumerated().map { ordinal, line in
+            ["ordinal": ordinal, "text": line.text, "boxXYWH": [Double(line.normalizedBox.minX), Double(line.normalizedBox.minY), Double(line.normalizedBox.width), Double(line.normalizedBox.height)]] as [String: Any]
+        }
+        planning["planSourceItems"] = plan.sourceTexts
+        let representable = plan.sourceIsRepresentable
+        planning["planSourceIsRepresentable"] = representable
+        let exactSingleItem = plan.sourceTexts.count == 1 && plan.sourceTexts[0].utf8.elementsEqual(fixture.source.utf8)
+        planning["exactSingleItemSourcePreserved"] = exactSingleItem
+        if let normalization {
+            planning["actualPlannerBlocks"] = normalization.blocks.map(\.text)
+            planning["actualJoinDecisions"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(normalization.decisions))
+        }
+        var renderProbe: [String: Any]
+        do { renderProbe = ["outcome": "rendered", "markdown": try plan.render(plan.sourceItems)] }
+        catch { renderProbe = qcError(error) }
+        planning["actualPlanRenderProbe"] = renderProbe
+        guard !plan.sourceItems.isEmpty else { return notReached("productionTextPlannerEmpty") }
+        guard representable else { return notReached("productionTextPlannerUnrenderable_noGuardBypass") }
+        // An arbitrary whole-candidate fixture has no trusted item alignment after splitting/joining.
+        // Only byte-identical one-item input permits using the unchanged supplied candidate.
+        guard exactSingleItem else { return notReached("unmappableCandidateAfterPlanning_noInventedPerItemTranslation") }
+        planning["candidateMapping"] = ["method": "byte-identical single source item; whole supplied candidate maps to item0", "candidates": [fixture.candidate]] as [String: Any]
+        XCTAssertEqual(plan.sourceTexts, [fixture.source])
+        // Harness setup/schema failures remain fatal, outside the trial-error catch.
+        let content = try JSONSerialization.data(withJSONObject: ["results": [["i": 0, "t": fixture.candidate, "boldRanges": []]]])
+        let receipt: [String: Int] = ["costMicroYuan": 10, "chargedMicroYuan": 10, "balanceMicroYuan": 100]
+        let body = try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": String(decoding: content, as: UTF8.self)], "finish_reason": "stop"]], "translatehud_trial": receipt])
+        TranslationURLProtocol.reset([.init(status: 200, body: String(decoding: body, as: UTF8.self))])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let settlements = SettlementCollector()
+        let client = OpenAICompatibleTranslator(config: ProviderConfig(baseURL: "https://example.invalid/v1", model: "offline-fixture", apiKey: ""), session: session, onTrialSettlement: { value in await settlements.add(value) })
+        var chain = await captureQCTrial {
+            let values = try await ScreenshotPlanTranslator(base: ScreenshotTrialHTTPClient(client: client), plan: plan).translate([plan.originalMarkdown], to: .chinese, context: nil)
+            return ["outcome": "accepted", "renderedMarkdown": values]
+        }
+        let receipts = await settlements.values
+        let requests = TranslationURLProtocol.requests().count
+        chain.merge(planning) { _, new in new }
+        chain["planSourceIsRepresentable"] = representable
+        chain["actualPlanRenderProbe"] = renderProbe
+        chain["requestCount"] = requests
+        chain["fakeReceiptCount"] = receipts.count
+        chain["transportReach"] = requests == 0 ? "notReached" : "URLProtocolIntercepted"
+        chain["responseReach"] = receipts.isEmpty ? "notIndependentlyObserved" : "settlementParsed"
+        chain["trialReach"] = "ScreenshotPlanTranslatorCalled_afterPlannerAndExactMapping_seeTypedOutcomeForDownstreamStage"
+        if ["accepted", "settledFailure"].contains(chain["outcome"] as? String ?? "") {
+            XCTAssertEqual(requests, 1)
+            XCTAssertEqual(receipts.count, 1)
+        }
+        XCTAssertLessThanOrEqual(requests, 1)
+        XCTAssertLessThanOrEqual(receipts.count, 1)
+        return chain
+    }
+
+    private func writeLocalQCReplay(
+        fixtures: [LocalQCFixture], output: URL, provenance: String,
+        trialOverride: (@MainActor (Int, LocalQCFixture) async throws -> [String: Any])? = nil
+    ) async throws {
+        guard !fixtures.isEmpty, fixtures.count <= 8 else { throw NSError(domain: "QCReplay case bound", code: 9) }
+        var totalBytes = 0, written: [String] = []
+        func write(_ object: [String: Any], _ name: String) throws {
+            let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+            guard written.count < 18, data.count <= 1_000_000, totalBytes + data.count <= 4_000_000 else { throw NSError(domain: "QCReplay artifact bound", code: 10) }
+            try data.write(to: output.appendingPathComponent(name), options: .withoutOverwriting)
+            written.append(name)
+            totalBytes += data.count
+        }
+        func identity(_ text: String) -> [String: Any] {
+            ["utf8Bytes": text.utf8.count, "sha256": SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined(),
+             "spaces": text.filter { $0 == " " }.count, "LF": text.filter { $0 == "\n" }.count, "CR": text.filter { $0 == "\r" }.count, "tabs": text.filter { $0 == "\t" }.count]
+        }
+        var index: [[String: Any]] = []
+        for (ordinal, fixture) in fixtures.enumerated() {
+            let validatorName = String(format: "%02d-validator.json", ordinal)
+            let trialName = String(format: "%02d-trial.json", ordinal)
+            var observation: TranslationValidator.Observation?
+            let failures = TranslationValidator.validate(input: fixture.source, output: fixture.candidate, target: .chinese, observe: { observation = $0 })
+            let actual = try XCTUnwrap(observation)
+            // This immutable artifact MUST exist before plan/transport/trial work.
+            try write(["ordinal": ordinal, "caseID": fixture.id, "provenance": provenance,
+                "fixture": try JSONSerialization.jsonObject(with: JSONEncoder().encode(fixture)), "target": "zh-Hans", "itemIndex": 0,
+                "sourceIdentity": identity(fixture.source), "candidateIdentity": identity(fixture.candidate),
+                "decisionProvenance": "direct actual validate (trimmed); independent trial validation is not this observer",
+                "actualValidate": try JSONSerialization.jsonObject(with: JSONEncoder().encode(actual)),
+                "failures": failures.map { String(describing: $0) },
+                "independentPredicateProbes_NOT_stage_reach": ["whole": TranslationValidator.isUnderTranslated(input: fixture.source, output: fixture.candidate, target: .chinese), "local": TranslationValidator.hasUntranslatedProseUnit(input: fixture.source, output: fixture.candidate, target: .chinese)],
+                "companionSharedMasks_NOT_stage_reach": ["source": TranslationValidator.lexicalMaskForLocalReplay(fixture.source), "candidate": TranslationValidator.lexicalMaskForLocalReplay(fixture.candidate)]], validatorName)
+            let chain: [String: Any]
+            if let trialOverride {
+                var value = await captureQCTrial { try await trialOverride(ordinal, fixture) }
+                value["provenance"] = "DELIBERATE harness-test stub; NOT production observation"
+                value["requestCount"] = 0
+                value["fakeReceiptCount"] = 0
+                value["trialReach"] = "deliberateStubOnly_noHTTP"
+                chain = value
+            } else {
+                chain = try await localQCTrial(fixture)
+            }
+            // I/O/schema errors occur outside trial catch and are fatal to completion.
+            try write(["ordinal": ordinal, "caseID": fixture.id, "actualOfflineTrial": chain], trialName)
+            index.append(["ordinal": ordinal, "caseID": fixture.id, "validatorFile": validatorName, "trialFile": trialName])
+        }
+        try write(["schema": "local-qc-replay-v2", "provenance": provenance, "records": index,
+                   "meaning": "All intended cases accounted, NOT semantic success or historical reproduction"], "replay.json")
+        try write(["complete": true, "caseCount": fixtures.count, "validatorArtifactCount": fixtures.count,
+                   "trialArtifactCount": fixtures.count, "externalProviderCalls": 0, "filesBeforeCompletion": written], "complete.json")
+    }
+
+    func testQCReplayTrialErrorPreservesValidatorAndContinues() async throws {
+        let output = FileManager.default.temporaryDirectory.appendingPathComponent("qc-harness-" + UUID().uuidString)
+        guard Darwin.mkdir(output.path, 0o700) == 0 else { throw NSError(domain: "QC harness fresh mkdir", code: 11) }
+        defer { try? FileManager.default.removeItem(at: output) }
+        let fixtures = Array(localQCFixtures().prefix(2)) // invariant test only, no user-case matrix expansion
+        var visited: [Int] = []
+        try await writeLocalQCReplay(fixtures: fixtures, output: output, provenance: "MANUAL harness invariant test") { ordinal, _ in
+            XCTAssertTrue(FileManager.default.fileExists(atPath: output.appendingPathComponent(String(format: "%02d-validator.json", ordinal)).path))
+            visited.append(ordinal)
+            if ordinal == 0 { throw URLError(.cannotConnectToHost) } // deliberate synthetic error, never a real request
+            return ["outcome": "deliberateStubReturn", "requestCount": 0, "fakeReceiptCount": 0]
+        }
+        XCTAssertEqual(visited, [0, 1])
+        let files = try FileManager.default.contentsOfDirectory(atPath: output.path)
+        XCTAssertEqual(files.count, 6)
+        let first = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: output.appendingPathComponent("00-trial.json"))) as? [String: Any])
+        let firstTrial = try XCTUnwrap(first["actualOfflineTrial"] as? [String: Any])
+        XCTAssertEqual(firstTrial["outcome"] as? String, "transportError")
+        let second = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: output.appendingPathComponent("01-validator.json"))) as? [String: Any])
+        XCTAssertNotNil(second["actualValidate"])
+        XCTAssertEqual(second["caseID"] as? String, fixtures[1].id)
+        XCTAssertThrowsError(try Data().write(to: output.appendingPathComponent("00-validator.json"), options: .withoutOverwriting))
+    }
+}
+
+extension TranslationReliabilityTests {
+    func testCompleteBatchWarnsOnlyAfterAllItemsAndKeepsHardPriorityInBothOrders() async throws {
+        let softSource = "alpha bravo charlie delta", softOutput = "alpha bravo charlie 德尔塔"
+        for hardFirst in [false, true] {
+            let sources = hardFirst ? ["Hello welcome again", softSource] : [softSource, "Hello welcome again"]
+            let outputs = hardFirst ? ["Hello welcome again", softOutput] : [softOutput, "Hello welcome again"]
+            let data = try JSONSerialization.data(withJSONObject: ["results": outputs.enumerated().map { ["i": $0.offset, "t": $0.element] }])
+            let fixture = TranslationURLProtocol.Response.batch(String(decoding: data, as: UTF8.self))
+            let client = mockTranslator(responses: [fixture, fixture])
+            do {
+                _ = try await client.translate(sources, to: .chinese)
+                XCTFail("Later/earlier hard failures must prevent soft display of the whole batch")
+            } catch is TranslationSoftWarning { XCTFail("Mixed hard+soft cannot be a warning") }
+            catch is TranslationError {}
+            XCTAssertEqual(TranslationURLProtocol.requests().count, 2)
+        }
+        let client = mockTranslator(responses: [batchResult(softOutput)])
+        do {
+            _ = try await client.translate([softSource], to: .chinese)
+            XCTFail("Soft result carries metadata instead of losing the validator verdict")
+        } catch let warning as TranslationSoftWarning {
+            XCTAssertEqual(warning.itemFailures, [[.underTranslated]])
+            XCTAssertEqual(warning.sourceItems, [softSource])
+            XCTAssertEqual(warning.providerCandidates, [softOutput])
+            XCTAssertEqual(warning.outputs, [softOutput])
+            XCTAssertTrue(warning.hasOnlySoftFailures)
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+    }
+
+    func testSoftPolicyCannotAdmitMissingDuplicateOrUnparseableBatchMappings() async throws {
+        for body in [#"{"results":[{"i":0,"t":"alpha bravo charlie 德尔塔"}]}"#,
+                     #"{"results":[{"i":0,"t":"alpha bravo charlie 德尔塔"},{"i":0,"t":"你好"}]}"#,
+                     "not JSON"] {
+            let client = mockTranslator(responses: [.batch(body), .batch(body)])
+            do {
+                _ = try await client.translate(["alpha bravo charlie delta", "Hello"], to: .chinese)
+                XCTFail("Incomplete mapping/JSON cannot become a warning")
+            } catch is TranslationSoftWarning { XCTFail("Parse is hard") }
+            catch is TranslationError {}
+            XCTAssertLessThanOrEqual(TranslationURLProtocol.requests().count, 2)
+        }
+    }
+
+    func testScreenshotCompleteHeadingAndTableCellsRenderSoftWarningWithTrueReceipt() async throws {
+        let source = "alpha bravo charlie delta", candidate = "alpha bravo charlie 德尔塔"
+        let plan = ScreenshotTranslationPlan(blocks: [
+            .text(runs: [.init(text: source, isStrong: false)], heading: 1),
+            .table(rows: [["Label", "Value"], [source, "Count"]])
+        ])
+        XCTAssertEqual(plan.sourceTexts, [source, "Label", "Value", source, "Count"])
+        let outputs = [candidate, "标签", "值", candidate, "数量"]
+        let content = try JSONSerialization.data(withJSONObject: ["results": outputs.enumerated().map { ["i": $0.offset, "t": $0.element, "boldRanges": []] as [String: Any] }])
+        let receipt = ["costMicroYuan": 10, "chargedMicroYuan": 10, "balanceMicroYuan": 100]
+        let envelope = try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": String(decoding: content, as: UTF8.self)]]], "translatehud_trial": receipt])
+        TranslationURLProtocol.reset([.init(status: 200, body: String(decoding: envelope, as: UTF8.self))])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let received = SettlementCollector()
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let client = OpenAICompatibleTranslator(config: ProviderConfig(baseURL: "https://example.invalid/v1", model: "OFFLINE-MANUAL", apiKey: ""),
+            session: session, onTrialSettlement: { value in await received.add(value) })
+        do {
+            _ = try await ScreenshotPlanTranslator(base: ScreenshotTrialHTTPClient(client: client), plan: plan).translate([plan.originalMarkdown], to: .chinese, context: nil)
+            XCTFail("Expected structured soft warning")
+        } catch let warning as TranslationSoftWarning {
+            XCTAssertEqual(warning.settled, true)
+            XCTAssertEqual(warning.sourceItems, plan.sourceTexts)
+            XCTAssertEqual(warning.providerCandidates, outputs)
+            let expected = try plan.render(outputs.map { .init(text: $0, boldRanges: []) })
+            XCTAssertEqual(warning.outputs, [expected])
+            XCTAssertTrue(expected.contains("# " + candidate))
+            XCTAssertTrue(expected.contains("| " + candidate + " | 数量 |"))
+            XCTAssertTrue(warning.hasOnlySoftFailures)
+        }
+        let receipts = await received.values
+        XCTAssertEqual(receipts.count, 1)
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1, "Soft warning neither refunds nor repeats billing")
+    }
+
+    func testPlainScreenshotUsesRealRenderBeforeDisplayingWarning() async throws {
+        let source = "alpha bravo charlie delta", output = "alpha bravo charlie 德尔塔"
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: source, isStrong: false)], heading: nil)])
+        let client = mockTranslator(responses: [batchResult(output)])
+        do {
+            _ = try await ScreenshotPlanTranslator(base: client, plan: plan).translate([plan.originalMarkdown], to: .chinese, context: nil)
+            XCTFail("Expected warning")
+        } catch let warning as TranslationSoftWarning {
+            XCTAssertEqual(warning.outputs, [try plan.render([.init(text: output, boldRanges: [])])])
+        }
+    }
+}
+
+extension TranslationReliabilityTests {
+    func testStructuredSoftCarrierCannotBypassRealRenderOrSourceMapping() async throws {
+        let source = "alpha bravo charlie delta", candidate = "alpha bravo charlie 德尔塔"
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: source, isStrong: true)], heading: nil)])
+        let badRange = try XCTUnwrap(TranslationSoftWarning.make(sources: [source], candidates: [candidate], target: .chinese,
+            failures: [[.underTranslated]], model: "MANUAL", origin: "DELIBERATE styled carrier corruption",
+            styled: [.init(text: candidate, boldRanges: [.init(start: 0, end: 9999)])]))
+        let wrongSource = try XCTUnwrap(TranslationSoftWarning.make(sources: ["different source"], candidates: [candidate], target: .chinese,
+            failures: [[.underTranslated]], model: "MANUAL", origin: "DELIBERATE source mismatch",
+            styled: [.init(text: candidate, boldRanges: [.init(start: 0, end: candidate.utf8.count)])]))
+        for (warning, stage) in [(badRange, ScreenshotFailureStage.rendering), (wrongSource, .itemMapping)] {
+            do {
+                _ = try await ScreenshotPlanTranslator(base: ManualStyledWarningStub(warning: warning.replacingOutputs(warning.outputs, settled: true)), plan: plan)
+                    .translate([plan.originalMarkdown], to: .chinese, context: nil)
+                XCTFail("Malformed structured candidate must stay hard")
+            } catch let failure as ScreenshotSettledFailure { XCTAssertEqual(failure.stage, stage) }
+            catch is TranslationSoftWarning { XCTFail("No display warning may bypass render or mapping") }
+        }
+    }
+}
+private struct ManualStyledWarningStub: ScreenshotStyledTranslator {
+    let warning: TranslationSoftWarning
+    func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] { throw warning }
+    func translateStyled(_ items: [ScreenshotStyledText], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [ScreenshotStyledText] { throw warning }
+}
+
+extension TranslationReliabilityTests {
+    func testContextualTableLabelCannotHideHardFlagsFromSoftEligibility() async throws {
+        let source = "alpha bravo charlie delta", candidate = "alpha bravo charlie 德尔塔"
+        let label = ScreenshotStyledText(text: "A B", boldRanges: [], isTableCell: true)
+        let soft = ScreenshotStyledText(text: source, boldRanges: [], isTableCell: true)
+        XCTAssertTrue(TranslationValidator.validate(input: "A B", output: "A B", target: .chinese).contains(.missingTargetLanguageContent))
+        let content = try JSONSerialization.data(withJSONObject: ["results": [
+            ["i": 0, "t": "A B", "boldRanges": []] as [String: Any],
+            ["i": 1, "t": candidate, "boldRanges": []] as [String: Any]]])
+        let client = mockTranslator(responses: [.batch(String(decoding: content, as: UTF8.self))])
+        do {
+            _ = try await client.translateStyledTrial([label, soft], to: .chinese, context: nil)
+            XCTFail("A raw hard flag must not disappear behind the soft item")
+        } catch is TranslationSoftWarning { XCTFail("Hard flag vetoes warning eligibility") }
+        catch TranslationError.quality {}
+        let onlyLabel = try JSONSerialization.data(withJSONObject: ["results": [["i": 0, "t": "A B", "boldRanges": []] as [String: Any]]])
+        let control = mockTranslator(responses: [.batch(String(decoding: onlyLabel, as: UTF8.self))])
+        let result = try await control.translateStyledTrial([label], to: .chinese, context: nil)
+        XCTAssertEqual(result.map(\.text), ["A B"], "The pre-existing protected table-label success contract remains intact")
+    }
+}
+
+extension TranslationReliabilityTests {
+    func testCompletedSoftStreamWithBrokenLineMappingIsHardWithoutExtraRequest() async throws {
+        let source = "alpha bravo\ncharlie delta\nomega sigma", candidate = "alpha bravo charlie delta 其他"
+        XCTAssertTrue(TranslationValidator.validate(input: source, output: candidate, target: .chinese).contains(.underTranslated))
+        let client = mockTranslator(responses: [streamResult(candidate)])
+        let progress = TranslationProgress()
+        progress.startStreaming(translator: client, original: source, target: .chinese)
+        for _ in 0..<100 {
+            if case .failed = progress.state { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard case .failed = progress.state else { return XCTFail("Broken complete-result line mapping remains hard") }
+        XCTAssertNil(progress.qualityWarning)
+        XCTAssertEqual(progress.displayedTranslation, "")
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1, "Soft display policy cannot create another paid request")
+        progress.cancel()
     }
 }

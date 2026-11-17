@@ -226,3 +226,58 @@ private struct DelayedDirectStub: Translator {
         return texts.map { "译" + $0 }
     }
 }
+
+
+extension ScreenshotDirectTranslationTests {
+    @MainActor
+    func testSharedHUDContinuationPreservesParagraphsWithAndWithoutThrowingObserver() async throws {
+        let texts = ["Public heading", "Public description.", "Second heading", "Second description."]
+        let plan = ScreenshotTranslationPlan(blocks: texts.map {
+            .text(runs: [.init(text: $0, isStrong: false)], heading: nil)
+        })
+        // Record the real rendered source BEFORE any window/editor initialization.
+        let initialMarkdown = plan.originalMarkdown
+        XCTAssertEqual(initialMarkdown, "Public heading\n\nPublic description\\.\n\nSecond heading\n\nSecond description\\.")
+        XCTAssertEqual(plan.sourceTexts, texts)
+        let image = NSImage(size: NSSize(width: 100, height: 100))
+        var results: [String] = []
+        for observe in [false, true] {
+            let recorder = DirectTranslationRecorder()
+            var initial: [String] = []
+            let observer: (@MainActor (ScreenshotSourceState, FloatingScreenshotWindow) throws -> Void)?
+            if observe {
+                observer = { @MainActor (source: ScreenshotSourceState, window: FloatingScreenshotWindow) throws -> Void in
+                    XCTAssertEqual(source.plan.originalMarkdown, plan.originalMarkdown)
+                    initial = window.contentTextSnapshot()
+                    throw NSError(domain: "intentional-local-observer", code: 1)
+                }
+            } else {
+                observer = nil
+            }
+            let opened = ScreenshotFlow.openResult(image: image, plan: plan, recognitionNotice: nil,
+                prepare: { _ in .ready(.init(translator: DirectTranslationStub(recorder: recorder),
+                                             explainer: FailingTermExplainer(message: "unused"))) },
+                beforeStart: observer)
+            defer { opened.window.dismiss() }
+            try await waitForSuccess(opened.source.progress)
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(opened.source.plan.sourceTexts, texts)
+            XCTAssertEqual(opened.source.plan.originalMarkdown, initialMarkdown)
+            if let snapshot = opened.source.progress.sourceDraft {
+                XCTAssertEqual(snapshot, initialMarkdown, "Focus may freeze the exact source; it must not reserialize it")
+            }
+            XCTAssertNil(opened.source.progress.translationDraft)
+            XCTAssertFalse(opened.source.progress.hasLocalEdits)
+            let calls = await recorder.calls
+            XCTAssertEqual(calls, [texts])
+            let hosted = opened.window.contentTextSnapshot()
+            XCTAssertFalse(hosted.isEmpty)
+            for text in texts { XCTAssertTrue(hosted.contains(where: { $0.contains(text) })) }
+            if observe { XCTAssertFalse(initial.isEmpty) }
+            results.append(opened.source.progress.displayedTranslation)
+            opened.window.dismiss()
+        }
+        XCTAssertEqual(results[0], results[1])
+        XCTAssertTrue(results[0].contains("\n\n"))
+    }
+}

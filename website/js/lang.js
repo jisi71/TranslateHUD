@@ -1,6 +1,32 @@
 (function () {
   var KEY = "translatehud.lang";
 
+  var film = document.querySelector(".intro-video");
+  var resumeAt = 0;
+
+  if (film) {
+    film.addEventListener("loadedmetadata", function () {
+      if (resumeAt > 0) film.currentTime = Math.min(resumeAt, film.duration);
+      resumeAt = 0;
+    });
+  }
+
+  function switchFilm(lang) {
+    if (!film) return;
+    var source = film.getAttribute("data-src-" + lang);
+    if (!source || source === film.getAttribute("src")) return;
+
+    var playing = !film.paused && !film.ended;
+    if (film.readyState > 0) resumeAt = film.currentTime;
+    film.preload = resumeAt > 0 ? "metadata" : "none";
+    film.poster = film.getAttribute("data-poster-" + lang);
+    film.setAttribute("src", source);
+    film.load();
+    if (playing) film.play().catch(function () {
+      // The native controls remain available if the browser blocks playback.
+    });
+  }
+
   function readSaved() {
     try {
       var value = localStorage.getItem(KEY);
@@ -35,6 +61,8 @@
       var text = node.getAttribute(lang === "en" ? "data-aria-en" : "data-aria-zh");
       if (text) node.setAttribute("aria-label", text);
     });
+
+    switchFilm(lang);
 
     var title = document.querySelector("title");
     if (title) {

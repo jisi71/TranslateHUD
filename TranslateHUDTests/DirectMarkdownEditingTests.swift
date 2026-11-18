@@ -8,9 +8,11 @@ final class DirectMarkdownEditingTests: XCTestCase {
     private func pump() { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
     private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
 
-    private func host(_ markdown: String, spans: [[ScreenshotCellSpan]] = [], role: MarkdownDisplay.Role = .translation, focus: @escaping (String) -> Void = { _ in }, change: @escaping (String) -> Void) -> NSHostingView<DirectMarkdownEditor> {
+    private func host(_ markdown: String, spans: [[ScreenshotCellSpan]] = [], role: MarkdownDisplay.Role = .translation,
+                      colors: PanelColors = .dark, focus: @escaping (String) -> Void = { _ in },
+                      change: @escaping (String) -> Void) -> NSHostingView<DirectMarkdownEditor> {
         let host = NSHostingView(rootView: DirectMarkdownEditor(markdown: markdown, role: role,
-            colors: .dark, width: 480, tableSpans: spans, onFocus: focus, onChange: change))
+            colors: colors, width: 480, tableSpans: spans, onFocus: focus, onChange: change))
         host.frame = NSRect(x: 0, y: 0, width: 480, height: 800)
         host.layoutSubtreeIfNeeded()
         pump()
@@ -254,6 +256,72 @@ final class DirectMarkdownEditingTests: XCTestCase {
         try XCTUnwrap(equalCells.last).insertText("Second", replacementRange: NSRange(location: 0, length: 4))
         pump()
         XCTAssertTrue(try XCTUnwrap(updates.last).contains("| Same | Second |"), "duplicate cell values must use their own source ranges")
+    }
+
+    func testTextAndCellCaretsFollowThePanelColors() throws {
+        let input = "Editable text\n\n| Name | Value |\n| --- | --- |\n| Alpha |  |"
+        for colors in [PanelColors.dark, .light] {
+            for role in [MarkdownDisplay.Role.source, .translation] {
+                let view = host(input, role: role, colors: colors) { _ in }
+                let fields = descendants(view).compactMap { $0 as? MarkdownInputTextView }
+                XCTAssertTrue(fields.contains { $0.string.trimmingCharacters(in: .whitespacesAndNewlines) == "Editable text" })
+                XCTAssertTrue(fields.contains { $0.string.isEmpty })
+                for field in fields {
+                    XCTAssertEqual(field.insertionPointColor, .clear)
+                    XCTAssertEqual(field.caretColor, colors.scheme == .dark
+                        ? NSColor(srgbRed: 86 / 255, green: 200 / 255, blue: 1, alpha: 1)
+                        : NSColor(srgbRed: 29 / 255, green: 94 / 255, blue: 169 / 255, alpha: 1))
+                    XCTAssertTrue(field.acceptsFirstMouse(for: nil))
+                }
+            }
+        }
+    }
+
+    func testOptionalCaptureScreenshotCaret() async throws {
+        guard let path = ProcessInfo.processInfo.environment["TRANSLATEHUD_CARET_PROBE"] else {
+            throw XCTSkip("Local caret capture was not requested")
+        }
+        let folder = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        let plan = ScreenshotTranslationPlan(blocks: [.text(
+            runs: [.init(text: "Sample editable text for the insertion point", isStrong: false)], heading: nil)])
+        let screenshot = ScreenshotFlow.openResult(image: NSImage(size: NSSize(width: 600, height: 400)),
+            plan: plan, recognitionNotice: nil, prepare: { _ in
+                .ready(.init(translator: DirectEditStub(calls: DirectEditCalls()),
+                             explainer: FailingTermExplainer(message: "unused")))
+            })
+        defer { screenshot.window.dismiss() }
+        let window = try XCTUnwrap(NSApp.windows.first {
+            $0.identifier?.rawValue == "screenshot-translation-panel" && $0.isVisible
+        })
+        let host = try XCTUnwrap(window.contentView)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        pump()
+        host.layoutSubtreeIfNeeded()
+        let field = try XCTUnwrap(descendants(host).compactMap { $0 as? MarkdownInputTextView }
+            .first { $0.string.hasPrefix("Sample editable text") })
+        XCTAssertTrue(window.makeFirstResponder(field))
+        let ranges = [NSRange(location: 7, length: 0), NSRange(location: 7, length: 1),
+                      NSRange(location: 12, length: 0)]
+        for (i, range) in ranges.enumerated() {
+            field.setSelectedRange(range)
+            try await Task.sleep(for: .milliseconds(i == 2 ? 650 : 70))
+            host.layoutSubtreeIfNeeded()
+            let rect = field.firstRect(forCharacterRange: field.selectedRange(), actualRange: nil)
+            let position = field.convert(window.convertFromScreen(rect), from: nil)
+            let caret = try XCTUnwrap(field.caret)
+            XCTAssertEqual(caret.isHidden, range.length > 0)
+            if range.length == 0 {
+                XCTAssertEqual(caret.frame.minX, position.minX, accuracy: 1)
+                XCTAssertEqual(caret.frame.width, 2, accuracy: 0.5)
+            }
+            let snapshot = try XCTUnwrap(field.bitmapImageRepForCachingDisplay(in: field.bounds))
+            field.cacheDisplay(in: field.bounds, to: snapshot)
+            try XCTUnwrap(snapshot.representation(using: .png, properties: [:]))
+                .write(to: folder.appendingPathComponent("frame-\(i).png"))
+            print("CARET_PROBE idx=\(i) rect=\(position) frame=\(caret.frame) hidden=\(caret.isHidden)")
+        }
     }
 
     func testEmptyCellAndIMECommitStayEditable() throws {

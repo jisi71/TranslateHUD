@@ -19,11 +19,13 @@ final class FloatingScreenshotWindow {
     init(
         image: NSImage,
         source: ScreenshotSourceState,
-        recognitionNotice: String? = nil
+        recognitionNotice: String? = nil,
+        mouseLocation: NSPoint = NSEvent.mouseLocation
     ) {
         self.source = source
 
-        let budget = PanelSizeBudget(visibleHeight: PanelScreenPicker.visibleHeight(placement: nil))
+        let placement = PopoverPlacementContext(selectionRectTopLeft: nil, mouseLocation: mouseLocation)
+        let budget = PanelSizeBudget(visibleHeight: PanelScreenPicker.visibleHeight(placement: placement))
         let initialSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
         window = TranslationPanelWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
@@ -45,7 +47,7 @@ final class FloatingScreenshotWindow {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
         window.maxSize = NSSize(width: PopoverContent.fixedWidth, height: budget.budget.panelMax)
-        fitter = ContentFittingWindow(window: window, sizeBudget: budget, placement: nil)
+        fitter = ContentFittingWindow(window: window, sizeBudget: budget, placement: placement)
 
         var closeRef: (@MainActor () -> Void)?
         var retryRef: (@MainActor () -> Void)?

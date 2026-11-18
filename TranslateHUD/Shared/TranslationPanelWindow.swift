@@ -34,8 +34,9 @@ final class TranslationPanelWindow: NSWindow {
                 return
             }
             if isWindowDragPoint(event.locationInWindow) {
-                makeKeyAndOrderFront(nil)
                 windowDrag = (frame.origin, PanelPointer.screenPoint(for: event, in: self))
+                // Moving the panel needs no keyboard focus change.
+                if isVisible { orderFrontRegardless() }
                 return
             }
         case .leftMouseDragged:

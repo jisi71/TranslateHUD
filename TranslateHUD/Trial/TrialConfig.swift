@@ -7,6 +7,13 @@ enum TrialConfig {
     static let defaultProxyBaseURL = "https://translatehud-d4gl951eo8bef4702-1445578102.ap-shanghai.app.tcloudbase.com/v1"
     static let deviceIdKey = "trial.deviceId"
 
+    static func screenshotProxy(for baseURL: String) -> String {
+        if baseURL == defaultProxyBaseURL || baseURL == defaultProxyBaseURL + "/" {
+            return defaultProxyBaseURL + "-screenshot"
+        }
+        return baseURL
+    }
+
     static func sanitized(_ value: String?) -> String {
         let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty || trimmed.contains("$(") { return "" }

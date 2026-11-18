@@ -40,9 +40,13 @@ final class ScreenshotPanelLifecycleTests: XCTestCase {
     }
 
     func testSlowRecognitionShowsTheSameWindowBeforeAnyTranslationRequest() async throws {
+        let screen = try XCTUnwrap(NSScreen.main)
+        let visible = screen.visibleFrame
+        let pointer = NSPoint(x: visible.minX + 70, y: visible.maxY - 90)
         var finish: CheckedContinuation<Void, Never>?
         var requests: [String] = []
-        let result = ScreenshotFlow.openCaptured(image: NSImage(size: NSSize(width: 400, height: 300)), prepare: { text in
+        let result = ScreenshotFlow.openCaptured(image: NSImage(size: NSSize(width: 400, height: 300)),
+                                                 mouseLocation: pointer, prepare: { text in
             requests.append(text)
             return .ready(.init(translator: PanelLifecycleTranslator(), explainer: FailingTermExplainer(message: "unused")))
         }, recognize: { _, source in
@@ -52,6 +56,9 @@ final class ScreenshotPanelLifecycleTests: XCTestCase {
         defer { result.window.dismiss() }
         let window = try panel()
         let id = window.windowNumber
+        XCTAssertEqual(window.frame.minX, pointer.x + 14, accuracy: 1)
+        XCTAssertEqual(window.frame.maxY, pointer.y - 14, accuracy: 1)
+        XCTAssertTrue(visible.contains(window.frame))
         XCTAssertTrue(result.source.isRecognizing)
         XCTAssertTrue(requests.isEmpty)
         try attach(window, name: "recognition-panel-before-ocr-finishes")
@@ -62,6 +69,7 @@ final class ScreenshotPanelLifecycleTests: XCTestCase {
         XCTAssertFalse(result.source.isRecognizing)
         XCTAssertEqual(requests, ["Recognized content"])
         XCTAssertEqual(try panel().windowNumber, id)
+        XCTAssertEqual(window.frame.minX, pointer.x + 14, accuracy: 1)
     }
 
     func testQRCodeOnlyUsesTranslationPanelWithEmptySourceAndNoAccountRequest() async throws {
@@ -184,6 +192,7 @@ final class ScreenshotPanelLifecycleTests: XCTestCase {
         let fixture = try image(withText: true)
         let action = PointerProbeAction {
             guard observedWindow?.isVisible != true else { return }
+            let mouseLocation = NSEvent.mouseLocation
             let opened = ScreenshotFlow.openResult(image: fixture, plan: plan, recognitionNotice: nil,
                 prepare: { _ in .ready(.init(translator: PanelLifecycleTranslator(), explainer: FailingTermExplainer(message: "unused"))) })
             opened.source.showCodes([.init(payload: self.payload, box: .zero)])
@@ -195,6 +204,7 @@ final class ScreenshotPanelLifecycleTests: XCTestCase {
             write(["pid": ProcessInfo.processInfo.processIdentifier, "windowNumber": window.windowNumber,
                 "identifier": window.identifier?.rawValue ?? "", "windowFrame": NSStringFromRect(window.frame),
                 "screenFrame": window.screen.map { NSStringFromRect($0.frame) } ?? "", "backingScale": window.backingScaleFactor,
+                "openingMouseLocation": NSStringFromPoint(mouseLocation),
                 "screenClickPoint": [window.frame.minX + 110, top + 85], "modelRequests": 0,
                 "preparedWith": "offline stub"], to: "ready.json")
         }
@@ -239,6 +249,7 @@ final class ScreenshotPanelLifecycleTests: XCTestCase {
             if let window = observedWindow {
                 history.append(["windowNumber": window.windowNumber, "visible": window.isVisible, "key": window.isKeyWindow,
                     "onActiveSpace": window.isOnActiveSpace, "occlusionVisible": window.occlusionState.contains(.visible),
+                    "dragging": (window as? TranslationPanelWindow)?.isHandlingDrag == true,
                     "level": window.level.rawValue, "frame": NSStringFromRect(window.frame)])
                 if !window.isVisible {
                     observedWindow = nil

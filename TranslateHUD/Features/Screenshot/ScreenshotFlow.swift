@@ -29,6 +29,7 @@ enum ScreenshotFlow {
     @discardableResult
     static func openCaptured(
         image: NSImage,
+        mouseLocation: NSPoint = NSEvent.mouseLocation,
         prepare: @escaping @MainActor (String) -> TranslationSession.Outcome = {
             TranslationSession.prepare(sourceText: $0)
         },
@@ -38,7 +39,7 @@ enum ScreenshotFlow {
     ) -> (source: ScreenshotSourceState, window: FloatingScreenshotWindow) {
         let source = ScreenshotSourceState(plan: .init(blocks: []), prepare: prepare)
         source.beginRecognition()
-        let window = FloatingScreenshotWindow(image: image, source: source)
+        let window = FloatingScreenshotWindow(image: image, source: source, mouseLocation: mouseLocation)
         window.show()
         source.recognitionTask = Task { @MainActor [weak source] in
             await Task.yield()

@@ -319,7 +319,7 @@ struct DirectMarkdownText: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
         scroll.drawsBackground = false
-        let view = ScreenshotInputTextView(usingTextLayoutManager: false)
+        let view = MarkdownInputTextView(usingTextLayoutManager: false)
         view.frame = NSRect(origin: .zero, size: scroll.contentSize)
         view.minSize = .zero
         view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
@@ -328,6 +328,7 @@ struct DirectMarkdownText: NSViewRepresentable {
         view.isRichText = false
         view.allowsUndo = true
         view.drawsBackground = false
+        view.insertionPointColor = .clear
         view.textContainerInset = NSSize(width: 0, height: 4)
         view.isVerticallyResizable = true
         view.autoresizingMask = [.width]
@@ -343,8 +344,11 @@ struct DirectMarkdownText: NSViewRepresentable {
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
-        guard let view = scroll.documentView as? ScreenshotInputTextView,
+        guard let view = scroll.documentView as? MarkdownInputTextView,
               !view.hasMarkedText(), !view.isUpdatingInput else { return }
+        view.caretColor = colors.scheme == .dark
+            ? NSColor(srgbRed: 86 / 255, green: 200 / 255, blue: 1, alpha: 1)
+            : NSColor(srgbRed: 29 / 255, green: 94 / 255, blue: 169 / 255, alpha: 1)
         context.coordinator.render(view)
     }
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -397,5 +401,76 @@ struct DirectMarkdownText: NSViewRepresentable {
             parent = DirectMarkdownText(markdown: updated, role: parent.role, colors: parent.colors, onFocus: parent.onFocus, onChange: parent.onChange)
             render(view)
         }
+    }
+}
+
+final class MarkdownInputTextView: ScreenshotInputTextView {
+    var caretColor: NSColor = .clear {
+        didSet {
+            if caretColor != oldValue { caret?.layer?.backgroundColor = caretColor.cgColor }
+        }
+    }
+    private(set) var caret: Caret?
+
+    override func becomeFirstResponder() -> Bool {
+        guard super.becomeFirstResponder() else { return false }
+        needsLayout = true
+        return true
+    }
+
+    override func resignFirstResponder() -> Bool {
+        guard super.resignFirstResponder() else { return false }
+        caret?.isHidden = true
+        return true
+    }
+
+    override func updateInsertionPointStateAndRestartTimer(_ restartFlag: Bool) {
+        super.updateInsertionPointStateAndRestartTimer(restartFlag)
+        needsLayout = true
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        needsLayout = true
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let selection = selectedRange()
+        guard let window, window.isKeyWindow, window.firstResponder === self,
+              isEditable, selection.length == 0, selection.location <= string.utf16.count else {
+            caret?.isHidden = true
+            return
+        }
+        // AppKit supplies the position for wrapped text, IME input and empty cells.
+        let screenRect = firstRect(forCharacterRange: selection, actualRange: nil)
+        let position = convert(window.convertFromScreen(screenRect), from: nil)
+        guard position.height > 0, position.minX.isFinite, position.minY.isFinite else {
+            caret?.isHidden = true
+            return
+        }
+        let mark: Caret
+        if let caret {
+            mark = caret
+        } else {
+            mark = Caret()
+            mark.wantsLayer = true
+            mark.layer?.backgroundColor = caretColor.cgColor
+            addSubview(mark, positioned: .above, relativeTo: nil)
+            caret = mark
+        }
+        let frame = backingAlignedRect(NSRect(x: position.minX, y: position.minY, width: 2, height: position.height),
+                                       options: .alignAllEdgesNearest)
+        if mark.frame != frame { mark.frame = frame }
+        mark.isHidden = false
+    }
+
+    final class Caret: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }

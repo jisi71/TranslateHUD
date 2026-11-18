@@ -106,18 +106,26 @@ struct TrialProxyTranslator: ScreenshotStyledTranslator, ScreenshotTrialBillingR
 
     func translateScreenshot(_ items: [ScreenshotStyledText], to target: TargetLanguage,
                              context: SelectionFetcher.TextContext?) async throws -> ScreenshotTrialResult {
-        let credential = try await TrialActor.accessToken()
+        let started = DispatchTime.now().uptimeNanoseconds
+        let credential = try await streamingAccount.accessToken()
+        try Task.checkCancellation()
+        let elapsed = (DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
+        AppLog.notice("screenshot_auth_ready elapsed_ms=\(elapsed)")
         let request = ScreenshotTrialRequest(
-            config: ProviderConfig(baseURL: proxyBaseURL, model: "trial", apiKey: credential.token),
+            config: ProviderConfig(baseURL: TrialConfig.screenshotProxy(for: proxyBaseURL),
+                                   model: "trial", apiKey: credential.token),
             session: session,
-            applySettlement: { value in await TrialActor.apply(value, generation: credential.generation) }
+            applySettlement: { value in await streamingAccount.applySettlement(value, credential.generation) }
         )
         do {
             let result = try await request.translate(items, to: target, context: context)
-            await TrialActor.refreshBalance(generation: credential.generation)
+            try Task.checkCancellation()
+            streamingAccount.refreshInBackground(generation: credential.generation)
             return result
         } catch {
-            await TrialActor.refreshBalance(generation: credential.generation, unless: error)
+            if !Task.isCancelled, !(error is CancellationError) {
+                streamingAccount.refreshInBackground(generation: credential.generation)
+            }
             throw error
         }
     }

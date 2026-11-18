@@ -77,7 +77,7 @@ struct TranslationPanel: View {
                 ) {
                     Group {
                         if screenshotSource?.isRecognizing == true || screenshotSource?.isQRCodeOnly == true {
-                            Color.clear.frame(height: Self.sourceSpeechSide).panelSectionRole(.source)
+                            Color.clear.frame(height: Self.sourceSpeechSide)
                         } else {
                             sourceSection
                         }
@@ -85,6 +85,7 @@ struct TranslationPanel: View {
                         .disabled(screenshotSource?.canTranslate == false)
                         .frame(maxHeight: sourceHeight == nil ? nil : .infinity, alignment: .top)
                         .background(PanelAreaMarker(area: .source))
+                        .panelSectionRole(.source)
                     SourceResizeDivider(
                         color: NSColor(colors.border),
                         label: interfaceLanguage.text("调整原文显示高度"),
@@ -254,7 +255,6 @@ struct TranslationPanel: View {
                     .frame(width: Self.sourceSpeechSide, height: Self.sourceSpeechSide)
             }
         }
-        .panelSectionRole(.source)
     }
 
     /// Keep the scroll view's identity while its viewport changes during a drag.

@@ -1,0 +1,180 @@
+.tool-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.edit-pointer, .demo-crosshair { display: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .tools.demos-ready .feature-stage {
+    --play: paused;
+    --cycle: 3.8s ease-in-out infinite both var(--play);
+  }
+  .tools.demos-visible .feature-stage.in-band { --play: running; }
+
+  .demos-ready .edit-pointer {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 21px;
+    height: 26px;
+    z-index: 4;
+    pointer-events: none;
+    animation: point-and-refresh var(--cycle);
+  }
+  .edit-pointer svg {
+    display: block;
+    width: 100%;
+    filter: drop-shadow(0 1px 2px #0008);
+    transform-origin: top left;
+    animation: pointer-press var(--cycle);
+  }
+  .edit-pointer::before {
+    content: "";
+    position: absolute;
+    top: -9px;
+    left: -9px;
+    width: 18px;
+    height: 18px;
+    border: 2px solid #a6d4ff;
+    border-radius: 50%;
+    animation: pointer-ring var(--cycle);
+  }
+  @keyframes point-and-refresh {
+    0%, 100% { transform: translate(calc(var(--word-x) + 60px), calc(var(--word-y) + 28px)); opacity: 0; }
+    5% { opacity: 1; }
+    16%, 21% { transform: translate(var(--word-x), var(--word-y)); opacity: 1; }
+    25%, 37% { transform: translate(calc(var(--word-x) + 13px), calc(var(--word-y) + 10px)); opacity: 1; }
+    53%, 71% { transform: translate(var(--refresh-x), var(--refresh-y)); opacity: 1; }
+    82%, 96% { transform: translate(calc(var(--refresh-x) + 20px), calc(var(--refresh-y) + 9px)); opacity: 0; }
+  }
+  @keyframes pointer-press {
+    0%, 16%, 22%, 53%, 61%, 100% { transform: scale(1); }
+    18%, 56% { transform: scale(.78); }
+  }
+  @keyframes pointer-ring {
+    0%, 16%, 53%, 100% { opacity: 0; transform: scale(.3); }
+    18%, 56% { opacity: .9; transform: scale(.55); }
+    25%, 64% { opacity: 0; transform: scale(1.4); }
+    26%, 52%, 65%, 99% { opacity: 0; transform: scale(.3); }
+  }
+
+  .demos-ready .edit-word { background: transparent; }
+  .demos-ready .edit-word .edit-change { animation: select-edit var(--cycle); }
+  .demos-ready .edit-caret { animation: show-caret var(--cycle); }
+  .demos-ready .edit-change { display: inline-grid; }
+  .demos-ready .edit-change::before,
+  .demos-ready .edit-change > span {
+    grid-area: 1 / 1;
+    animation: var(--letter) var(--cycle);
+    animation-timing-function: step-end;
+  }
+  .demos-ready .edit-change::before { content: attr(data-original); --letter: remove-letter; }
+  .demos-ready .edit-change > span { --letter: type-letter; }
+  .demos-ready .hud-out .edit-change::before { --letter: old-translation; }
+  .demos-ready .hud-out .edit-change > span { --letter: new-translation; }
+  .demos-ready .stage-edit .hud-foot-tools > svg:last-child { border-radius: 50%; animation: press-retranslate var(--cycle); }
+  .demos-ready .stage-edit :is(.hud-out, .hud-status) { animation: refresh-translation var(--cycle); }
+
+  @keyframes select-edit {
+    0%, 17%, 40%, 100% { background-color: transparent; }
+    20%, 33% { background-color: #294363; }
+  }
+  @keyframes show-caret {
+    0%, 17%, 41%, 100% { opacity: 0; }
+    19%, 38% { opacity: 1; }
+    0%, 25.9%, 32%, 100% { left: 100%; }
+    26%, 31.9% { left: 0; }
+  }
+  @keyframes remove-letter { 0%, 100% { opacity: 1; } 26% { opacity: 0; } }
+  @keyframes type-letter { 0%, 100% { opacity: 0; } 32% { opacity: 1; } }
+  @keyframes old-translation { 0%, 100% { opacity: 1; } 63% { opacity: 0; } }
+  @keyframes new-translation { 0%, 100% { opacity: 0; } 63% { opacity: 1; } }
+  @keyframes press-retranslate {
+    0%, 53%, 63%, 100% { color: #a1a1a1; box-shadow: 0 0 0 0 transparent; }
+    56% { color: white; box-shadow: 0 0 0 5px rgb(73 153 244 / 30%); }
+  }
+  @keyframes refresh-translation {
+    0%, 55%, 74%, 100% { opacity: 1; }
+    59%, 65% { opacity: 0; }
+  }
+
+  .demos-ready .capture-target { border-color: transparent; background: transparent; outline: none; }
+  .demos-ready .capture-target::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border: 2px solid #007aff;
+    transform-origin: top left;
+    animation: drag-region var(--cycle);
+  }
+  .demos-ready .deskew-selection::after { background-color: rgb(0 113 227 / 10%); }
+  .demos-ready .demo-crosshair {
+    display: block;
+    position: absolute;
+    z-index: 1;
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 56%);
+    transform: translate(-50%, -50%);
+    filter: drop-shadow(0 1px 2px #0006);
+    pointer-events: none;
+    animation: capture-gesture var(--cycle);
+  }
+  @keyframes capture-gesture {
+    0%, 100% { left: -20px; top: -34px; opacity: 0; }
+    5% { opacity: 1; }
+    17%, 21% { left: -2px; top: -2px; opacity: 1; }
+    39%, 42% { left: calc(100% + 2px); top: calc(100% + 2px); opacity: 1; }
+    45%, 98% { left: calc(100% + 2px); top: calc(100% + 2px); opacity: 0; }
+  }
+  @keyframes drag-region {
+    0%, 21%, 100% { transform: scale(0); opacity: 0; }
+    22% { opacity: 1; }
+    39%, 92% { transform: scale(1); opacity: 1; }
+    98% { transform: scale(1); opacity: 0; }
+  }
+
+  .demos-ready .deskew-sheet { animation: shift-poster var(--cycle); }
+  .demos-ready .deskew-result { animation: straighten-capture var(--cycle); }
+  .demos-ready .deskew-step p { animation: comparison-label var(--cycle); }
+  @keyframes shift-poster {
+    0%, 44%, 100% { transform: translateX(calc(50% + var(--capture-gap) / 2)) scale(var(--poster-zoom)); }
+    62%, 92% { transform: none; }
+  }
+  @keyframes straighten-capture {
+    0%, 41%, 100% { transform: translate(var(--crop-x), var(--crop-y)) rotate(-8deg) scale(var(--crop-scale)); opacity: 0; }
+    44% { transform: translate(var(--crop-x), var(--crop-y)) rotate(-8deg) scale(var(--crop-scale)); opacity: 1; }
+    62%, 65% { transform: rotate(-8deg); opacity: 1; }
+    0%, 65%, 100% { clip-path: polygon(7% 0, 100% 18%, 93% 100%, 0 82%); }
+    77%, 92% { transform: none; opacity: 1; }
+    77%, 98% { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
+    98% { transform: none; opacity: 0; }
+  }
+  @keyframes comparison-label {
+    0%, 68%, 99%, 100% { opacity: 0; }
+    77%, 92% { opacity: 1; }
+  }
+
+  .demos-ready .qr-paper { animation: file-ticket var(--cycle); }
+  .demos-ready .stage-qr .hud-panel { animation: open-qr-panel var(--cycle); }
+  .demos-ready .stage-qr .hud-out { animation: reveal-url var(--cycle); }
+  @keyframes file-ticket {
+    0%, 44%, 100% { transform: translate(-50%, var(--scan-offset)); }
+    63%, 92% { transform: var(--filed-ticket); }
+  }
+  @keyframes open-qr-panel {
+    0%, 49%, 100% { transform: translate(13%, 8px); opacity: 0; }
+    64%, 93% { transform: none; opacity: 1; }
+    99% { transform: translate(4%, 0); opacity: 0; }
+  }
+  @keyframes reveal-url {
+    0%, 61%, 100% { opacity: 0; }
+    70%, 95% { opacity: 1; }
+  }
+}

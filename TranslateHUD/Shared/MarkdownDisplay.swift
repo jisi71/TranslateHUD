@@ -71,6 +71,17 @@ enum MarkdownDisplay {
         return attributed
     }
 
+    static func textKitString(_ styled: AttributedString) -> NSMutableAttributedString {
+        var text = styled
+        for run in styled.runs {
+            guard let intent = run.inlinePresentationIntent, intent.contains(.code) else { continue }
+            // TextKit 1 can drop Unicode glyphs with the code intent. Keep the applied typography.
+            let remaining = intent.subtracting(.code)
+            text[run.range].inlinePresentationIntent = remaining.isEmpty ? nil : remaining
+        }
+        return NSMutableAttributedString(attributedString: NSAttributedString(text))
+    }
+
     static func height(
         _ markdown: String,
         role: Role,

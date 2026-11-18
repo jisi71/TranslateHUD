@@ -692,7 +692,7 @@ enum TextBlockMetrics {
         width: CGFloat,
         maxLines: Int?
     ) -> CGFloat {
-        let ns = NSMutableAttributedString(attributedString: NSAttributedString(attributed))
+        let ns = MarkdownDisplay.textKitString(attributed)
         if ns.length == 0 {
             ns.append(NSAttributedString(string: " ", attributes: [
                 .font: NSFont.systemFont(ofSize: 15)

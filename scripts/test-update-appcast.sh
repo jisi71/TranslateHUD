@@ -145,7 +145,6 @@ assert "]]>" not in html
 PY
 
 APPCAST="$TMP/appcast.xml"
-cp "$ROOT/appcast.xml" "$APPCAST"
 SIG_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa="
 SIG_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb="
 

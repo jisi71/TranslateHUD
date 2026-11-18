@@ -166,26 +166,91 @@ final class ScreenshotPanelLifecycleTests: XCTestCase {
             .text(runs: [.init(text: "Offline screenshot panel", isStrong: false)], heading: 1),
             .table(rows: [["Name", "Value", "Notes"], ["Alpha", "10", ""], ["Beta", "20", "Local fixture"]])
         ])
-        let result = ScreenshotFlow.openResult(image: try image(withText: true), plan: plan, recognitionNotice: nil,
-            prepare: { _ in .ready(.init(translator: PanelLifecycleTranslator(), explainer: FailingTermExplainer(message: "unused"))) })
-        result.source.showCodes([.init(payload: payload, box: .zero)])
-        defer { result.window.dismiss() }
-        let window = try panel()
-        let ready: [String: Any] = ["pid": ProcessInfo.processInfo.processIdentifier,
-            "windowNumber": window.windowNumber, "identifier": window.identifier?.rawValue ?? "",
-            "modelRequests": 0, "preparedWith": "offline stub"]
-        try JSONSerialization.data(withJSONObject: ready, options: [.prettyPrinted, .sortedKeys])
-            .write(to: folder.appendingPathComponent("ready.json"))
+        let launcher = NSWindow(contentRect: NSRect(x: 200, y: 400, width: 400, height: 170),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        launcher.title = "TranslateHUD 离线鼠标验收"
+        launcher.isReleasedWhenClosed = false
+        launcher.level = .floating
+        launcher.hidesOnDeactivate = false
+        launcher.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        var result: (source: ScreenshotSourceState, window: FloatingScreenshotWindow)?
+        var observedWindow: NSWindow?
+        var clicks: [[String: Any]] = []
+        func write(_ value: Any, to name: String) {
+            if let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]) {
+                try? data.write(to: folder.appendingPathComponent(name), options: .atomic)
+            }
+        }
+        let fixture = try image(withText: true)
+        let action = PointerProbeAction {
+            guard observedWindow?.isVisible != true else { return }
+            let opened = ScreenshotFlow.openResult(image: fixture, plan: plan, recognitionNotice: nil,
+                prepare: { _ in .ready(.init(translator: PanelLifecycleTranslator(), explainer: FailingTermExplainer(message: "unused"))) })
+            opened.source.showCodes([.init(payload: self.payload, box: .zero)])
+            result = opened
+            observedWindow = NSApp.windows.first { $0.identifier?.rawValue == "screenshot-translation-panel" && $0.isVisible }
+            guard let window = observedWindow else { return }
+            launcher.orderOut(nil)
+            let top = (NSScreen.screens.first?.frame.maxY ?? 0) - window.frame.maxY
+            write(["pid": ProcessInfo.processInfo.processIdentifier, "windowNumber": window.windowNumber,
+                "identifier": window.identifier?.rawValue ?? "", "windowFrame": NSStringFromRect(window.frame),
+                "screenFrame": window.screen.map { NSStringFromRect($0.frame) } ?? "", "backingScale": window.backingScaleFactor,
+                "screenClickPoint": [window.frame.minX + 110, top + 85], "modelRequests": 0,
+                "preparedWith": "offline stub"], to: "ready.json")
+        }
+        defer {
+            withExtendedLifetime(action) {}
+            result?.window.dismiss()
+            launcher.close()
+        }
+        let text = NSTextField(labelWithString: "合成内容与离线翻译桩，不调用模型、不消耗额度。")
+        text.frame = NSRect(x: 20, y: 104, width: 360, height: 28)
+        let button = NSButton(title: "打开离线验收浮窗", target: action, action: #selector(PointerProbeAction.open))
+        button.frame = NSRect(x: 70, y: 40, width: 260, height: 40)
+        button.bezelStyle = .rounded
+        launcher.contentView?.addSubview(text)
+        launcher.contentView?.addSubview(button)
+        launcher.center()
+        launcher.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        func recordClick(_ event: NSEvent, origin: String) {
+            guard let window = observedWindow else { return }
+            let point = PanelPointer.screenPoint(for: event, in: window)
+            clicks.append(["origin": origin, "screenPoint": NSStringFromPoint(point),
+                "insidePanelFrame": window.frame.contains(point), "eventWindowNumber": event.window?.windowNumber ?? 0,
+                "panelWindowNumber": window.windowNumber, "frame": NSStringFromRect(window.frame),
+                "visible": window.isVisible, "key": window.isKeyWindow])
+            write(clicks, to: "mouse-events.json")
+        }
+        let global = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { event in
+            Task { @MainActor in recordClick(event, origin: "global") }
+        }
+        let local = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { event in
+            Task { @MainActor in recordClick(event, origin: "local") }
+            return event
+        }
+        defer {
+            if let global { NSEvent.removeMonitor(global) }
+            if let local { NSEvent.removeMonitor(local) }
+        }
+        write(["pid": ProcessInfo.processInfo.processIdentifier, "windowNumber": launcher.windowNumber], to: "launcher-ready.json")
         var history: [[String: Any]] = []
         for _ in 0..<1_800 {
-            history.append(["visible": window.isVisible, "key": window.isKeyWindow,
-                            "level": window.level.rawValue, "frame": NSStringFromRect(window.frame)])
+            if let window = observedWindow {
+                history.append(["windowNumber": window.windowNumber, "visible": window.isVisible, "key": window.isKeyWindow,
+                    "onActiveSpace": window.isOnActiveSpace, "occlusionVisible": window.occlusionState.contains(.visible),
+                    "level": window.level.rawValue, "frame": NSStringFromRect(window.frame)])
+                if !window.isVisible {
+                    observedWindow = nil
+                    result = nil
+                    launcher.makeKeyAndOrderFront(nil)
+                }
+            }
             if fileManager.fileExists(atPath: folder.appendingPathComponent("done").path) { break }
             try await Task.sleep(for: .milliseconds(100))
         }
-        try JSONSerialization.data(withJSONObject: history, options: [.prettyPrinted, .sortedKeys])
-            .write(to: folder.appendingPathComponent("window-history.json"))
-        try attach(window, name: "observed-shared-screenshot-panel")
+        write(history, to: "window-history.json")
+        if let window = observedWindow, window.isVisible { try attach(window, name: "observed-shared-screenshot-panel") }
     }
 
     private func attach(_ window: NSWindow, name: String) throws {
@@ -205,4 +270,11 @@ private struct PanelLifecycleTranslator: Translator {
     func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] {
         texts.map { "译" + $0 }
     }
+}
+
+@MainActor
+private final class PointerProbeAction: NSObject {
+    private let action: () -> Void
+    init(_ action: @escaping () -> Void) { self.action = action }
+    @objc func open() { action() }
 }

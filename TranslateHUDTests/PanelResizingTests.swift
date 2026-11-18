@@ -23,6 +23,9 @@ final class PanelResizingTests: XCTestCase {
         let budget = PanelSizeBudget(visibleHeight: 1_000)
         let fitter = ContentFittingWindow(window: window, sizeBudget: budget, placement: nil)
         fitter.applyNow { _ in NSSize(width: 500, height: 400) }
+        window.level = .floating
+        window.orderFrontRegardless()
+        let keyBeforeDrag = NSApp.keyWindow
         let before = window.frame
         func event(_ type: NSEvent.EventType, x: CGFloat, y: CGFloat) throws -> NSEvent {
             let e = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: y),
@@ -37,8 +40,12 @@ final class PanelResizingTests: XCTestCase {
         window.sendEvent(try event(.leftMouseDown, x: 100, y: 377))
         XCTAssertTrue(window.isHandlingDrag)
         XCTAssertFalse(window.isResizingSource)
+        XCTAssertTrue(NSApp.keyWindow === keyBeforeDrag)
         for e in queued {
             window.sendEvent(e)
+            XCTAssertTrue(window.isVisible)
+            XCTAssertEqual(window.level, .floating)
+            XCTAssertTrue(NSApp.keyWindow === keyBeforeDrag)
             let moving = window.frame
             fitter.applyNow { _ in NSSize(width: 500, height: 600) }
             XCTAssertEqual(window.frame, moving)

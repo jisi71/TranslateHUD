@@ -670,14 +670,16 @@ enum ScreenshotDeskew {
         }
         guard let corrected = work.0 else { return (image, original, originalAnalysis) }
         let candidate = NSImage(cgImage: corrected, size: NSSize(width: corrected.width, height: corrected.height))
-        // Independent recognizer output is observation only; never source ownership or loss proof.
-        if let observed = try? await OCRService.recognizePlain(image: candidate) {
-            captured?.candidateOCRStatus = "succeeded"
-            captured?.candidateLines = observed
-            trace?.record("candidateOCR", "observationalSucceeded", ["lineCount": Double(observed.count)])
-        } else {
-            captured?.candidateOCRStatus = "failed"
-            trace?.record("candidateOCR", "observationalFailed")
+        // Only diagnostics use the OCR reading of the rotated image.
+        if captured != nil || trace != nil {
+            if let observed = try? await OCRService.recognizePlain(image: candidate) {
+                captured?.candidateOCRStatus = "succeeded"
+                captured?.candidateLines = observed
+                trace?.record("candidateOCR", "observationalSucceeded", ["lineCount": Double(observed.count)])
+            } else {
+                captured?.candidateOCRStatus = "failed"
+                trace?.record("candidateOCR", "observationalFailed")
+            }
         }
         captured?.selectionPolicy = "estimatedRenderOwnership"
         guard let estimate = work.3, let receipt = work.4,

@@ -1,0 +1,33 @@
+--- a/server.js
++++ b/server.js
+@@ -1,10 +1,12 @@
+ 'use strict'
+ 
+ const http = require('http')
++const { performance } = require('node:perf_hooks')
+ const { createAccountStoreFromEnv } = require('./src/accountStore')
+ const { createErrorLogStoreFromEnv } = require('./src/errorLogStore')
+ const { createFeedbackStoreFromEnv } = require('./src/feedbackStore')
+ const { createRequestListener } = require('./src/httpApp')
++const { countSourceTokens } = require('./src/sourceTokens')
+ const { readEnv } = require('./src/trialService')
+ 
+ const { createUsageEventStoreFromEnv } = require('./src/usageEventStore')
+@@ -17,6 +19,17 @@
+ const port = Number(process.env.PORT || 8787)
+ const server = http.createServer(createRequestListener({ store, feedbackStore, env, errorLog, usageEvents }))
+ 
++const version = process.env.SCF_FUNCTIONVERSION || ''
++if (/^[1-9]\d*$/.test(version)) {
++  const start = performance.now()
++  countSourceTokens('')
++  console.log(JSON.stringify({
++    event: 'trial_tokenizer_ready',
++    version,
++    duration_ms: Math.round(performance.now() - start)
++  }))
++}
++
+ server.listen(port, () => {
+   const keyState = String(env.apiKey || '').trim() ? 'configured' : 'MISSING'
+   const storeState = process.env.TRIAL_STORE || 'file'

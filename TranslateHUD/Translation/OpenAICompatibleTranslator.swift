@@ -145,7 +145,16 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
 
         let req = try makeRequest(url: endpoint, timeout: 60, accept: nil, body: body)
 
+        let started = DispatchTime.now().uptimeNanoseconds
         let (data, response) = try await session.data(for: req)
+        let received = DispatchTime.now().uptimeNanoseconds
+        defer {
+            if screenshotDiagnostics {
+                let httpMs = (received - started) / 1_000_000
+                let parseMs = (DispatchTime.now().uptimeNanoseconds - received) / 1_000_000
+                AppLog.notice("screenshot_batch_response http_ms=\(httpMs) parse_and_settle_ms=\(parseMs)")
+            }
+        }
         try Task.checkCancellation()
         let http = response as? HTTPURLResponse
         guard let code = http?.statusCode, (200..<300).contains(code) else {

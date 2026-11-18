@@ -78,12 +78,7 @@ enum ScreenshotTablePipeline {
                 splitIndices.formUnion(indices)
             }
         }
-        var words: [Int: [OCRService.Line]] = [:]
-        if !splitIndices.isEmpty {
-            let indices = splitIndices.sorted()
-            let boxes = await OCRService.tableWordBoxes(image: image, matching: indices.map { lines[$0] })
-            for (index, value) in zip(indices, boxes) { if let value { words[index] = value } }
-        }
+        let words = await readWords(for: splitIndices, in: lines, image: image)
 
         var mapped: [ScreenshotTableReconciler.MappedTable] = []
         for candidate in candidates {
@@ -122,18 +117,22 @@ enum ScreenshotTablePipeline {
 
     private static func visionPlan(image: NSImage, lines: [OCRService.Line], plainLines: [OCRService.Line], tables: [ScreenshotTable],
                                    rejected: Bool, observe: ((Observation) throws -> Void)? = nil) async -> ScreenshotAutoPlan.Outcome {
+        let usable = tables.filter { !$0.nonEmptyCells.isEmpty }
+        let matches = usable.map { ScreenshotTableReconciler.reconcile($0, lines: lines) }
+        let splitIndices = matches.reduce(into: Set<Int>()) { indices, match in
+            if case .needsWords(let values) = match { indices.formUnion(values) }
+        }
+        let words = await readWords(for: splitIndices, in: lines, image: image)
+
         var mapped: [ScreenshotTable] = []
         var consumed: Set<Int> = []
         var needsTextReview = false
-        var rejected = rejected
-        for table in tables {
-            guard !table.nonEmptyCells.isEmpty else { rejected = true; continue }
-            var result = ScreenshotTableReconciler.reconcile(table, lines: lines)
-            if case .needsWords(let indices) = result {
-                let boxes = await OCRService.tableWordBoxes(image: image, matching: indices.map { lines[$0] })
-                var words: [Int: [OCRService.Line]] = [:]
-                for (index, value) in zip(indices, boxes) { if let value { words[index] = value } }
-                result = ScreenshotTableReconciler.reconcile(table, lines: lines, words: words)
+        let rejected = rejected || usable.count != tables.count
+        for (table, match) in zip(usable, matches) {
+            var result = match
+            if case .needsWords(let indices) = match {
+                let tableWords = words.filter { indices.contains($0.key) }
+                result = ScreenshotTableReconciler.reconcile(table, lines: lines, words: tableWords)
             }
             let chosen: ScreenshotTable
             switch result {
@@ -159,6 +158,15 @@ enum ScreenshotTablePipeline {
         try? observe?(Observation(stage: "reconciledAssemblyInput_nestedNormalizationNotObserved", lines: plainLines))
         return ScreenshotAutoPlan.makeReconciled(lines: plainLines, tables: mapped, consumed: consumed,
                                                  hasRejectedTable: rejected, needsTextReview: needsTextReview)
+    }
+
+    private static func readWords(for indices: Set<Int>, in lines: [OCRService.Line],
+                                  image: NSImage) async -> [Int: [OCRService.Line]] {
+        let ordered = indices.sorted()
+        let boxes = await OCRService.tableWordBoxes(image: image, matching: ordered.map { lines[$0] })
+        var words: [Int: [OCRService.Line]] = [:]
+        for (index, value) in zip(ordered, boxes) { words[index] = value }
+        return words
     }
 
     private static func plainPlan(_ lines: [OCRService.Line], rejected: Bool, observe: ((Observation) throws -> Void)? = nil) -> ScreenshotAutoPlan.Outcome {

@@ -48,6 +48,37 @@ final class ScreenshotParagraphLayoutTests: XCTestCase {
         XCTAssertEqual(ScreenshotPlainText.paragraphs(from: lines), ["• First item", "• Second item"])
     }
 
+    func testShortInstructionRowsStaySeparateAndSameRowFragmentsCombine() async throws {
+        let lines = [
+            line("打开插件目录", x: 0.011, y: 0.829, width: 0.310, height: 0.127),
+            line("在 Codex App 中点击右上角的", x: 0.015, y: 0.646, width: 0.679, height: 0.123),
+            line("+", x: 0.721, y: 0.663, width: 0.034, height: 0.074),
+            line("按钮。", x: 0.784, y: 0.646, width: 0.159, height: 0.123),
+            line("添加插件市场", x: 0.015, y: 0.351, width: 0.306, height: 0.129),
+            line("在菜单中选择", x: 0.015, y: 0.175, width: 0.287, height: 0.120),
+            line("添加插件市场", x: 0.015, y: 0.014, width: 0.306, height: 0.125)
+        ]
+        let expected = ["打开插件目录", "在 Codex App 中点击右上角的 + 按钮。", "添加插件市场", "在菜单中选择", "添加插件市场"]
+        let plan = ScreenshotPlainText.plan(from: lines)
+        XCTAssertEqual(plan.sourceTexts, expected)
+
+        let recorder = PlainParagraphRecorder()
+        let translator = ScreenshotPlanTranslator(base: PlainParagraphTranslator(recorder: recorder), plan: plan)
+        let output = try await translator.translate([plan.originalMarkdown], to: .chinese, context: nil)
+        XCTAssertEqual(output.first?.components(separatedBy: "\n\n").count, 5)
+        let calls = await recorder.calls
+        XCTAssertEqual(calls, [expected])
+    }
+
+    func testChineseSentenceThatReachesTheRightEdgeStillJoins() {
+        let lines = [
+            line("如果第一次登录，请先在应用右上角打开设置并选择", x: 0.05, y: 0.8, width: 0.87, height: 0.04),
+            line("账户。", x: 0.05, y: 0.74, width: 0.12, height: 0.04)
+        ]
+        XCTAssertEqual(ScreenshotPlainText.paragraphs(from: lines),
+                       ["如果第一次登录，请先在应用右上角打开设置并选择账户。"])
+    }
+
     func testPlainScreenshotDoesNotInventBoldOrHeadings() {
         let styled = OCRService.Line(text: "Example", normalizedBox: CGRect(x: 0.1, y: 0.8, width: 0.2, height: 0.04),
                                      confidence: 1, runs: [.init(text: "Example", isStrong: true)])

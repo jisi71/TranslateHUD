@@ -14,6 +14,7 @@ enum ScreenshotPlainText {
         let aligned: Bool
         let similarSize: Bool
         let nextStartsList: Bool? // nil when geometry short-circuited that predicate
+        let previousEndsEarly: Bool
         let joined: Bool
     }
     struct Observation {
@@ -52,14 +53,17 @@ enum ScreenshotPlainText {
             let xOffset = abs(a.minX - b.minX)
             let aligned = xOffset <= max(0.015, min(a.width, b.width) * 0.2)
             let similarSize = abs(a.height - b.height) <= median * 0.6
-            let limit = isContinuation(previous.text, line.text) ? median * 1.5 : median * 0.8
+            let continues = isContinuation(previous.text, line.text)
+            let limit = continues ? median * 1.5 : median * 0.8
             let geometryAllowsJoin = gap >= -median * 0.15 && gap <= limit && aligned && similarSize
             let listStart: Bool? = geometryAllowsJoin ? startsListItem(line.text) : nil
-            let joined = geometryAllowsJoin && listStart == false
+            let previousEndsEarly = geometryAllowsJoin && !continues && endsEarly(at: offset, in: ordered)
+            let joined = geometryAllowsJoin && listStart == false && !previousEndsEarly
             if observe != nil {
                 decisions.append(.init(previousVisualOrdinal: offset, nextVisualOrdinal: offset + 1,
                     gap: gap, xOffset: xOffset, medianHeight: median, gapLimit: limit,
-                    aligned: aligned, similarSize: similarSize, nextStartsList: listStart, joined: joined))
+                    aligned: aligned, similarSize: similarSize, nextStartsList: listStart,
+                    previousEndsEarly: previousEndsEarly, joined: joined))
             }
             if joined {
                 current = join(current, line.text)
@@ -133,6 +137,17 @@ enum ScreenshotPlainText {
         if ",;:，；：、".contains(last) { return true }
         guard !".!?。！？".contains(last) else { return false }
         return first.isLowercase
+    }
+
+    private static func endsEarly(at index: Int, in lines: [OCRService.Line]) -> Bool {
+        let line = lines[index].normalizedBox.standardized
+        let nearby = lines[max(0, index - 3)..<min(lines.count, index + 4)]
+        // A much wider nearby row with the same left edge shows that this row had room to continue.
+        return nearby.contains { row in
+            let box = row.normalizedBox.standardized
+            return abs(box.minX - line.minX) <= max(0.015, line.width * 0.1)
+                && line.width < (box.maxX - line.minX) * 0.6
+        }
     }
 
     private static func startsListItem(_ text: String) -> Bool {

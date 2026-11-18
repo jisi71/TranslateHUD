@@ -19,11 +19,13 @@ final class FloatingScreenshotWindow {
     init(
         image: NSImage,
         source: ScreenshotSourceState,
-        recognitionNotice: String? = nil
+        recognitionNotice: String? = nil,
+        mouseLocation: NSPoint = NSEvent.mouseLocation
     ) {
         self.source = source
 
-        let budget = PanelSizeBudget(visibleHeight: PanelScreenPicker.visibleHeight(placement: nil))
+        let placement = PopoverPlacementContext(selectionRectTopLeft: nil, mouseLocation: mouseLocation)
+        let budget = PanelSizeBudget(visibleHeight: PanelScreenPicker.visibleHeight(placement: placement))
         let initialSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
         window = TranslationPanelWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
@@ -34,7 +36,7 @@ final class FloatingScreenshotWindow {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = true
-        window.level = .normal
+        window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.hidesOnDeactivate = false
         window.title = "TranslateHUD"
@@ -45,7 +47,7 @@ final class FloatingScreenshotWindow {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: PopoverContent.fixedWidth, height: PopoverContent.minHeight)
         window.maxSize = NSSize(width: PopoverContent.fixedWidth, height: budget.budget.panelMax)
-        fitter = ContentFittingWindow(window: window, sizeBudget: budget, placement: nil)
+        fitter = ContentFittingWindow(window: window, sizeBudget: budget, placement: placement)
 
         var closeRef: (@MainActor () -> Void)?
         var retryRef: (@MainActor () -> Void)?
@@ -75,7 +77,6 @@ final class FloatingScreenshotWindow {
         retryRef = { [weak self] in self?.source.progress.retry() }
         pinRef = { [weak self] pinned in
             self?.isPinned = pinned
-            self?.window.level = pinned ? .floating : .normal
         }
         layoutRef = { [weak self] in self?.scheduleContentSizeAdjustment() }
     }
@@ -201,7 +202,7 @@ private struct ResultView: View {
             panelWidth: sizeBudget.width,
             isUserSized: sizeBudget.userSize != nil,
             translationHeight: sizeBudget.translationHeight,
-            recognitionNotice: recognitionNotice,
+            recognitionNotice: source.recognitionNotice ?? recognitionNotice,
             screenshotSource: source,
             sourceEditor: source.editor,
             sourceEditError: source.editError,

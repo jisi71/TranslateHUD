@@ -508,9 +508,13 @@ struct ScreenshotProofreadView: View {
     }
 }
 
-final class ScreenshotInputTextView: NSTextView {
+class ScreenshotInputTextView: NSTextView {
     var didCommitText: (() -> Void)?
     var didFocus: (() -> Void)?
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        isEditable || super.acceptsFirstMouse(for: event)
+    }
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()

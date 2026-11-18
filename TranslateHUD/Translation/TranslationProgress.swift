@@ -111,6 +111,15 @@ final class TranslationProgress: ObservableObject {
         self.timeoutSeconds = timeoutSeconds
     }
 
+    func finishWithoutTranslation(error: String? = nil) {
+        cancel()
+        qualityWarning = nil
+        qualityFeedbackOwner = nil
+        displayError = nil
+        retryReason = nil
+        state = error.map(State.failed) ?? .success(pairs: [])
+    }
+
     /// 批量翻译（用于截图：多行 OCR 结果，需要按下标对齐）。
     func start(
         translator: Translator,

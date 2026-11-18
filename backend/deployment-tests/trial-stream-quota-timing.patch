@@ -1,0 +1,175 @@
+--- a/src/accountStore.js
++++ b/src/accountStore.js
+@@ -491,21 +491,24 @@
+     })
+   }
+ 
+-  async acquireInflight(uid, now = Date.now(), sourceTokens = 0) {
+-    return this.withRetry(async () => {
+-      const tx = await this.begin()
+-      try {
+-        const existing = await tx.get(uid)
++  async acquireInflight(uid, now = Date.now(), sourceTokens = 0, timing) {
++    const db = (step, operation) => timing ? timing.measureQuota(step, operation) : operation()
++    return this.withRetry(async () => {
++      const tx = await db('quota_db_begin_ms', () => this.begin())
++      try {
++        const existing = await db('quota_db_read_ms', () => tx.get(uid))
++        const start = timing?.now()
+         const decision = acquireSlot(existing, now, sourceTokens)
+         const changed = decision.record && JSON.stringify((decision.record && decision.record.inflight) || []) !== JSON.stringify((existing && existing.inflight) || [])
++        timing?.addQuota('quota_slot_decision_ms', start)
+         if (decision.ok || changed) {
+-          if (existing) await tx.save(uid, decision.record)
+-          else if (decision.ok) await tx.create(uid, decision.record)
+-        }
+-        await tx.commit()
++          if (existing) await db('quota_db_write_ms', () => tx.save(uid, decision.record))
++          else if (decision.ok) await db('quota_db_write_ms', () => tx.create(uid, decision.record))
++        }
++        await db('quota_db_commit_ms', () => tx.commit())
+         return decision
+       } catch (error) {
+-        await tx.rollback().catch(() => {})
++        await db('quota_db_rollback_ms', () => tx.rollback()).catch(() => {})
+         throw error
+       }
+     })
+--- a/src/cloudBaseStore.js
++++ b/src/cloudBaseStore.js
+@@ -220,15 +220,18 @@
+     }
+   })
+ 
+-  async function run(method, args) {
++  async function run(method, args, timing) {
++    const prepare = () => timing
++      ? timing.measureQuota('quota_db_ready_ms', () => ensureRuntimeCollections(database))
++      : ensureRuntimeCollections(database)
+     try {
+-      await ensureRuntimeCollections(database)
++      await prepare()
+       return await inner[method](...args)
+     } catch (error) {
+       if (!isCollectionMissing(error)) throw asStoreError(error)
+       readyByDatabase.delete(database)
+       try {
+-        await ensureRuntimeCollections(database)
++        await prepare()
+         return await inner[method](...args)
+       } catch (retryError) {
+         throw asStoreError(retryError)
+@@ -240,7 +243,7 @@
+     ensure: (uid, now) => run('ensure', [uid, now]),
+     inviteStatus: (env) => run('inviteStatus', [env]),
+     redeem: (uid, code, now, env) => run('redeem', [uid, code, now, env]),
+-    acquireInflight: (uid, now, sourceTokens) => run('acquireInflight', [uid, now, sourceTokens]),
++    acquireInflight: (uid, now, sourceTokens, timing) => run('acquireInflight', [uid, now, sourceTokens, timing], timing),
+     releaseInflight: (uid, slotId) => run('releaseInflight', [uid, slotId]),
+     charge: (uid, costMicroYuan) => run('charge', [uid, costMicroYuan]),
+     settle: (uid, costMicroYuan, slotId, now) => run('settle', [uid, costMicroYuan, slotId, now]),
+--- a/src/httpApp.js
++++ b/src/httpApp.js
+@@ -61,9 +61,22 @@
+   let since = started
+   let phase = 'body_read_ms'
+   const durations = {}
++  const quota = {}
+   const round = (ms) => Math.round(ms * 1000) / 1000
+   const timing = {
+     stream: false,
++    now() { return performance.now() },
++    addQuota(name, start) {
++      quota[name] = (quota[name] || 0) + (performance.now() - start)
++    },
++    async measureQuota(name, operation) {
++      const start = performance.now()
++      try {
++        return await operation()
++      } finally {
++        this.addQuota(name, start)
++      }
++    },
+     step(next, at = performance.now()) {
+       durations[phase] = round(at - since)
+       since = at
+@@ -78,7 +91,8 @@
+       event: 'trial_translate_timing',
+       status: res.statusCode,
+       total_ms: round(ended - started),
+-      ...durations
++      ...durations,
++      ...Object.fromEntries(Object.entries(quota).map(([name, ms]) => [name, round(ms)]))
+     }))
+   })
+   return timing
+--- a/src/sourceTokens.js
++++ b/src/sourceTokens.js
+@@ -3,13 +3,23 @@
+ let tokenizer
+ 
+ // The quota measures the source alone; chat wrappers and special framing are excluded.
+-function countSourceTokens(text) {
++function countSourceTokens(text, timing) {
+   if (!tokenizer) {
+-    const { Tokenizer } = require('@huggingface/tokenizers')
+-    const definition = require('./tokenizers/deepseek-v4/tokenizer.json')
+-    tokenizer = new Tokenizer(definition, {})
++    const start = timing?.now()
++    try {
++      const { Tokenizer } = require('@huggingface/tokenizers')
++      const definition = require('./tokenizers/deepseek-v4/tokenizer.json')
++      tokenizer = new Tokenizer(definition, {})
++    } finally {
++      timing?.addQuota('quota_tokenizer_init_ms', start)
++    }
+   }
+-  return tokenizer.encode(String(text), { add_special_tokens: false }).ids.length
++  const start = timing?.now()
++  try {
++    return tokenizer.encode(String(text), { add_special_tokens: false }).ids.length
++  } finally {
++    timing?.addQuota('quota_token_encode_ms', start)
++  }
+ }
+ 
+ module.exports = { countSourceTokens }
+--- a/src/trialService.js
++++ b/src/trialService.js
+@@ -304,12 +304,18 @@
+ 
+   // Admission checks the daily limit and holds the account slot atomically.
+   timing?.step('quota_ms')
++  const quotaTiming = stream ? null : timing
+   let held
+   try {
+-    held = await ctx.store.acquireInflight(identified.uid, ctx.now(), 0)
++    held = await ctx.store.acquireInflight(identified.uid, ctx.now(), 0, quotaTiming)
+     if (held && held.needsAccount) {
+-      await ctx.store.ensure(identified.uid, ctx.now())
+-      held = await ctx.store.acquireInflight(identified.uid, ctx.now(), 0)
++      const start = quotaTiming?.now()
++      try {
++        await ctx.store.ensure(identified.uid, ctx.now())
++      } finally {
++        quotaTiming?.addQuota('quota_account_ensure_ms', start)
++      }
++      held = await ctx.store.acquireInflight(identified.uid, ctx.now(), 0, quotaTiming)
+     }
+   } catch (error) {
+     return storeFailure(error)
+@@ -317,12 +323,12 @@
+   if (held && held.needsSourceTokens) {
+     let sourceTokens
+     try {
+-      sourceTokens = countSourceTokens(decoded.text)
++      sourceTokens = countSourceTokens(decoded.text, quotaTiming)
+     } catch {
+       return errorResult(503, 'trial_not_configured', MESSAGES.notConfigured)
+     }
+     try {
+-      held = await ctx.store.acquireInflight(identified.uid, ctx.now(), sourceTokens)
++      held = await ctx.store.acquireInflight(identified.uid, ctx.now(), sourceTokens, quotaTiming)
+     } catch (error) {
+       return storeFailure(error)
+     }

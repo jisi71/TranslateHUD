@@ -1074,6 +1074,58 @@ final class TranslationReliabilityTests: XCTestCase {
         XCTAssertTrue(refreshed)
     }
 
+    func testScreenshotResultWaitsForSettlementButNotSlowBalanceRefresh() async throws {
+        XCTAssertEqual(TrialConfig.screenshotProxy(for: TrialConfig.defaultProxyBaseURL + "/"),
+                       TrialConfig.defaultProxyBaseURL + "-screenshot")
+        XCTAssertEqual(TrialConfig.screenshotProxy(for: "https://example.com/custom/v1"),
+                       "https://example.com/custom/v1")
+        let generation = UUID()
+        let settlement = TrialStreamGate()
+        let refresh = TrialStreamGate()
+        defer { Task { await settlement.release(); await refresh.release() } }
+        var response = TranslationURLProtocol.Response.batch(#"{"results":[{"i":0,"t":"你好"}]}"#)
+        response.headers = ["X-Trial-Cost-Micro-Yuan": "10", "X-Trial-Charged-Micro-Yuan": "0",
+                            "X-Trial-Balance-Micro-Yuan": "100"]
+        TranslationURLProtocol.reset([response])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let account = TrialStreamingAccount(
+            accessToken: { TrialActor.Credential(token: "unit-test-token", generation: generation) },
+            applySettlement: { _, generation in await settlement.wait(generation: generation) },
+            refreshBalance: { generation in await refresh.wait(generation: generation) }
+        )
+        let base = TrialProxyTranslator(proxyBaseURL: TrialConfig.defaultProxyBaseURL,
+                                        session: URLSession(configuration: configuration), streamingAccount: account)
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: "Hello", isStrong: false)], heading: nil)])
+        let progress = TranslationProgress(timeoutSeconds: 12)
+        defer { progress.cancel() }
+        progress.start(translator: ScreenshotPlanTranslator(base: base, plan: plan),
+                       originals: [plan.originalMarkdown], target: .chinese)
+
+        for _ in 0..<500 {
+            if await settlement.started { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let settlementStarted = await settlement.started
+        let refreshStartedBeforeSettlement = await refresh.started
+        XCTAssertTrue(settlementStarted)
+        XCTAssertFalse(refreshStartedBeforeSettlement)
+        guard case .loading = progress.state else { return XCTFail("Expected the settlement to finish first") }
+
+        await settlement.release()
+        for _ in 0..<500 {
+            if case .success = progress.state, await refresh.started { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(progress.displayedTranslation, "你好")
+        let refreshGeneration = await refresh.generation
+        let refreshFinished = await refresh.finished
+        XCTAssertEqual(refreshGeneration, generation)
+        XCTAssertFalse(refreshFinished)
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+        XCTAssertEqual(TranslationURLProtocol.requests().first?.url?.path, "/v1-screenshot/chat/completions")
+    }
+
     func testTrialStreamFailureDoesNotWaitForSlowBalanceRefresh() async {
         let settlement = TrialStreamGate()
         let refresh = TrialStreamGate()

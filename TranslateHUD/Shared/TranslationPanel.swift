@@ -44,6 +44,12 @@ struct TranslationPanel: View {
     private var translated: String {
         progress.displayedTranslation
     }
+    private var codes: [ScreenshotQRCode.Code] { screenshotSource?.codes ?? [] }
+    private var resultText: String { screenshotSource?.resultText ?? translated }
+    private var speechText: String {
+        (codes.map(\.displayText) + [MarkdownDisplay.plainText(from: translated)])
+            .filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,9 +75,17 @@ struct TranslationPanel: View {
                     translationHeight: translationHeight,
                     fillTranslation: isUserSized
                 ) {
-                    sourceSection
+                    Group {
+                        if screenshotSource?.isRecognizing == true || screenshotSource?.isQRCodeOnly == true {
+                            Color.clear.frame(height: Self.sourceSpeechSide)
+                        } else {
+                            sourceSection
+                        }
+                    }
+                        .disabled(screenshotSource?.canTranslate == false)
                         .frame(maxHeight: sourceHeight == nil ? nil : .infinity, alignment: .top)
                         .background(PanelAreaMarker(area: .source))
+                        .panelSectionRole(.source)
                     SourceResizeDivider(
                         color: NSColor(colors.border),
                         label: interfaceLanguage.text("调整原文显示高度"),
@@ -87,7 +101,7 @@ struct TranslationPanel: View {
                     .frame(height: 12)
                     .panelSectionRole(.divider)
                     statusSection
-                    if !translated.isEmpty || progress.translationDraft != nil {
+                    if !codes.isEmpty || !translated.isEmpty || progress.translationDraft != nil {
                         translationSection.background(PanelAreaMarker(area: .translation))
                     }
                     if termProgress.isExpanded { termsSection }
@@ -165,7 +179,8 @@ struct TranslationPanel: View {
             isOriginalExpanded ? "source-open" : "source-closed",
             showsContext ? "context-open" : "context-closed",
             termProgress.isExpanded ? "terms-open" : "terms-closed",
-            sourceBody, translated, progress.qualityWarning?.resultID.uuidString ?? "no-quality-warning",
+            sourceBody, resultText, screenshotSource?.isRecognizing == true ? "recognizing" : "recognized",
+            progress.qualityWarning?.resultID.uuidString ?? "no-quality-warning",
             sourceEditor == nil ? "source-view" : "source-edit"
         ].joined(separator: "\u{1e}")
     }
@@ -240,7 +255,6 @@ struct TranslationPanel: View {
                     .frame(width: Self.sourceSpeechSide, height: Self.sourceSpeechSide)
             }
         }
-        .panelSectionRole(.source)
     }
 
     /// Keep the scroll view's identity while its viewport changes during a drag.
@@ -281,35 +295,46 @@ struct TranslationPanel: View {
             translated, role: .translation, colors: colors, width: width, tableSpans: tableSpans
         ) + (progress.qualityWarning == nil ? 0 : 24)
         let viewportLimit = translationHeight ?? (isUserSized ? heightBudget.contentMax : max(textHeight, editorHeight))
-        return MaxHeightLayout(maxHeight: viewportLimit) {
-            ScrollView {
-                ProposedWidth {
-                    VStack(alignment: .leading, spacing: 6) {
-                        DirectMarkdownEditor(markdown: translated, role: .translation, colors: colors, width: width, tableSpans: tableSpans, onFocus: progress.focusTranslation, onChange: progress.editTranslation)
-                        if let warning = progress.qualityWarning {
-                            HStack(spacing: 8) {
-                                Text("可能存在漏译")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .accessibilityIdentifier("translation-undertranslated-warning")
-                                Button(submittedFeedbackID == warning.resultID ? "已反馈" : "反馈") {
-                                    qualityFeedback = QualityFeedbackPreview(warning: warning, owner: progress.qualityFeedbackOwner)
-                                }
-                                .font(.caption2)
-                                .buttonStyle(.borderless)
-                                .disabled(submittedFeedbackID == warning.resultID)
-                                .accessibilityIdentifier("translation-quality-feedback-preview")
-                            }
-                        }
+        return Group {
+            if codes.isEmpty {
+                MaxHeightLayout(maxHeight: viewportLimit) {
+                    ScrollView {
+                        ProposedWidth { translationContents }
                     }
+                    .defaultScrollAnchor(.top)
+                    .scrollBounceBehavior(.basedOnSize)
                 }
+            } else {
+                HeightFitting { ProposedWidth { translationContents } }
             }
-            .defaultScrollAnchor(.top)
-            .scrollBounceBehavior(.basedOnSize)
         }
         .frame(height: translationHeight, alignment: .topLeading)
         .clipped()
         .panelSectionRole(.translation)
+    }
+
+    private var translationContents: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !codes.isEmpty { ScreenshotQRCodeContents(codes: codes) }
+            if !translated.isEmpty || progress.translationDraft != nil {
+                DirectMarkdownEditor(markdown: translated, role: .translation, colors: colors, width: translationTextWidth, tableSpans: tableSpans, onFocus: progress.focusTranslation, onChange: progress.editTranslation)
+            }
+            if let warning = progress.qualityWarning {
+                HStack(spacing: 8) {
+                    Text("可能存在漏译")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("translation-undertranslated-warning")
+                    Button(submittedFeedbackID == warning.resultID ? "已反馈" : "反馈") {
+                        qualityFeedback = QualityFeedbackPreview(warning: warning, owner: progress.qualityFeedbackOwner)
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.borderless)
+                    .disabled(submittedFeedbackID == warning.resultID)
+                    .accessibilityIdentifier("translation-quality-feedback-preview")
+                }
+            }
+        }
     }
 
     private var termsSection: some View {
@@ -378,7 +403,7 @@ struct TranslationPanel: View {
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
-            .disabled(sourceEditor != nil)
+            .disabled(sourceEditor != nil || screenshotSource?.canTranslate == false)
             .help("目标语言")
             .accessibilityLabel(interfaceLanguage.format("目标语言：%@", interfaceLanguage.text(languageName)))
             iconButton(isPinned ? "pin.fill" : "pin", help: isPinned ? "取消置顶" : "置顶窗口", active: isPinned) {
@@ -396,6 +421,12 @@ struct TranslationPanel: View {
 
     private var status: some View {
         HStack(spacing: 9) {
+            if screenshotSource?.isRecognizing == true {
+                ProgressView().controlSize(.mini)
+                Text(interfaceLanguage.text("正在识别截图…"))
+                Spacer()
+                Button("取消", action: onClose).buttonStyle(.plain)
+            } else {
             switch progress.state {
             case .loading, .streaming:
                 ProgressView().controlSize(.mini)
@@ -404,7 +435,7 @@ struct TranslationPanel: View {
                 Button("取消", action: onClose).buttonStyle(.plain)
             case .success(let pairs):
                 Image(systemName: "checkmark.circle")
-                Text(interfaceLanguage.text(progress.translationDraft != nil ? "译文已手动修改" : pairs.isEmpty ? "未识别到文字，请重新框选文字区域" : "翻译完成"))
+                Text(interfaceLanguage.text(screenshotSource?.isQRCodeOnly == true ? "二维码识别完成" : progress.translationDraft != nil ? "译文已手动修改" : pairs.isEmpty ? "未识别到文字，请重新框选文字区域" : "翻译完成"))
                 Spacer()
             case .timedOut:
                 Image(systemName: "clock")
@@ -414,6 +445,7 @@ struct TranslationPanel: View {
                 Image(systemName: "exclamationmark.circle")
                 Text(progress.displayError.map { interfaceLanguage.error($0, operation: "翻译") } ?? interfaceLanguage.text(message)).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
+            }
             }
         }
         .font(.system(size: 12, weight: .medium))
@@ -442,7 +474,7 @@ struct TranslationPanel: View {
                     copyButton
                     termButton
                     if image != nil { screenshotButton }
-                    SpeechButton(text: MarkdownDisplay.plainText(from: translated), id: "translation.translated", speech: speech)
+                    SpeechButton(text: speechText, id: "translation.translated", speech: speech)
                         .frame(width: FooterToolbarPlan.toolSide, height: FooterToolbarPlan.toolSide)
                     retryButton
                 }
@@ -461,10 +493,11 @@ struct TranslationPanel: View {
 
     private var copyButton: some View {
         iconButton(hasCopied ? "checkmark" : "doc.on.doc", help: hasCopied ? "已复制" : "复制译文") {
-            progress.copyTranslation()
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(resultText, forType: .string)
             hasCopied = true
         }
-        .disabled(translated.isEmpty)
+        .disabled(resultText.isEmpty)
     }
 
     private var termButton: some View {
@@ -482,6 +515,7 @@ struct TranslationPanel: View {
     }
 
     private func retranslate(target: TargetLanguage? = nil) {
+        guard screenshotSource?.canTranslate != false else { return }
         if let input = NSApp.keyWindow?.firstResponder as? NSTextView, input.hasMarkedText() {
             NSSound.beep()
             return
@@ -499,7 +533,7 @@ struct TranslationPanel: View {
             speech.stop()
             retranslate()
         }
-        .disabled(sourceBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .disabled(screenshotSource?.canTranslate == false || sourceBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     private func modelMenu(titleLimit: CGFloat?) -> some View {

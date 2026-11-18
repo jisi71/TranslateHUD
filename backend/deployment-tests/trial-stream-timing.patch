@@ -1,0 +1,158 @@
+--- a/src/httpApp.js
++++ b/src/httpApp.js
+@@ -1,5 +1,6 @@
+ 'use strict'
+ 
++const { performance } = require('node:perf_hooks')
+ const { defaultForward } = require('./upstream')
+ const {
+   PUBLIC_HEADERS,
+@@ -55,6 +56,34 @@
+   })
+ }
+ 
++function translationTiming(res) {
++  const started = performance.now()
++  let since = started
++  let phase = 'body_read_ms'
++  const durations = {}
++  const round = (ms) => Math.round(ms * 1000) / 1000
++  const timing = {
++    stream: false,
++    step(next, at = performance.now()) {
++      durations[phase] = round(at - since)
++      since = at
++      phase = next
++    }
++  }
++  res.once('finish', () => {
++    if (timing.stream) return
++    const ended = performance.now()
++    timing.step(null, ended)
++    console.info(JSON.stringify({
++      event: 'trial_translate_timing',
++      status: res.statusCode,
++      total_ms: round(ended - started),
++      ...durations
++    }))
++  })
++  return timing
++}
++
+ function createRequestListener(deps = {}) {
+   const store = deps.store
+   const verifyUser = deps.verifyUser || defaultVerifyUser
+@@ -99,6 +128,7 @@
+     // the upstream when the client goes away before the response finishes.
+     let releaseInflight = async () => {}
+     const abort = new AbortController()
++    const timing = route === 'translate' ? translationTiming(res) : null
+     res.on('close', () => {
+       if (!res.writableEnded) abort.abort()
+       releaseInflight().catch(() => {})
+@@ -126,7 +156,8 @@
+         signal: abort.signal,
+         usageEvents: deps.usageEvents || null,
+         errorLog,
+-        errorRateLimiter
++        errorRateLimiter,
++        timing
+       }
+       let result
+       if (route === 'errors') result = await handleErrorReport(ctx)
+@@ -140,6 +171,7 @@
+         await releaseInflight()
+         return
+       }
++      timing?.step('response_write_ms')
+       res.writeHead(result.status, result.headers || { 'Content-Type': 'application/json; charset=utf-8' })
+       if (result.stream) {
+         result.stream.on('error', () => {
+@@ -164,6 +196,7 @@
+       const message = feedbackTooLarge
+         ? FEEDBACK_MESSAGES.tooLarge
+         : (tooLarge ? MESSAGES.body : (storeFailed ? MESSAGES.store : MESSAGES.upstream))
++      timing?.step('response_write_ms')
+       res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+       res.end(JSON.stringify({ error: { code, message } }))
+       req.destroy()
+--- a/src/trialService.js
++++ b/src/trialService.js
+@@ -268,13 +268,17 @@
+ 
+ async function handleTranslate(ctx) {
+   const startedAt = ctx.now()
++  const timing = ctx.timing
++  timing?.step('body_check_ms')
+   const rawBody = ctx.rawBody || ''
+   if (Buffer.byteLength(rawBody) > MAX_BODY_BYTES) {
+     return errorResult(413, 'trial_body_limit', MESSAGES.body)
+   }
++  timing?.step('auth_ms')
+   const identified = await identify(ctx)
+   if (identified.status) return identified
+ 
++  timing?.step('prepare_ms')
+   const decoded = decodeSourceHeader(sourceHeader(ctx.headers || {}))
+   if (!decoded.ok) return errorResult(decoded.status, decoded.code, decoded.message)
+   const quote = quoteSource(decoded.text)
+@@ -292,12 +296,14 @@
+     const prepared = prepareUpstreamPayload(rawBody, config, decoded.text)
+     payload = prepared.payload
+     stream = prepared.stream
++    if (timing) timing.stream = stream
+     format = prepared.format
+   } catch (error) {
+     return errorResult(error.status || 400, error.code || 'trial_body', error.publicMessage || MESSAGES.body)
+   }
+ 
+   // Admission checks the daily limit and holds the account slot atomically.
++  timing?.step('quota_ms')
+   let held
+   try {
+     held = await ctx.store.acquireInflight(identified.uid, ctx.now(), 0)
+@@ -335,12 +341,14 @@
+   }
+ 
+   try {
++    timing?.step('upstream_ms')
+     const upstream = await ctx.forward({
+       endpoint: config.endpoint,
+       apiKey: config.apiKey,
+       payload,
+       signal: ctx.signal
+     })
++    timing?.step('parse_upstream_ms')
+     if (!upstream || upstream.status < 200 || upstream.status >= 300) {
+       await release()
+       console.error(`trial upstream failed status=${upstream && upstream.status} uid=${identified.uid}`)
+@@ -389,6 +397,7 @@
+     }
+     let settled
+     try {
++      timing?.step('settlement_ms')
+       settled = await settleUsage(ctx, identified.uid, usage, prices, held.slotId)
+     } catch (error) {
+       await release()
+@@ -398,7 +407,9 @@
+       await release()
+       return errorResult(502, 'trial_usage_missing', MESSAGES.usageMissing)
+     }
++    timing?.step('usage_event_ms')
+     await recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt })
++    timing?.step('format_ms')
+     if (format) {
+       try {
+         parsed = restoreBoldResult(parsed, format)
+@@ -428,7 +439,10 @@
+     console.error(`trial upstream threw uid=${identified.uid}`)
+     return errorResult(502, 'trial_upstream', MESSAGES.upstream)
+   } finally {
+-    if (!stream) await release()
++    if (!stream) {
++      timing?.step('release_ms')
++      await release()
++    }
+   }
+ }
+ 

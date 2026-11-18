@@ -7,6 +7,10 @@ enum AppLog {
         logger.info("\(message, privacy: .public)")
     }
 
+    static func notice(_ message: String) {
+        logger.notice("\(message, privacy: .public)")
+    }
+
     static func error(_ message: String) {
         logger.error("\(message, privacy: .public)")
     }

@@ -356,7 +356,8 @@ struct DirectMarkdownText: NSViewRepresentable {
         init(_ parent: DirectMarkdownText) { self.parent = parent }
         func render(_ view: NSTextView) {
             guard !view.hasMarkedText(), (view as? ScreenshotInputTextView)?.isUpdatingInput != true else { return }
-            let value = NSMutableAttributedString(attributedString: NSAttributedString(MarkdownDisplay.styled(parent.markdown, role: parent.role, colors: parent.colors)))
+            let styled = MarkdownDisplay.styled(parent.markdown, role: parent.role, colors: parent.colors)
+            let value = MarkdownDisplay.textKitString(styled)
             // Markdown parsing collapses whitespace-only content. It is still user input.
             if parent.markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 value.mutableString.setString(parent.markdown)

@@ -291,7 +291,17 @@ final class PanelResizingTests: XCTestCase {
         let height = min(500, visible.height - 200)
         window.setFrame(NSRect(x: visible.minX + 80, y: visible.maxY - height - 40, width: 500, height: height), display: true)
         fitter.windowDidEndLiveResize(Notification(name: NSWindow.didEndLiveResizeNotification, object: window))
-        try await Task.sleep(for: .milliseconds(50))
+        func viewportFitsPanel() -> Bool {
+            guard let translation = handle.screenFrame(of: .translation),
+                  let body = handle.screenFrame(of: .body) else { return false }
+            return window.frame.minY <= body.minY && translation.minY >= body.minY + 17
+        }
+        for _ in 0..<50 {
+            content.layoutSubtreeIfNeeded()
+            if viewportFitsPanel() { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(viewportFitsPanel(), "Wait for the resized panel to lay out before starting the drag.")
         let beforeFrame = window.frame
         let beforeSource = handle.sourceHeight
         let beforeHeaderTop = try XCTUnwrap(handle.screenFrame(of: .header)).maxY

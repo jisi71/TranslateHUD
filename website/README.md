@@ -34,13 +34,27 @@ python3 -m http.server 8080
 
 首页介绍片是 `assets/intro-walkthrough.mp4`，用原生 `video` 播放，封面是 `assets/intro-poster.jpg`。不要改回占位说明，也不要在片子结束时加遮挡层。
 
-功能区里，选区、框选、朗读和名词解释是页面里拼出来的浮窗，不是系统截图。框选底图是 `montreal-winter-sports.jpg`（Montreal Winter Sports 1924 海报），蓝框圈住海报上的 Winter Sports，浮窗原文和译文与这几个词一致。下载准备里的辅助功能和录屏与系统录音各有一张真实系统设置截图：`accessibility-clean.png`（另有 800 宽的 `accessibility-clean-800.png`）、`screen-recording-clean.png`（另有 `screen-recording-800.png`）。每张只出现一次。无关应用列表做了高斯模糊。TranslateHUD 那一行（图标、名字、打开的开关）、左侧边栏里的「隐私与安全性」，以及当前页标题保持清晰。`permission-message.png` 是应用内提示，只用在更新说明里。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
+功能区里，选区、框选、表格、直接编辑和名词解释是页面里拼出来的浮窗，不是系统截图。框选底图是 `montreal-winter-sports.jpg`（Montreal Winter Sports 1924 海报），蓝框圈住海报上的 Winter Sports，浮窗原文和译文与这几个词一致。下载准备里的辅助功能和录屏与系统录音各有一张真实系统设置截图：`accessibility-clean.png`（另有 800 宽的 `accessibility-clean-800.png`）、`screen-recording-clean.png`（另有 `screen-recording-800.png`）。每张只出现一次。无关应用列表做了高斯模糊。TranslateHUD 那一行（图标、名字、打开的开关）、左侧边栏里的「隐私与安全性」，以及当前页标题保持清晰。`permission-message.png` 是应用内提示，只用在更新说明里。已有截图来自 `docs/screenshots/`，复制在 `website/assets/`：
 
 - `translation-panel.png`
 - `permission-message.png`
 - `quota-message.png`
 
-四处浮窗示意图共用 `assets/panel-icons.svg` 里的静态图标。顶栏使用灰色「字」对话框、TranslateHUD、语言、置顶、设置、关闭；底栏左侧依次是复制、名词解释、朗读（朗读中显示停止）、刷新，右侧是模型。手机窄屏只缩小间距和图标，不隐藏这些项目。
+浮窗示意图共用 `assets/panel-icons.svg` 里的静态图标。顶栏使用灰色「字」对话框、TranslateHUD、语言、置顶、设置、关闭；底栏左侧依次是复制、名词解释、朗读、刷新，右侧是模型。新增的截图编辑示意在名词解释与朗读之间保留「查看截图」图标。手机窄屏只缩小间距和图标，不隐藏这些项目。
+
+## 0.4.8 首页功能介绍
+
+沿用现有的暖白背景、图文交错布局和静态浮窗示意，不新增动画、框架或脚本。依据 [0.4.8 更新说明](../docs/releases/v0.4.8.md) 及对应已发布源码：
+
+- `#feature-edit`：浮窗直接编辑原文或译文；修改原文后手动重新翻译。示例的 Gate B 与译文登机口一致。
+- `#feature-deskew`：符合条件的倾斜截图在本机自动校正；校正前后使用同一张 Montreal 海报，不承诺所有截图都能校正。
+- `#feature-qr`：截图读取二维码，在本机查看、复制或主动打开链接。`assets/website-qr.svg` 是实际编码 `https://translatehud.com/` 的二维码，示意中的识别结果使用同一网址；不在网页执行截图识别。
+
+本轮新增介绍仅保留直接编辑、倾斜校正、二维码三项。首页已移除独立朗读、文档格式和质量反馈介绍，软件本身的这些功能与隐私声明不受影响。蓝色标签的文字与字形填色均固定为白色。
+
+新增介绍、示例内容与无障碍说明均随中英文切换。下载、邀请码、隐私页、更新说明与视频保持原有行为。
+
+本轮验证（2026-11-18）：检查桌面与手机、中英文切换、320/390/768/1280 宽度下的新卡片溢出和内容裁切；本机系统识别接口确认二维码网址。未调用真实翻译模型或提交反馈。App 源码未改，本轮未重新执行 44 张截图识别回归；不能将官网检查当作 App 回归通过。50 张普通文字样本仍未提供，该组未完成。官网发布须另行确认。
 
 系统设置这两张不在 `docs/screenshots/` 里，是单独放进 `website/assets/` 的：
 

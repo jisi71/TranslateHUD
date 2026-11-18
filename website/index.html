@@ -6,18 +6,18 @@
   <title data-title-zh="TranslateHUD — macOS 菜单栏翻译" data-title-en="TranslateHUD — menu-bar translation for macOS">TranslateHUD — macOS 菜单栏翻译</title>
   <meta
     name="description"
-    data-desc-zh="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。符合条件的中国大陆手机号账号可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。"
-    data-desc-en="TranslateHUD is a macOS menu-bar translator. Select text or drag a screen region and read the translation in a floating panel. Speak either side, and ask for a gloss of names and terms. Eligible mainland China phone accounts can redeem trial credit with an invite code. Supports OpenAI-compatible APIs (such as DeepSeek and OpenAI; local Ollama works too)."
-    content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。符合条件的中国大陆手机号账号可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。">
+    data-desc-zh="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。浮窗内可直接编辑原文和译文，支持倾斜截图校正与二维码识别。符合条件的中国大陆手机号账号可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。"
+    data-desc-en="TranslateHUD is a macOS menu-bar translator. Select text or drag a screen region and read the translation in a floating panel. Edit source and translated text in the panel, correct eligible tilted captures, and read QR codes. Eligible mainland China phone accounts can redeem trial credit with an invite code. Supports OpenAI-compatible APIs (such as DeepSeek and OpenAI; local Ollama works too)."
+    content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。浮窗内可直接编辑原文和译文，支持倾斜截图校正与二维码识别。符合条件的中国大陆手机号账号可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="TranslateHUD">
   <meta property="og:title" content="TranslateHUD — macOS 菜单栏翻译">
-  <meta property="og:description" content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。符合条件的中国大陆手机号账号可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。">
+  <meta property="og:description" content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。浮窗内可直接编辑原文和译文，支持倾斜截图校正与二维码识别。符合条件的中国大陆手机号账号可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。">
   <meta property="og:url" content="https://translatehud.com/">
   <meta property="og:image" content="https://translatehud.com/assets/intro-poster.jpg">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="TranslateHUD — macOS 菜单栏翻译">
-  <meta name="twitter:description" content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。原文和译文可以朗读，专有名词可以按需解释。符合条件的中国大陆手机号账号可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。">
+  <meta name="twitter:description" content="TranslateHUD 是 macOS 菜单栏翻译工具。选中文字或框选屏幕，在浮窗里看译文。浮窗内可直接编辑原文和译文，支持倾斜截图校正与二维码识别。符合条件的中国大陆手机号账号可用邀请码领取体验额度。支持 OpenAI 兼容接口（如 DeepSeek、OpenAI；也可接本地 Ollama）。">
   <meta name="twitter:image" content="https://translatehud.com/assets/intro-poster.jpg">
   <link rel="icon" href="assets/icon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="assets/icon-180.png">
@@ -205,8 +205,8 @@
               <span class="lang-en">Quick screenshot translation</span>
             </h2>
             <p>
-              <span class="lang-zh">没有选中文字时，用快捷键或菜单框选屏幕上的一块区域，即可在浮窗中查看译文。识别出的原文可直接在浮窗中编辑，再重新翻译。</span>
-              <span class="lang-en">With nothing selected, use the shortcut or the menu to capture a region and see the translation in the floating panel. Edit the recognized source text in the panel and translate it again.</span>
+              <span class="lang-zh">没有选中文字时，用快捷键或菜单框选屏幕上的一块区域，即可在浮窗中查看译文。识别错了，也可以直接改原文再译。</span>
+              <span class="lang-en">With nothing selected, use the shortcut or menu to capture a region and see its translation in the panel. You can also edit the recognized source and translate again.</span>
             </p>
           </div>
           <figure
@@ -476,67 +476,41 @@
           </figure>
         </article>
 
-        <article class="feature">
+        <article class="feature" id="feature-edit">
           <div class="feature-text">
-            <p class="tag"><span class="lang-zh">朗读</span><span class="lang-en">Speech</span></p>
-            <h2>
-              <span class="lang-zh">原文和译文都能读</span>
-              <span class="lang-en">Speak either side</span>
-            </h2>
-            <p>
-              <span class="lang-zh">两边可以分开朗读或停止。优先用这台电脑上已安装的高级或增强语音，否则用基础语音。朗读不调用翻译接口。</span>
-              <span class="lang-en">Speak or stop the source and the translation separately. Premium or enhanced voices already on the Mac are preferred; otherwise it uses a basic voice. Speech does not call the translation API.</span>
-            </p>
+            <p class="tag"><span class="lang-zh">直接编辑</span><span class="lang-en">Edit in place</span></p>
+            <h2><span class="lang-zh">原文译文，<br>点哪里改哪里</span><span class="lang-en">Click to edit<br>either side</span></h2>
+            <p><span class="lang-zh">识别错了一个词，不用重新截图。在浮窗里直接修改原文，再点「重新翻译」。译文也能直接改，调整好措辞后复制使用。</span><span class="lang-en">Fix a recognized word right in the panel, then click Retranslate. No need to capture again. You can also edit the translation to get the wording you want, then copy it.</span></p>
           </div>
-          <figure
-            class="feature-stage stage-dawn stage-speech"
-            data-aria-zh="原文旁有朗读按钮。底栏里译文的朗读按钮是蓝色停止方块，表示正在朗读译文。"
-            data-aria-en="The source has a speak button. In the footer, the translation’s speak control is a blue stop square.">
-            <div class="hud-panel hud-speech" aria-hidden="true">
-              <div class="hud-head">
-                <svg class="hud-logo" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#translate"/></svg>
-                <span class="hud-title">TranslateHUD</span>
-                <span class="hud-lang">
+          <figure class="feature-stage stage-sky stage-new stage-edit" role="img" aria-label="界面示意：将原文中的登机口改为 Gate B，再点底栏的重新翻译，得到「9:00 在 B 号登机口见。」。" data-aria-zh="界面示意：将原文中的登机口改为 Gate B，再点底栏的重新翻译，得到「9:00 在 B 号登机口见。」。" data-aria-en="Illustration: change the source gate to Gate B, then click Retranslate in the toolbar to get the updated translation.">
+            <div class="feature-example" aria-hidden="true">
+              <div class="hud-panel">
+                <div class="hud-head">
+                  <svg class="hud-logo" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#translate"/></svg>
+                  <span class="hud-title">TranslateHUD</span>
+                  <span class="hud-lang">
                   <span class="pair-src-en">简体中文</span>
                   <span class="pair-src-zh">English</span>
                   <svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg>
                 </span>
-                <span class="hud-tools" aria-hidden="true">
+                  <span class="hud-tools" aria-hidden="true">
                   <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#pin"/></svg>
                   <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#settings"/></svg>
                   <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#close"/></svg>
                 </span>
-              </div>
-              <div class="hud-source-row">
-                <p class="hud-source">
-                  <span class="pair-src-en">Great tools stay out of your way.</span>
-                  <span class="pair-src-zh">好的工具，不会打断你。</span>
-                </p>
-                <span class="speech-btn" aria-hidden="true">
+                </div>
+                <div class="hud-source-row">
+                  <p class="hud-source"><span class="lang-zh">Meet at <span class="edit-word">Gate B<span class="edit-caret"></span></span> at 9:00.</span><span class="lang-en">9:00 在 <span class="edit-word">B 号登机口<span class="edit-caret"></span></span>见。</span></p>
                   <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#speaker"/></svg>
-                </span>
+                </div>
+                <p class="hud-status"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#check"/></svg><span class="lang-zh">翻译完成</span><span class="lang-en">Translation complete</span></p>
+                <p class="hud-out"><span class="lang-zh">9:00 在 B 号登机口见。</span><span class="lang-en">Meet at Gate B at 9:00.</span></p>
+                <div class="hud-foot">
+                  <span class="hud-foot-tools"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#copy"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#terms"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#photo"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#speaker"/></svg><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#refresh"/></svg></span>
+                  <span class="hud-provider"><svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chip"/></svg>DeepSeek<svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg></span>
+                </div>
               </div>
-              <p class="hud-status">
-                <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#check"/></svg>
-                <span class="lang-zh">翻译完成</span><span class="lang-en">Translation complete</span>
-              </p>
-              <p class="hud-out">
-                <span class="pair-src-en">好的工具，不会打断你。</span>
-                <span class="pair-src-zh">Great tools stay out of your way.</span>
-              </p>
-              <div class="hud-foot" aria-hidden="true">
-                <span class="hud-foot-tools">
-                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#copy"/></svg>
-                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#terms"/></svg>
-                  <svg class="hud-glyph is-speaking" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#stop"/></svg>
-                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#refresh"/></svg>
-                </span>
-                <span class="hud-provider">
-                  <svg class="hud-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chip"/></svg>
-                  DeepSeek
-                  <svg class="hud-chev" viewBox="0 0 24 24" aria-hidden="true"><use href="assets/panel-icons.svg#chevron"/></svg>
-                </span>
-              </div>
+              <p class="example-note"><span class="lang-zh">改原文 → 重新翻译 → 复制译文</span><span class="lang-en">Edit source → retranslate → copy</span></p>
             </div>
           </figure>
         </article>
@@ -616,6 +590,67 @@
             </div>
           </figure>
         </article>
+        <article class="feature feature-flip" id="feature-deskew">
+          <div class="feature-text">
+            <p class="tag"><span class="lang-zh">倾斜校正</span><span class="lang-en">Tilt correction</span></p>
+            <h2><span class="lang-zh">截图有点歪，<br>自动校正再识别</span><span class="lang-en">A tilted capture,<br>straightened for reading</span></h2>
+            <p><span class="lang-zh">遇到歪斜的图片或文档，符合条件时会在本机自动校正，再识别文字。不用手动旋转后重新截图；无法确认时沿用原图识别。</span><span class="lang-en">Eligible tilted images and documents are automatically corrected on your Mac before text recognition. No need to rotate and capture again. When correction is uncertain, the original image is used.</span></p>
+          </div>
+          <figure class="feature-stage stage-linen stage-new stage-deskew" role="img"
+            aria-label="校正示意：同一张 Montreal 冬季运动海报，左边倾斜，右边摆正；两边保留相同的内容。"
+            data-aria-zh="校正示意：同一张 Montreal 冬季运动海报，左边倾斜，右边摆正；两边保留相同的内容。"
+            data-aria-en="Correction illustration: the same Montreal winter-sports poster is tilted on the left and upright on the right, with the same content retained.">
+            <div class="feature-example" aria-hidden="true">
+              <div class="deskew-comparison">
+                <div class="deskew-step">
+                  <p><span class="lang-zh">校正前</span><span class="lang-en">Before</span></p>
+                  <div class="deskew-preview deskew-before"><img src="assets/montreal-winter-sports.jpg" width="320" height="430" loading="lazy" alt=""></div>
+                </div>
+                <div class="deskew-step">
+                  <p><span class="lang-zh">校正后</span><span class="lang-en">After</span></p>
+                  <div class="deskew-preview"><img src="assets/montreal-winter-sports.jpg" width="320" height="430" loading="lazy" alt=""></div>
+                </div>
+              </div>
+              <p class="example-note"><span class="lang-zh">本机自动校正 → 识别文字 → 翻译</span><span class="lang-en">Correct on device → recognize text → translate</span></p>
+            </div>
+          </figure>
+        </article>
+
+        <article class="feature" id="feature-qr">
+          <div class="feature-text">
+            <p class="tag"><span class="lang-zh">二维码</span><span class="lang-en">QR codes</span></p>
+            <h2><span class="lang-zh">屏幕上的二维码，<br>截图就能读</span><span class="lang-en">Read a QR code<br>from your screen</span></h2>
+            <p><span class="lang-zh">网页或图片里的二维码，不用再拿手机扫。框选截图后，在电脑上查看内容、复制文字，或主动打开网页链接。识别在本机完成，二维码内容不会自动送去翻译。</span><span class="lang-en">Capture a QR code in a page or image to read its contents on your Mac. Copy the text or choose to open a web link. Recognition happens on device; QR contents are not automatically sent for translation.</span></p>
+          </div>
+          <figure class="feature-stage stage-mist stage-new stage-qr" role="img" aria-label="界面示意：框选指向 TranslateHUD 官网的二维码，截图二维码窗口显示同一个网址，并提供打开链接与复制内容选项。" data-aria-zh="界面示意：框选指向 TranslateHUD 官网的二维码，截图二维码窗口显示同一个网址，并提供打开链接与复制内容选项。" data-aria-en="Illustration: capture a QR code for the TranslateHUD website. The QR result window shows the same URL with Open link and Copy content options.">
+            <div class="feature-example" aria-hidden="true">
+              <div class="qr-paper">
+                <p class="qr-paper-brand">TranslateHUD</p>
+                <p class="qr-paper-title"><span class="lang-zh">把官网留在手边</span><span class="lang-en">Keep the site handy</span></p>
+                <div class="qr-capture">
+                  <img src="assets/website-qr.svg" width="148" height="148" loading="lazy" alt="">
+                </div>
+                <p class="qr-paper-url">translatehud.com</p>
+              </div>
+              <div class="qr-result">
+                <div class="qr-result-head">
+                  <span class="lang-zh">截图二维码</span>
+                  <span class="lang-en">Screenshot QR code</span>
+                </div>
+                <div class="qr-result-body">
+                  <p class="qr-result-kicker"><span class="lang-zh">二维码 1</span><span class="lang-en">QR code 1</span></p>
+                  <p class="qr-result-url">https://translatehud.com/</p>
+                  <div class="qr-result-actions">
+                    <span><span class="lang-zh">打开链接</span><span class="lang-en">Open link</span></span>
+                    <span><span class="lang-zh">复制内容</span><span class="lang-en">Copy content</span></span>
+                  </div>
+                  <p class="qr-result-note"><span class="lang-zh">链接仅在点击后打开</span><span class="lang-en">Links open only when you click</span></p>
+                </div>
+              </div>
+            </div>
+          </figure>
+        </article>
+
       </section>
 
       <section class="install" id="install" aria-labelledby="install-title">

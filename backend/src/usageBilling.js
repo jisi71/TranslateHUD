@@ -120,6 +120,8 @@ function costMicroYuanFromUsage(parsed, prices) {
 
 function settlementFields(settled, usage) {
   return {
+    ...(settled.retryRequestId && { retryRequestId: settled.retryRequestId }),
+    ...(settled.retryWaived && { retryWaived: true }),
     costMicroYuan: settled.costMicroYuan,
     chargedMicroYuan: settled.chargedMicroYuan,
     balanceMicroYuan: settled.balanceMicroYuan,

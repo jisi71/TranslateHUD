@@ -269,7 +269,7 @@ extension ScreenshotDirectTranslationTests {
             XCTAssertNil(opened.source.progress.translationDraft)
             XCTAssertFalse(opened.source.progress.hasLocalEdits)
             let calls = await recorder.calls
-            XCTAssertEqual(calls, [texts])
+            XCTAssertEqual(calls, [[texts.joined(separator: "\n\n")]])
             let hosted = opened.window.contentTextSnapshot()
             XCTAssertFalse(hosted.isEmpty)
             for text in texts { XCTAssertTrue(hosted.contains(where: { $0.contains(text) })) }

@@ -4,6 +4,58 @@ import XCTest
 
 @MainActor
 final class SelectionFetchCoordinatorTests: XCTestCase {
+    func testPasteboardRestoreMarksEveryItemAndKeepsOriginalData() throws {
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+
+        let text = NSPasteboardItem()
+        let original = "Original text"
+        let html = Data("<b>Original text</b>".utf8)
+        let rtf = Data(#"{\rtf1\ansi{\fonttbl{\f0 Helvetica;}}\f0\b Original text}"#.utf8)
+        XCTAssertTrue(text.setString(original, forType: .string))
+        XCTAssertTrue(text.setData(html, forType: .html))
+        XCTAssertTrue(text.setData(rtf, forType: .rtf))
+
+        let image = NSPasteboardItem()
+        let png = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
+        XCTAssertTrue(image.setData(png, forType: .png))
+        XCTAssertTrue(pasteboard.writeObjects([text, image]))
+        let originalTypes = try XCTUnwrap(pasteboard.pasteboardItems).map { Set($0.types) }
+        let saved = SelectionFetcher.snapshotPasteboardItems(pasteboard)
+
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("Copied selection", forType: .string))
+        SelectionFetcher.restorePasteboardItems(saved, to: pasteboard)
+
+        let items = try XCTUnwrap(pasteboard.pasteboardItems)
+        let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+        XCTAssertEqual(items.count, 2)
+        for (item, types) in zip(items, originalTypes) {
+            XCTAssertTrue(types.union([transient]).isSubset(of: Set(item.types)))
+        }
+        let restoredText = try XCTUnwrap(items.first)
+        let restoredImage = try XCTUnwrap(items.dropFirst().first)
+        XCTAssertEqual(restoredText.data(forType: transient), Data())
+        XCTAssertEqual(restoredImage.data(forType: transient), Data())
+        XCTAssertTrue(pasteboard.types?.contains(transient) == true)
+        XCTAssertEqual(pasteboard.string(forType: .string), original)
+        XCTAssertEqual(pasteboard.data(forType: .html), html)
+        XCTAssertEqual(pasteboard.data(forType: .rtf), rtf)
+        XCTAssertEqual(restoredImage.data(forType: .png), png)
+    }
+
+    func testPasteboardRestoreLeavesAnOriginallyEmptyBoardEmpty() {
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        let saved = SelectionFetcher.snapshotPasteboardItems(pasteboard)
+
+        XCTAssertTrue(pasteboard.setString("Copied selection", forType: .string))
+        SelectionFetcher.restorePasteboardItems(saved, to: pasteboard)
+
+        XCTAssertTrue(pasteboard.pasteboardItems?.isEmpty ?? true)
+        XCTAssertTrue(pasteboard.types?.isEmpty ?? true)
+    }
+
     func testAXHitStillProbesPasteboardAndFallsBackToAXWhenPasteboardTimesOut() async {
         let selection = SelectionFetcher.Selection(text: "selected", screenRectTopLeft: nil)
         let provider = FakeSelectionProbeProvider(

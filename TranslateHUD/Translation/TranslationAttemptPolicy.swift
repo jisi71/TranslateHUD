@@ -8,6 +8,10 @@ enum TranslationAttemptPolicy {
         hasFailures && attemptIndex + 1 < maximumAttempts
     }
 
+    static func shouldRetryQuality(afterAttempt attemptIndex: Int, hasFailures: Bool, trialEligible: Bool?) -> Bool {
+        shouldRetry(afterAttempt: attemptIndex, hasFailures: hasFailures) && trialEligible != false
+    }
+
     static func isTransientTLSFailure(_ error: Error, hasOutput: Bool = false) -> Bool {
         let error = error as NSError
         guard !hasOutput, error.domain == NSURLErrorDomain,

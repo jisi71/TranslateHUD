@@ -50,6 +50,8 @@ Team ID 写在 `Config/DeveloperTeamID`。第一次带更新功能的公证前�
 
 Sparkle 比较的是构建号（`CURRENT_PROJECT_VERSION`），不是只看 `0.4.0` 这种版本名。每次发版都要把构建号加一。
 
+`project.yml` 的 `MARKETING_VERSION` 对应 App 的 `CFBundleShortVersionString`、发布标签 `v<版本>`、DMG 和 ZIP 文件名，以及订阅里的 `sparkle:shortVersionString`。构建号对应 App 的 `CFBundleVersion` 和订阅里的 `sparkle:version`。
+
 ## 一次性：准备签名密钥
 
 在你自己的 Mac 上做，只做一次。不要把私钥发到聊天里。
@@ -104,7 +106,7 @@ bash scripts/developer-id-release.sh
 bash scripts/developer-id-release.sh --dry-run
 ```
 
-脚本会打出通用二进制、打开硬化运行时、打开在线更新，并确认包是 Developer ID 签名且带有 Sparkle。App 公证、装订后，会再打出带 App 和「应用程序」快捷方式的 DMG，并单独公证、装订 DMG；zip 仍用于 EdDSA 签名和 appcast 更新。公证成功后才改仓库里的 `appcast.xml`。没设 `TRANSLATEHUD_NOTARIZE=1` 时只在 `releases/` 里留预览，避免把未公证的包写进订阅。
+脚本会打出通用二进制、打开硬化运行时、打开在线更新，并确认包是 Developer ID 签名且带有 Sparkle。App 公证、装订后，会再打出带 App 和「应用程序」快捷方式的 DMG。脚本用同一个 Developer ID 签名 DMG，再单独公证、装订并通过 Gatekeeper 核验。ZIP 用于 EdDSA 签名及 appcast 更新。公证成功后才改仓库里的 `appcast.xml`。没设 `TRANSLATEHUD_NOTARIZE=1` 时只在 `releases/` 里留预览，避免把未公证的包写进订阅。
 
 同一个 GitHub Release（标签 `v版本号`，且不能是预发布或草稿）上传三个附件：
 
@@ -124,13 +126,21 @@ bash scripts/developer-id-release.sh --dry-run
 
 `https://github.com/jisi71/TranslateHUD/releases/download/v<版本>/TranslateHUD-<版本>.zip`
 
-`releases/latest` 指向最新的正式 Release。所以每个正式 Release 都要带上名为 `appcast.xml` 的附件，并且里面的构建号比用户正在用的更大。
+`releases/latest` 指向最新的正式 Release。所以每个正式 Release 都要带上名为 `appcast.xml` 的附件，并且里面的构建号比用户正在用的更大。仓库根目录的 `appcast.xml` 保留更新历史，客户端读取的是 Release 同名附件。发版脚本签名 ZIP 后，先在 `releases/appcast.xml` 写入该版本的条目。正式公证流程会把结果同步回仓库根目录；发布时上传这份清单，GitHub 不会替项目生成。
+
+先在发版工作树更新 README 和官网里的版本信息。发版脚本生成候选订阅后会自动运行一致性检查，通过后才同步仓库根目录的订阅并输出上传命令。也可单独运行离线检查。默认读取仓库根目录的订阅；核对候选清单时，可指定 `--appcast releases/appcast.xml`。
+
+```bash
+python3 scripts/check-release-consistency.py
+```
+
+检查通过表示工程版本和构建号、最新订阅条目、README 与官网的安装版本一致，首页和隐私页的下载按钮及 `website/js/download.js` 都指向同一个 DMG。公网可访问性、Developer ID、公证和 Sparkle 签名仍需在发版流程中核验。
 
 ## 以后改到官网
 
 改 `project.yml` 里的 `TRANSLATEHUD_UPDATE_FEED_URL`，重新发一版。已经装上的旧包仍会访问原来的 GitHub 地址，所以这一版还是要发到原来的订阅上。用户更新到这一版之后，才会改去新地址。
 
-安装包若也改放在官网，发版时设置 `TRANSLATEHUD_DOWNLOAD_BASE_URL`。它只影响 appcast 里的下载链接。
+更新 ZIP 若也改放在官网，发版时设置 `TRANSLATEHUD_DOWNLOAD_BASE_URL`。它只影响 appcast 里的下载链接；运行一致性检查时用 `--download-base` 指定同一前缀。
 
 ## 本机包为什么不会自动更新
 

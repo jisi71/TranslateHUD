@@ -411,9 +411,10 @@ function bindUpstreamMessages(body, sourceText) {
   }
   const format = parsed.kind === 'batch' && parsed.ranges
     ? makeBoldFormat(parsed.texts, parsed.ranges, parsed.passage || '') : null
+  const language = detectLanguage(system)
   const messages = buildMessages({
     mode,
-    language: detectLanguage(system),
+    language,
     strict: isStrict(system),
     source: sourceText,
     texts: format ? format.marked : parsed.texts,
@@ -427,7 +428,8 @@ function bindUpstreamMessages(body, sourceText) {
     messages,
     stream,
     format,
-    temperature: temperatureFor(body, mode)
+    temperature: temperatureFor(body, mode),
+    retrySubject: mode === 'terms' ? null : [mode, language, sourceText, parsed.texts, parsed.passage, parsed.ranges]
   }
 }
 

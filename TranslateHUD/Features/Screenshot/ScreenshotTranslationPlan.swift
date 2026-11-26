@@ -171,6 +171,36 @@ struct ScreenshotTranslationPlan: Sendable {
         }
     }
     var sourceForQuota: String { sourceTexts.joined(separator: "\n") }
+
+    var supportsStreaming: Bool { streamingSource != nil }
+
+    var streamingSource: String? {
+        guard !blocks.isEmpty else { return nil }
+        var paragraphs: [String] = []
+        for block in blocks {
+            guard case .text(let runs, heading: nil) = block else { return nil }
+            let item = Self.styled(runs)
+            guard item.boldRanges.isEmpty, Self.isStreamingParagraph(item.text) else { return nil }
+            paragraphs.append(item.text)
+        }
+        return paragraphs.joined(separator: "\n\n")
+    }
+
+    private static func isStreamingParagraph(_ text: String) -> Bool {
+        !text.contains(where: \.isNewline) && !text.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    fileprivate func renderStreamingResult(_ text: String) throws -> String {
+        let paragraphs = text.components(separatedBy: "\n\n")
+        guard paragraphs.count == blocks.count, paragraphs.allSatisfy(Self.isStreamingParagraph) else {
+            throw TranslationError.parse("完整译文的段落无法与截图对应，请手动重译。")
+        }
+        return try render(paragraphs.map { .init(text: $0, boldRanges: []) })
+    }
+
+    fileprivate static func streamingMarkdown(_ text: String) -> String {
+        encodeEdgeSpaces(escape(text))
+    }
     var sourceIsRepresentable: Bool { structureIsValid && (try? render(sourceItems)) != nil }
     var withoutStyles: ScreenshotTranslationPlan {
         let plainBlocks = blocks.map { block -> Block in
@@ -414,6 +444,57 @@ struct ScreenshotTranslationPlan: Sendable {
 struct ScreenshotPlanTranslator: Translator {
     let base: any Translator
     let plan: ScreenshotTranslationPlan
+
+    var allowsAutomaticLineFallback: Bool { false }
+
+    func translateStreaming(
+        _ text: String,
+        to target: TargetLanguage,
+        context: SelectionFetcher.TextContext?
+    ) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard let source = plan.streamingSource else {
+                        throw TranslationError.parse("截图内容无法按纯文本流式翻译。")
+                    }
+                    let stream = (base as? TrialProxyTranslator)?.translateScreenshotStreaming(source, to: target, context: context)
+                        ?? base.translateStreaming(source, to: target, context: context)
+                    var result = ""
+                    do {
+                        for try await event in stream {
+                            try Task.checkCancellation()
+                            switch event {
+                            case .delta(let partial):
+                                result = partial
+                                continuation.yield(.delta(ScreenshotTranslationPlan.streamingMarkdown(partial)))
+                            case .reset:
+                                result = ""
+                                continuation.yield(event)
+                            }
+                        }
+                    } catch let warning as TranslationSoftWarning {
+                        try Task.checkCancellation()
+                        guard warning.hasOnlySoftFailures, warning.sourceItems == [source],
+                              warning.target == target, warning.outputs.count == 1 else {
+                            throw TranslationError.parse("流式截图候选不完整。")
+                        }
+                        let markdown = try plan.renderStreamingResult(warning.outputs[0])
+                        throw warning.replacingOutputs([markdown], displaySources: [text])
+                    }
+                    try Task.checkCancellation()
+                    let rendered = try plan.renderStreamingResult(result)
+                    if rendered != ScreenshotTranslationPlan.streamingMarkdown(result) {
+                        continuation.yield(.delta(rendered))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
 
     func translate(_ texts: [String], to target: TargetLanguage,
                    context: SelectionFetcher.TextContext?) async throws -> [String] {

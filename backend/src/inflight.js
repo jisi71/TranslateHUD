@@ -1,7 +1,7 @@
 'use strict'
 
 const crypto = require('crypto')
-const { MESSAGES, normalizeRecord } = require('./trialPolicy')
+const { MESSAGES, normalizeRecord, settleCharge } = require('./trialPolicy')
 
 const MAX_INFLIGHT = 3
 const INFLIGHT_LEASE_MS = 180 * 1000
@@ -70,9 +70,21 @@ function releaseSlot(record, slotId) {
   }
 }
 
+function settleSlot(record, cost, slotId) {
+  if (!slotId) return settleCharge(record, cost)
+  const current = normalizeRecord(record)
+  if (!current?.inflight.some(slot => slot.id === slotId)) {
+    throw new Error('translation reservation missing')
+  }
+  const settled = settleCharge(current, cost)
+  settled.record = releaseSlot(settled.record, slotId)
+  return settled
+}
+
 module.exports = {
   MAX_INFLIGHT,
   INFLIGHT_LEASE_MS,
   acquireSlot,
-  releaseSlot
+  releaseSlot,
+  settleSlot
 }

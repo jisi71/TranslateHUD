@@ -1,0 +1,633 @@
+--- a/src/accountStore.js
++++ b/src/accountStore.js
+@@ -7,6 +7,7 @@
+   assignDisplayNumbers,
+   credit,
+   displayFen,
++  MESSAGES,
+   normalizeRecord,
+   openAccount,
+   readDisplayNo,
+@@ -15,7 +16,6 @@
+ } = require('./trialPolicy')
+ const { decideRedeem, publicInviteStatus } = require('./invite')
+ const { MAX_INFLIGHT, INFLIGHT_LEASE_MS, acquireSlot, releaseSlot, settleSlot } = require('./inflight')
+-const { MESSAGES } = require('./trialPolicy')
+ const { reserveRetry, finishAttempt } = require('./retryWaiver')
+ 
+ function clone(record) {
+@@ -45,6 +45,46 @@
+   return [...older, { uid: String(uid), record }]
+ }
+ 
++function localNumbering(users, invite, uid, existing, now) {
++  const opened = openAccount(existing, now).record
++  const entries = Array.from(users, ([uid, record]) => ({ uid, record }))
++    .filter(entry => entry.uid !== uid)
++  entries.push({ uid, record: opened })
++  const plan = assignDisplayNumbers(entries, invite, uid)
++  return {
++    record: plan.updates.find(update => update.uid === String(uid))?.record ?? opened,
++    others: plan.updates.filter(update => update.uid !== String(uid)),
++    counter: plan.counter
++  }
++}
++
++async function transactionNumbering(tx, uid, existing, now) {
++  const opened = openAccount(existing, now).record
++  let listed = null
++  try {
++    if (typeof tx.listUsers === 'function') listed = await tx.listUsers()
++  } catch {
++    // Number the current account when the optional legacy backfill list is unavailable.
++  }
++  const fresh = [{ uid: String(uid), record: opened }]
++  for (const entry of backfillEntries(listed, uid, opened)) {
++    if (String(entry.uid) === String(uid)) continue
++    const current = await tx.get(entry.uid)
++    if (current && readDisplayNo(current) <= 0) fresh.push({ uid: String(entry.uid), record: current })
++  }
++  const plan = assignDisplayNumbers(fresh, await tx.getInvite(), uid)
++  return {
++    record: plan.updates.find(update => update.uid === String(uid))?.record ?? opened,
++    others: plan.updates.filter(update => update.uid !== String(uid)),
++    counter: plan.counter
++  }
++}
++
++async function saveNumbering(tx, plan) {
++  for (const update of plan.others) await tx.save(update.uid, update.record)
++  await tx.saveInvite(plan.counter)
++}
++
+ class MemoryAccountStore {
+   constructor() {
+     this.users = new Map()
+@@ -102,34 +142,30 @@
+   }
+ 
+   prepareNumber(uid, existing, now) {
+-    const opened = openAccount(existing, now)
+-    if (readDisplayNo(opened.record) > 0) return { record: opened.record, counter: this.invite, others: [] }
+-    const entries = []
+-    for (const [id, record] of this.users) {
+-      if (id === uid) continue
+-      entries.push({ uid: id, record: clone(record) })
+-    }
+-    entries.push({ uid, record: opened.record })
+-    const plan = assignDisplayNumbers(entries, this.invite, uid)
+-    const mine = plan.updates.find((update) => update.uid === uid)
+-    return {
+-      record: mine ? mine.record : opened.record,
+-      counter: plan.updates.length > 0 ? plan.counter : this.invite,
+-      others: plan.updates.filter((update) => update.uid !== uid)
+-    }
++    if (readDisplayNo(existing) > 0) return { record: existing, counter: this.invite, others: [] }
++    return localNumbering(this.users, this.invite, uid, existing, now)
+   }
+ 
+   async acquireInflight(uid, now = Date.now(), sourceTokens = 0, _timing, attempt) {
+-    return this.lock(uid, async () => {
+-      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
++    const acquire = () => this.lock(uid, async () => {
++      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
++      const plan = !attempt?.retry && readDisplayNo(existing) <= 0
++        ? localNumbering(this.users, this.invite, uid, existing, now)
++        : null
++      const account = plan?.record ?? existing
+       const decision = attempt?.retry
+-        ? reserveRetry(existing, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
+-        : acquireSlot(existing, now, sourceTokens)
+-      if (decision.record && (decision.ok || decision.record.inflight !== (existing && existing.inflight))) {
+-        if (existing || decision.ok) this.users.set(uid, clone(decision.record))
+-      }
+-      return decision
+-    })
++        ? reserveRetry(account, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
++        : acquireSlot(account, now, sourceTokens)
++      if (plan) {
++        for (const update of plan.others) this.users.set(update.uid, clone(update.record))
++        this.invite = plan.counter
++      }
++      if (decision.record || plan) this.users.set(uid, clone(decision.record ?? account))
++      return decision
++    })
++    return !attempt?.retry && readDisplayNo(this.users.get(uid)) <= 0
++      ? this.inviteLock(acquire)
++      : acquire()
+   }
+ 
+   async releaseInflight(uid, slotId) {
+@@ -305,14 +341,21 @@
+   async acquireInflight(uid, now = Date.now(), sourceTokens = 0, _timing, attempt) {
+     return this.lock(async () => {
+       const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
++      const plan = !attempt?.retry && readDisplayNo(existing) <= 0
++        ? localNumbering(this.users, this.invite, uid, existing, now)
++        : null
++      const account = plan?.record ?? existing
+       const decision = attempt?.retry
+-        ? reserveRetry(existing, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
+-        : acquireSlot(existing, now, sourceTokens)
+-      if (decision.record && (decision.ok || JSON.stringify(decision.record.inflight) !== JSON.stringify(existing && existing.inflight))) {
+-        if (existing || decision.ok) {
+-          this.users.set(uid, clone(decision.record))
+-          await this.persist()
+-        }
++        ? reserveRetry(account, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
++        : acquireSlot(account, now, sourceTokens)
++      if (plan) {
++        for (const update of plan.others) this.users.set(update.uid, clone(update.record))
++        this.invite = plan.counter
++      }
++      const changed = decision.record && JSON.stringify(decision.record.inflight) !== JSON.stringify(account?.inflight)
++      if (plan || decision.ok || changed) {
++        this.users.set(uid, clone(decision.record ?? account))
++        await this.persist()
+       }
+       return decision
+     })
+@@ -418,36 +461,12 @@
+           await tx.rollback().catch(() => {})
+           return { record: clone(opened.record), giftedNow: false }
+         }
+-        let listed = null
+-        if (typeof tx.listUsers === 'function') {
+-          try {
+-            listed = await tx.listUsers()
+-          } catch {
+-            listed = null
+-          }
+-        }
+-        const entries = backfillEntries(listed, uid, opened.record)
+-        const fresh = []
+-        for (const entry of entries) {
+-          if (String(entry.uid) === String(uid)) {
+-            fresh.push({ uid: String(uid), record: opened.record })
+-            continue
+-          }
+-          const current = await tx.get(entry.uid)
+-          if (!current || readDisplayNo(current) > 0) continue
+-          fresh.push({ uid: String(entry.uid), record: current })
+-        }
+-        const invite = await tx.getInvite()
+-        const plan = assignDisplayNumbers(fresh, invite, uid)
+-        for (const update of plan.updates) {
+-          if (update.uid === String(uid) && !existing) await tx.create(update.uid, update.record)
+-          else await tx.save(update.uid, update.record)
+-        }
+-        if (plan.updates.length === 0 && !existing) await tx.create(uid, opened.record)
+-        if (plan.updates.length > 0) await tx.saveInvite(plan.counter)
++        const plan = await transactionNumbering(tx, uid, existing, now)
++        await saveNumbering(tx, plan)
++        if (existing) await tx.save(uid, plan.record)
++        else await tx.create(uid, plan.record)
+         await tx.commit()
+-        const mine = plan.updates.find((update) => update.uid === String(uid))
+-        return { record: clone(mine ? mine.record : opened.record), giftedNow: false }
++        return { record: clone(plan.record), giftedNow: false }
+       } catch (error) {
+         await tx.rollback().catch(() => {})
+         throw error
+@@ -507,14 +526,20 @@
+       try {
+         const existing = await db('quota_db_read_ms', () => tx.get(uid))
+         const start = timing?.now()
++        const plan = !attempt?.retry && readDisplayNo(existing) <= 0
++          ? await transactionNumbering(tx, uid, existing, now)
++          : null
++        const account = plan?.record ?? existing
+         const decision = attempt?.retry
+-          ? reserveRetry(existing, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
+-          : acquireSlot(existing, now, sourceTokens)
+-        const changed = decision.record && JSON.stringify((decision.record && decision.record.inflight) || []) !== JSON.stringify((existing && existing.inflight) || [])
++          ? reserveRetry(account, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
++          : acquireSlot(account, now, sourceTokens)
++        const changed = decision.record && JSON.stringify(decision.record.inflight || []) !== JSON.stringify(account?.inflight || [])
+         timing?.addQuota('quota_slot_decision_ms', start)
+-        if (decision.ok || changed) {
+-          if (existing) await db('quota_db_write_ms', () => tx.save(uid, decision.record))
+-          else if (decision.ok) await db('quota_db_write_ms', () => tx.create(uid, decision.record))
++        if (plan) await saveNumbering(tx, plan)
++        if (plan || decision.ok || changed) {
++          const saved = decision.record ?? account
++          if (existing) await db('quota_db_write_ms', () => tx.save(uid, saved))
++          else await db('quota_db_write_ms', () => tx.create(uid, saved))
+         }
+         await db('quota_db_commit_ms', () => tx.commit())
+         return decision
+--- a/src/cloudEntry.js
++++ b/src/cloudEntry.js
+@@ -117,13 +117,13 @@
+   if (isInviteStatus) result = await handleInviteStatus(ctx)
+   else if (isRedeem) result = await handleRedeem(ctx)
+   else if (isAccount) result = await handleAccount(ctx)
+-  else result = await handleTranslate(ctx)
+-  if (typeof result.release === 'function') {
+-    if (result.stream) result.stream.once('close', () => { result.release() })
+-    else await result.release()
++  else result = await handleTranslate({ ...ctx, allowAuthCache: clean.endsWith('/chat/completions') })
++  let body = result.body || ''
++  try {
++    if (result.stream) body = await bufferStream(result.stream)
++  } finally {
++    await result.release?.()
+   }
+-  let body = result.body || ''
+-  if (result.stream) body = await bufferStream(result.stream)
+   return {
+     statusCode: result.status,
+     headers: result.headers || { 'Content-Type': 'application/json; charset=utf-8' },
+--- a/src/httpApp.js
++++ b/src/httpApp.js
+@@ -141,10 +141,14 @@
+     // is still open. Aborting there cancels every upstream call. Only stop
+     // the upstream when the client goes away before the response finishes.
+     let releaseInflight = async () => {}
++    let responseStream
+     const abort = new AbortController()
+     const timing = route === 'translate' ? translationTiming(res) : null
+     res.on('close', () => {
+-      if (!res.writableEnded) abort.abort()
++      if (!res.writableEnded) {
++        abort.abort()
++        responseStream?.destroy()
++      }
+       releaseInflight().catch(() => {})
+     })
+ 
+@@ -181,13 +185,15 @@
+       else if (isFeedback) result = await handleFeedback(ctx)
+       else result = await handleTranslate(ctx)
+       if (typeof result.release === 'function') releaseInflight = result.release
+-      if (result.aborted || res.writableEnded) {
++      if (result.aborted || res.writableEnded || res.destroyed) {
++        result.stream?.destroy()
+         await releaseInflight()
+         return
+       }
+       timing?.step('response_write_ms')
+       res.writeHead(result.status, result.headers || { 'Content-Type': 'application/json; charset=utf-8' })
+       if (result.stream) {
++        responseStream = result.stream
+         result.stream.on('error', () => {
+           // Settlement runs only after the upstream stream ends with usage.
+           // An error here means that settlement did not commit, so there is
+--- a/src/inflight.js
++++ b/src/inflight.js
+@@ -24,9 +24,6 @@
+   const prunedRecord = pruned ? { ...current, inflight: slots } : current
+   const quota = dailyQuota(current, now)
+   const free = current.balanceMicroYuan <= 0
+-  if (free && (!Number.isSafeInteger(sourceTokens) || sourceTokens <= 0)) {
+-    return { ok: false, needsSourceTokens: true, record: prunedRecord }
+-  }
+   const reserved = slots.filter(slot => slot.free && slot.dailyDay === quota.dailyDay)
+     .reduce((sum, slot) => sum + slot.sourceTokens, 0)
+   // Complete the last admitted request even when it takes usage past the limit.
+@@ -43,6 +40,16 @@
+       record: prunedRecord
+     }
+   }
++  if (free && typeof sourceTokens === 'function') {
++    try {
++      sourceTokens = sourceTokens()
++    } catch {
++      return { ok: false, status: 503, code: 'trial_not_configured', message: MESSAGES.notConfigured, record: prunedRecord }
++    }
++  }
++  if (free && (!Number.isSafeInteger(sourceTokens) || sourceTokens <= 0)) {
++    return { ok: false, needsSourceTokens: true, record: prunedRecord }
++  }
+   const slotId = crypto.randomUUID()
+   return {
+     ok: true,
+@@ -50,7 +57,7 @@
+     free,
+     record: {
+       ...current,
+-      inflight: slots.concat([{ id: slotId, until: now + INFLIGHT_LEASE_MS, dailyDay: quota.dailyDay, sourceTokens, free }])
++      inflight: slots.concat([{ id: slotId, until: now + INFLIGHT_LEASE_MS, dailyDay: quota.dailyDay, sourceTokens: free ? sourceTokens : 0, free }])
+     }
+   }
+ }
+--- a/src/trialService.js
++++ b/src/trialService.js
+@@ -1,5 +1,8 @@
+ 'use strict'
+ 
++const { createTranslationTiming } = require('./translationTiming')
++const { verifyTranslationUser } = require('./translationAuthCache')
++const { holdTranslationSlot } = require('./translationSlot')
+ const { readAttempt } = require('./retryWaiver')
+ 
+ const { GIFT_FEN, GIFT_MICRO_YUAN, MESSAGES, decodeSourceHeader, formatDisplayId, quoteSource } = require('./trialPolicy')
+@@ -42,6 +45,8 @@
+     TRIAL_PRICE_INPUT_YUAN_PER_MILLION: source.TRIAL_PRICE_INPUT_YUAN_PER_MILLION,
+     TRIAL_PRICE_CACHE_HIT_YUAN_PER_MILLION: source.TRIAL_PRICE_CACHE_HIT_YUAN_PER_MILLION,
+     TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION: source.TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION,
++    TRIAL_AUTH_CACHE_TTL_MS: source.TRIAL_AUTH_CACHE_TTL_MS,
++    TRIAL_TRANSLATE_TIMING: source.TRIAL_TRANSLATE_TIMING,
+     TRIAL_INVITE_CODE: source.TRIAL_INVITE_CODE || '',
+     TRIAL_INVITE_MAX_REDEEMS: source.TRIAL_INVITE_MAX_REDEEMS || '',
+     FEEDBACK_DAILY_LIMIT: source.FEEDBACK_DAILY_LIMIT || ''
+@@ -73,11 +78,14 @@
+   return { uid, hasEligiblePhone }
+ }
+ 
+-async function identify(ctx) {
++async function identify(ctx, cache = false) {
+   const token = bearerToken(ctx.headers || {})
+   if (!token) return errorResult(401, 'trial_auth', MESSAGES.auth)
+   try {
+-    const user = await ctx.verifyUser({ gateway: ctx.env.gateway, token })
++    const gateway = ctx.env.gateway
++    const user = cache ? await verifyTranslationUser({
++      gateway, token, verifyUser: ctx.verifyUser, ttlValue: ctx.env.TRIAL_AUTH_CACHE_TTL_MS, now: ctx.now
++    }) : await ctx.verifyUser({ gateway, token })
+     if (!user || !user.uid) return errorResult(401, 'trial_auth', MESSAGES.auth)
+     return { uid: String(user.uid), hasEligiblePhone: user.hasEligiblePhone === true }
+   } catch {
+@@ -137,11 +145,15 @@
+   }
+ }
+ 
+-async function settleUsage(ctx, uid, usage, prices, slotId, attempt) {
++async function settleUsage(ctx, uid, usage, prices, slotId, attempt, metrics) {
+   const cost = costMicroYuanFromUsage(usage, prices)
+   if (cost == null) return null
+-  const settled = await ctx.store.settle(uid, cost, slotId, ctx.now(), attempt)
+-  return settled
++  const endSettle = metrics?.start('settleMs')
++  try {
++    return await ctx.store.settle(uid, cost, slotId, ctx.now(), attempt)
++  } finally {
++    endSettle?.()
++  }
+ }
+ 
+ // Only explicit accounting fields belong here; never include request/response text.
+@@ -256,20 +268,23 @@
+   }
+ }
+ 
+-function holdRelease(release) {
+-  let released = false
+-  return async function releaseOnce() {
+-    if (released) return
+-    released = true
+-    try {
+-      await release()
+-    } catch (error) {
+-      console.error(`trial release failed code=${(error && (error.causeCode || error.code)) || 'unknown'}`)
+-    }
+-  }
+-}
+-
+ async function handleTranslate(ctx) {
++  const metrics = createTranslationTiming(ctx.env?.TRIAL_TRANSLATE_TIMING, ctx.logTranslationTiming)
++  if (!metrics) return translate(ctx)
++  let result
++  try {
++    result = await translate(ctx, metrics)
++    return result
++  } finally {
++    if (result?.stream) {
++      result.stream.once('close', () => {
++        result.release().finally(() => metrics.finish(result.status, true))
++      })
++    } else metrics.finish(result?.status ?? 500, false)
++  }
++}
++
++async function translate(ctx, metrics) {
+   const startedAt = ctx.now()
+   const timing = ctx.timing
+   timing?.step('body_check_ms')
+@@ -278,7 +293,9 @@
+     return errorResult(413, 'trial_body_limit', MESSAGES.body)
+   }
+   timing?.step('auth_ms')
+-  const identified = await identify(ctx)
++  const endAuth = metrics?.start('authMs')
++  const identified = await identify(ctx, ctx.allowAuthCache !== false)
++  endAuth?.()
+   if (identified.status) return identified
+ 
+   timing?.step('prepare_ms')
+@@ -311,37 +328,18 @@
+     return errorResult(error.status || 400, error.code || 'trial_body', error.publicMessage || MESSAGES.body)
+   }
+ 
+-  // Admission checks the daily limit and holds the account slot atomically.
++  const endAcquire = metrics?.start('acquireMs')
+   timing?.step('quota_ms')
+   const quotaTiming = stream ? null : timing
++  let sourceTokens
++  const countTokens = () => sourceTokens ??= countSourceTokens(decoded.text, quotaTiming)
+   let held
+   try {
+-    held = await ctx.store.acquireInflight(identified.uid, ctx.now(), 0, quotaTiming, attempt)
+-    if (held && held.needsAccount) {
+-      const start = quotaTiming?.now()
+-      try {
+-        await ctx.store.ensure(identified.uid, ctx.now())
+-      } finally {
+-        quotaTiming?.addQuota('quota_account_ensure_ms', start)
+-      }
+-      held = await ctx.store.acquireInflight(identified.uid, ctx.now(), 0, quotaTiming, attempt)
+-    }
++    held = await ctx.store.acquireInflight(identified.uid, ctx.now(), countTokens, quotaTiming, attempt)
+   } catch (error) {
+     return storeFailure(error)
+   }
+-  if (held && held.needsSourceTokens) {
+-    let sourceTokens
+-    try {
+-      sourceTokens = countSourceTokens(decoded.text, quotaTiming)
+-    } catch {
+-      return errorResult(503, 'trial_not_configured', MESSAGES.notConfigured)
+-    }
+-    try {
+-      held = await ctx.store.acquireInflight(identified.uid, ctx.now(), sourceTokens, quotaTiming, attempt)
+-    } catch (error) {
+-      return storeFailure(error)
+-    }
+-  }
++  endAcquire?.()
+   if (!held || !held.ok) {
+     const status = held && held.status ? held.status : 429
+     const code = held && held.code ? held.code : 'trial_concurrency'
+@@ -349,14 +347,12 @@
+     return errorResult(status, code, message)
+   }
+ 
+-  const release = holdRelease(() => ctx.store.releaseInflight(identified.uid, held.slotId))
+-  const releaseOnClose = (stream) => {
+-    if (stream && typeof stream.once === 'function') stream.once('close', () => { release() })
+-    return stream
+-  }
++  const slot = holdTranslationSlot(() => ctx.store.releaseInflight(identified.uid, held.slotId))
++  const release = slot.release
+ 
+   try {
+     timing?.step('upstream_ms')
++    const endUpstream = metrics?.start('upstreamMs')
+     const upstream = await ctx.forward({
+       endpoint: config.endpoint,
+       apiKey: config.apiKey,
+@@ -364,9 +360,10 @@
+       signal: ctx.signal
+     })
+     timing?.step('parse_upstream_ms')
++    if (!stream) endUpstream?.()
+     if (!upstream || upstream.status < 200 || upstream.status >= 300) {
+       await release()
+-      console.error(`trial upstream failed status=${upstream && upstream.status} uid=${identified.uid}`)
++      console.error(`trial upstream failed status=${upstream && upstream.status}`)
+       return errorResult(502, 'trial_upstream', MESSAGES.upstream)
+     }
+     if (stream) {
+@@ -375,17 +372,31 @@
+         return errorResult(502, 'trial_upstream', MESSAGES.upstream)
+       }
+       const billed = createSettlingStream(upstream.stream, async (usage) => {
+-        if (!usage) return usageMissingSSE()
++        endUpstream?.()
++        if (!usage) {
++          await release()
++          return usageMissingSSE()
++        }
+         try {
+-          const settled = await settleUsage(ctx, identified.uid, usage, prices, held.slotId, attempt)
+-          if (!settled) return usageMissingSSE()
+-          await recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt })
++          const settled = await slot.settle(async () => {
++            const result = await settleUsage(ctx, identified.uid, usage, prices, held.slotId, attempt, metrics)
++            if (result) {
++              await recordUsageEvent(ctx, { uid: identified.uid, usage, settled: result, startedAt })
++            }
++            return result
++          })
++          if (!settled) {
++            await release()
++            return usageMissingSSE()
++          }
+           return settlementSSE(settled, usage)
+         } catch (error) {
++          await release()
+           console.error(`trial settle failed code=${(error && (error.causeCode || error.code)) || 'unknown'}`)
+           return formatSSE({ error: { code: 'trial_store', message: MESSAGES.store } })
+         }
+       })
++      billed.once('close', release)
+       return {
+         status: 200,
+         headers: {
+@@ -393,7 +404,7 @@
+           'X-Accel-Buffering': 'no',
+           'Content-Type': 'text/event-stream; charset=utf-8'
+         },
+-        stream: releaseOnClose(billed),
++        stream: billed,
+         release
+       }
+     }
+@@ -402,7 +413,7 @@
+     try { parsed = JSON.parse(text) } catch { parsed = null }
+     if (parsed && parsed.error) {
+       await release()
+-      console.error(`trial upstream error object uid=${identified.uid}`)
++      console.error(`trial upstream error object`)
+       return errorResult(502, 'trial_upstream', MESSAGES.upstream)
+     }
+     const usage = parseUsage(parsed && parsed.usage)
+@@ -413,7 +424,7 @@
+     let settled
+     try {
+       timing?.step('settlement_ms')
+-      settled = await settleUsage(ctx, identified.uid, usage, prices, held.slotId, attempt)
++      settled = await slot.settle(() => settleUsage(ctx, identified.uid, usage, prices, held.slotId, attempt, metrics))
+     } catch (error) {
+       await release()
+       return storeFailure(error)
+@@ -422,42 +433,54 @@
+       await release()
+       return errorResult(502, 'trial_usage_missing', MESSAGES.usageMissing)
+     }
+-    timing?.step('usage_event_ms')
+-    await recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt })
++    const endUsage = metrics?.start('usageWriteMs')
++    // Start the write before formatting and join it before returning to SCF.
++    const usageWrite = recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt }).finally(endUsage)
+     timing?.step('format_ms')
+-    if (format) {
+-      try {
+-        parsed = restoreBoldResult(parsed, format)
+-      } catch (error) {
+-        console.error(`trial format invalid reason=${formatFailureReason(error)}`)
+-        return {
+-          status: 422,
+-          headers: { ...billingHeaders(settled, usage), 'Content-Type': 'application/json; charset=utf-8' },
+-          body: JSON.stringify({ error: { code: 'trial_format_invalid', message: '译文格式校验失败；本次请求已按实际用量结算。' }, translatehud_trial: settlementFields(settled, usage) })
+-        }
+-      }
+-    }
+-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+-      parsed.translatehud_trial = settlementFields(settled, usage)
+-    }
+-    return {
+-      status: 200,
+-      headers: {
+-        ...billingHeaders(settled, usage),
+-        'Content-Type': 'application/json; charset=utf-8'
+-      },
+-      body: JSON.stringify(parsed)
++    const endFormat = metrics?.start('formatMs')
++    try {
++      return translationResponse(parsed, format, settled, usage)
++    } finally {
++      endFormat?.()
++      timing?.step('usage_event_ms')
++      await usageWrite
+     }
+   } catch (error) {
+     await release()
+     if (ctx.signal && ctx.signal.aborted) return { status: 499, aborted: true, headers: {}, body: '' }
+-    console.error(`trial upstream threw uid=${identified.uid}`)
++    console.error(`trial upstream threw`)
+     return errorResult(502, 'trial_upstream', MESSAGES.upstream)
+   } finally {
+     if (!stream) {
+       timing?.step('release_ms')
+       await release()
+     }
++  }
++}
++
++function translationResponse(parsed, format, settled, usage) {
++  if (format) {
++    try {
++      parsed = restoreBoldResult(parsed, format)
++    } catch (error) {
++      console.error(`trial format invalid reason=${formatFailureReason(error)}`)
++      return {
++        status: 422,
++        headers: { ...billingHeaders(settled, usage), 'Content-Type': 'application/json; charset=utf-8' },
++        body: JSON.stringify({ error: { code: 'trial_format_invalid', message: '译文格式校验失败；本次请求已按实际用量结算。' }, translatehud_trial: settlementFields(settled, usage) })
++      }
++    }
++  }
++  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
++    parsed.translatehud_trial = settlementFields(settled, usage)
++  }
++  return {
++    status: 200,
++    headers: {
++      ...billingHeaders(settled, usage),
++      'Content-Type': 'application/json; charset=utf-8'
++    },
++    body: JSON.stringify(parsed)
+   }
+ }
+ 

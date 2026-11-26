@@ -102,9 +102,13 @@ function createRequestListener(deps = {}) {
     // is still open. Aborting there cancels every upstream call. Only stop
     // the upstream when the client goes away before the response finishes.
     let releaseInflight = async () => {}
+    let responseStream
     const abort = new AbortController()
     res.on('close', () => {
-      if (!res.writableEnded) abort.abort()
+      if (!res.writableEnded) {
+        abort.abort()
+        responseStream?.destroy()
+      }
       releaseInflight().catch(() => {})
     })
 
@@ -144,12 +148,14 @@ function createRequestListener(deps = {}) {
       else if (isFeedback) result = await handleFeedback(ctx)
       else result = await handleTranslate(ctx)
       if (typeof result.release === 'function') releaseInflight = result.release
-      if (result.aborted || res.writableEnded) {
+      if (result.aborted || res.writableEnded || res.destroyed) {
+        result.stream?.destroy()
         await releaseInflight()
         return
       }
       res.writeHead(result.status, result.headers || { 'Content-Type': 'application/json; charset=utf-8' })
       if (result.stream) {
+        responseStream = result.stream
         result.stream.on('error', () => {
           // Settlement runs only after the upstream stream ends with usage.
           // An error here means that settlement did not commit, so there is

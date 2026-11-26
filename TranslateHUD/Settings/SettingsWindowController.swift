@@ -6,6 +6,7 @@ final class SettingsWindowController {
     static let shared = SettingsWindowController()
     static let willShowNotification = Notification.Name("TranslateHUD.settingsWindow.willShow")
     private let language: InterfaceLanguageStore
+    private let navigation = SettingsNavigation()
     private var languageObserver: NSObjectProtocol?
 
     init(language: InterfaceLanguageStore = .shared) {
@@ -26,7 +27,8 @@ final class SettingsWindowController {
     private var window: SettingsWindow?
     private var appearanceObserver: NSObjectProtocol?
 
-    func show() {
+    func show(pane: SettingsPane? = nil) {
+        if let pane { navigation.show(pane) }
         let win = window ?? makeWindow()
         window = win
         applyAppearance()
@@ -46,7 +48,7 @@ final class SettingsWindowController {
     }
 
     func makeWindow() -> SettingsWindow {
-        let hosting = SettingsHostingController(rootView: SettingsView())
+        let hosting = SettingsHostingController(rootView: SettingsView(navigation: navigation))
         hosting.view.wantsLayer = true
         let win = SettingsWindow(contentViewController: hosting)
         win.title = language.text("TranslateHUD 设置")

@@ -1,6 +1,23 @@
 import Foundation
 import CoreFoundation
 
+actor TrialQualityRetry {
+    private let requestId = UUID().uuidString.lowercased()
+    private var eligible = false
+
+    func headers(attemptIndex: Int, qualityRetry: Bool) -> [String: String] {
+        if attemptIndex == 0 { return ["X-TranslateHUD-Request-Id": requestId] }
+        if attemptIndex == 1, qualityRetry, eligible { return ["X-TranslateHUD-Retry-Of": requestId] }
+        return [:]
+    }
+
+    func note(_ settlement: TrialSettlement) {
+        if settlement.retryRequestId == requestId { eligible = true }
+    }
+
+    var canRetryQuality: Bool { eligible }
+}
+
 struct TrialAccountSnapshot: Equatable, Sendable {
     var userId: String
     /// Short account number shown in Settings, such as "00001". Empty until the server sends one.

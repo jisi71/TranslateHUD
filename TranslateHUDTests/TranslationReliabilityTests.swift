@@ -948,6 +948,136 @@ final class TranslationReliabilityTests: XCTestCase {
         }
     }
 
+    func testTrialQualityRetryUsesSameRequestIdAndRequiresWaiverInBody() async throws {
+        let source = "Restart the service after checking the network connection."
+        let data = try JSONSerialization.data(withJSONObject: [
+            "choices": [["message": ["content": "{\"results\":[{\"i\":0,\"t\":\"\(source)\"}]}"]]],
+            "translatehud_trial": ["costMicroYuan": 10, "chargedMicroYuan": 10, "balanceMicroYuan": 100,
+                                   "retryRequestId": "<first-request-id>"]
+        ])
+        let translator = mockTranslator(responses: [
+            .init(body: String(decoding: data, as: UTF8.self)),
+            batchResult("检查网络连接后重启服务。")
+        ], trial: true)
+        let output = try await translator.translate([source], to: .chinese)
+        XCTAssertEqual(output, ["检查网络连接后重启服务。"])
+
+        let requests = TranslationURLProtocol.requests()
+        XCTAssertEqual(requests.count, 2)
+        let first = try XCTUnwrap(requests.first)
+        let second = try XCTUnwrap(requests.dropFirst().first)
+        let id = try XCTUnwrap(first.value(forHTTPHeaderField: "X-TranslateHUD-Request-Id"))
+        XCTAssertNotNil(UUID(uuidString: id))
+        XCTAssertNil(first.value(forHTTPHeaderField: "X-TranslateHUD-Retry-Of"))
+        XCTAssertEqual(second.value(forHTTPHeaderField: "X-TranslateHUD-Retry-Of"), id)
+        XCTAssertNil(second.value(forHTTPHeaderField: "X-TranslateHUD-Request-Id"))
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(second.httpBody)) as? [String: Any])
+        XCTAssertEqual(body["translatehud_quality_retry"] as? Bool, true)
+    }
+
+    func testTrialQualityFailureWithoutMatchingReceiptDoesNotSendBillableRetry() async throws {
+        let source = "Restart the service after checking the network connection."
+        let translator = mockTranslator(responses: [batchResult(source)], trial: true)
+        do {
+            _ = try await translator.translate([source], to: .chinese)
+            XCTFail("Expected quality failure")
+        } catch TranslationError.service {}
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+    }
+
+    func testTrialStreamWaitsForWaiverReceiptBeforeRetryingEarlyEcho() async throws {
+        let source = "Restart the service after checking the network connection."
+        let first = streamResult(source).body.replacingOccurrences(
+            of: "data: [DONE]",
+            with: """
+            data: {"choices":[],"translatehud_trial":{"costMicroYuan":10,"chargedMicroYuan":10,"balanceMicroYuan":100,"retryRequestId":"<first-request-id>"}}
+
+            data: [DONE]
+            """
+        )
+        let translator = mockTranslator(responses: [.init(body: first), streamResult("检查网络连接后重启服务。")], trial: true)
+        var output: [String] = []
+        var resets = 0
+        for try await event in translator.translateStreaming(source, to: .chinese) {
+            switch event {
+            case .delta(let value): output.append(value)
+            case .reset: resets += 1
+            }
+        }
+        XCTAssertEqual(output, ["检查网络连接后重启服务。"])
+        XCTAssertEqual(resets, 1)
+        let requests = TranslationURLProtocol.requests()
+        XCTAssertEqual(requests.count, 2)
+        let id = try XCTUnwrap(requests.first?.value(forHTTPHeaderField: "X-TranslateHUD-Request-Id"))
+        XCTAssertEqual(requests.last?.value(forHTTPHeaderField: "X-TranslateHUD-Retry-Of"), id)
+    }
+
+    func testPureScreenshotUsesTrialStreamAndKeepsWaivedRetryOnScreenshotRoute() async throws {
+        let source = "Restart the service after checking the network connection."
+        let plan = ScreenshotTranslationPlan(blocks: [.text(runs: [.init(text: source, isStrong: false)], heading: nil)])
+        let first = streamResult(source).body.replacingOccurrences(
+            of: "data: [DONE]",
+            with: """
+            data: {"choices":[],"translatehud_trial":{"costMicroYuan":10,"chargedMicroYuan":10,"balanceMicroYuan":100,"retryRequestId":"<first-request-id>"}}
+
+            data: [DONE]
+            """
+        )
+        let final = "检查网络连接后重启服务。"
+        let second = streamResult(final).body.replacingOccurrences(
+            of: "data: [DONE]",
+            with: """
+            data: {"choices":[],"translatehud_trial":{"costMicroYuan":9,"chargedMicroYuan":0,"balanceMicroYuan":100}}
+
+            data: [DONE]
+            """
+        )
+        TranslationURLProtocol.reset([.init(body: first), .init(body: second)])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationURLProtocol.self]
+        let generation = UUID()
+        let receipts = SettlementCollector()
+        let refresh = TrialStreamGate()
+        defer { Task { await refresh.release() } }
+        let account = TrialStreamingAccount(
+            accessToken: { TrialActor.Credential(token: "unit-test-token", generation: generation) },
+            applySettlement: { receipt, _ in await receipts.add(receipt) },
+            refreshBalance: { generation in await refresh.wait(generation: generation) }
+        )
+        let base = TrialProxyTranslator(proxyBaseURL: TrialConfig.defaultProxyBaseURL,
+                                        session: URLSession(configuration: configuration), streamingAccount: account)
+        let translator = ScreenshotPlanTranslator(base: base, plan: plan)
+        var output: [String] = []
+        var resets = 0
+        for try await event in translator.translateStreaming(plan.originalMarkdown, to: .chinese, context: nil) {
+            switch event {
+            case .delta(let partial): output.append(partial)
+            case .reset: resets += 1
+            }
+        }
+        XCTAssertEqual(output, [final])
+        XCTAssertEqual(resets, 1)
+        let requests = TranslationURLProtocol.requests()
+        XCTAssertEqual(requests.compactMap { $0.url?.path }, Array(repeating: "/v1-screenshot/chat/completions", count: 2))
+        let id = try XCTUnwrap(requests.first?.value(forHTTPHeaderField: "X-TranslateHUD-Request-Id"))
+        XCTAssertEqual(requests.last?.value(forHTTPHeaderField: "X-TranslateHUD-Retry-Of"), id)
+        for request in requests {
+            XCTAssertEqual(request.value(forHTTPHeaderField: TrialHeaders.source), Data(source.utf8).base64EncodedString())
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: Any])
+            XCTAssertEqual(body["stream"] as? Bool, true)
+        }
+        let retryBody = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(requests.last?.httpBody)) as? [String: Any])
+        XCTAssertEqual(retryBody["translatehud_quality_retry"] as? Bool, true)
+        let settlements = await receipts.values
+        XCTAssertEqual(settlements.map(\.chargedMicroYuan), [10, 0])
+        for _ in 0..<100 {
+            if await refresh.started { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let refreshGeneration = await refresh.generation
+        XCTAssertEqual(refreshGeneration, generation)
+    }
+
     func testTrialStreamWaitsAfterStopForSettlementAndDone() async throws {
         let body = "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n" +
                    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
@@ -1319,13 +1449,14 @@ final class TranslationReliabilityTests: XCTestCase {
         return .batch(String(data: data, encoding: .utf8)!)
     }
 
-    private func mockTranslator(responses: [TranslationURLProtocol.Response]) -> OpenAICompatibleTranslator {
+    private func mockTranslator(responses: [TranslationURLProtocol.Response], trial: Bool = false) -> OpenAICompatibleTranslator {
         TranslationURLProtocol.reset(responses)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [TranslationURLProtocol.self]
         return OpenAICompatibleTranslator(
             config: ProviderConfig(baseURL: "https://example.com/v1", model: "test", apiKey: ""),
-            session: URLSession(configuration: configuration)
+            session: URLSession(configuration: configuration),
+            onTrialSettlement: trial ? { _ in } : nil
         )
     }
 }
@@ -1471,7 +1602,11 @@ private final class TranslationURLProtocol: URLProtocol, @unchecked Sendable {
             return
         }
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: response.status, httpVersion: nil, headerFields: response.headers)!, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(response.body.utf8))
+        let body = response.body.replacingOccurrences(
+            of: "<first-request-id>",
+            with: request.value(forHTTPHeaderField: "X-TranslateHUD-Request-Id") ?? ""
+        )
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 
@@ -1901,6 +2036,53 @@ extension TranslationReliabilityTests {
         let receipts = await received.values
         XCTAssertEqual(receipts.count, 1)
         XCTAssertEqual(TranslationURLProtocol.requests().count, 1, "Soft warning neither refunds nor repeats billing")
+    }
+
+    func testSettledTableKeepsTranslationWhenOneCellLacksChinese() async throws {
+        let plan = ScreenshotTranslationPlan(blocks: [.table(rows: [
+            ["Product", "Amount", "Unit"],
+            ["Milk Tea", "37", "oz"],
+            ["Coffee", "32", ""],
+        ])])
+        let outputs = ["产品", "数量", "单位", "奶茶", "37", "oz", "咖啡", "32"]
+        XCTAssertEqual(TranslationValidator.validate(input: "oz", output: "oz", target: .chinese),
+                       [.missingTargetLanguageContent])
+
+        let batch = try JSONSerialization.data(withJSONObject: ["results": outputs.enumerated().map {
+            ["i": $0.offset, "t": $0.element, "boldRanges": []] as [String: Any]
+        }])
+        var response = TranslationURLProtocol.Response.batch(String(decoding: batch, as: UTF8.self))
+        response.headers = ["X-Trial-Cost-Micro-Yuan": "10", "X-Trial-Charged-Micro-Yuan": "10",
+                            "X-Trial-Balance-Micro-Yuan": "100"]
+        let client = mockTranslator(responses: [response], trial: true)
+        let translator = ScreenshotPlanTranslator(base: ScreenshotTrialHTTPClient(client: client), plan: plan)
+        do {
+            _ = try await translator.translate([plan.originalMarkdown], to: .chinese, context: nil)
+            XCTFail("Expected the complete table to be displayed with a warning")
+        } catch let warning as TranslationSoftWarning {
+            XCTAssertEqual(warning.settled, true)
+            XCTAssertEqual(warning.itemFailures[5], [.underTranslated])
+            XCTAssertEqual(warning.sourceItems, plan.sourceTexts)
+            XCTAssertEqual(warning.providerCandidates, outputs)
+            XCTAssertEqual(warning.outputs, ["| 产品 | 数量 | 单位 |\n| --- | --- | --- |\n| 奶茶 | 37 | oz |\n| 咖啡 | 32 |  |"])
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
+    }
+
+    func testMultipleTableCellsMissingChineseStillFailQualityCheck() async throws {
+        let items = ["Product", "Unit", "oz", "ml"].map { ScreenshotStyledText(text: $0, boldRanges: [], isTableCell: true) }
+        let outputs = ["产品", "单位", "oz", "ml"]
+        let batch = try JSONSerialization.data(withJSONObject: ["results": outputs.enumerated().map {
+            ["i": $0.offset, "t": $0.element, "boldRanges": []] as [String: Any]
+        }])
+        let client = mockTranslator(responses: [.batch(String(decoding: batch, as: UTF8.self))])
+        do {
+            _ = try await client.translateStyledTrial(items, to: .chinese, context: nil, screenshotDiagnostics: true)
+            XCTFail("Multiple untranslated cells still fail quality validation")
+        } catch let failure as ScreenshotFailureStage {
+            XCTAssertEqual(failure, .quality)
+        }
+        XCTAssertEqual(TranslationURLProtocol.requests().count, 1)
     }
 
     func testPlainScreenshotUsesRealRenderBeforeDisplayingWarning() async throws {

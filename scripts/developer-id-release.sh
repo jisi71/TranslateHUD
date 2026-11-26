@@ -321,12 +321,16 @@ ditto "$STAGE_APP" "$DMG_ROOT/TranslateHUD.app"
 ln -s /Applications "$DMG_ROOT/Applications"
 hdiutil create -volname TranslateHUD -srcfolder "$DMG_ROOT" -ov -format UDZO "$FINAL_DMG"
 if [[ "${TRANSLATEHUD_NOTARIZE:-}" == "1" ]]; then
-    echo "→ 提交 DMG 公证..."
+    echo "→ 签名并提交 DMG 公证..."
+    codesign --sign "$DEVELOPER_ID_APP" --timestamp "$FINAL_DMG"
+    codesign --verify --strict "$FINAL_DMG"
     xcrun notarytool submit "$FINAL_DMG" \
         --keychain-profile "$NOTARY_KEYCHAIN_PROFILE" \
         --wait
     xcrun stapler staple "$FINAL_DMG"
     xcrun stapler validate "$FINAL_DMG"
+    codesign --verify --strict "$FINAL_DMG"
+    spctl --assess --type open --context context:primary-signature "$FINAL_DMG"
 else
     echo "→ 预览 DMG 在 releases/${DMG_NAME}，未公证，请勿发给用户。"
 fi
@@ -388,6 +392,8 @@ python3 "$ROOT/scripts/update_appcast.py" \
     --ed-signature "$SIGNATURE_VALUE" \
     --length "$LENGTH" \
     "${NOTES_ARGS[@]+"${NOTES_ARGS[@]}"}"
+
+python3 "$ROOT/scripts/check-release-consistency.py" --appcast "$PREVIEW" --download-base "$DOWNLOAD_BASE"
 
 if [[ "$NOTARIZED" -eq 1 || "${TRANSLATEHUD_UPDATE_APPCAST:-}" == "1" ]]; then
     cp "$PREVIEW" "$ROOT/appcast.xml"

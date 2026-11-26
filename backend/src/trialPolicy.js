@@ -1,5 +1,7 @@
 'use strict'
 
+const { normalizeReceipts } = require('./retryWaiver')
+
 // Length rules stay in sync with TranslateHUD/Trial/TrialPricing.swift.
 // Length is Unicode extended grapheme clusters (Intl.Segmenter), same as Swift String.count.
 // Chinese characters are one grapheme each. A base letter plus a combining mark is one.
@@ -256,6 +258,8 @@ function ledgerRecord(microYuan, record) {
     displayNo: readDisplayNo(record),
     inflight: sanitizeSlots(record && record.inflight)
   }
+  const receipts = normalizeReceipts(record && record.retryReceipts)
+  if (receipts.length) saved.retryReceipts = receipts
   const feedbackDay = readFeedbackDay(record)
   const feedbackCount = readFeedbackCount(record)
   if (feedbackDay && feedbackCount > 0) {

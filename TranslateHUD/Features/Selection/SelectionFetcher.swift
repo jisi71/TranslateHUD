@@ -183,7 +183,7 @@ enum SelectionFetcher {
 
     /// 对当前 pasteboard 的每个 NSPasteboardItem 各做一次 deep-copy，
     /// 返回的数组可以稍后整体 writeObjects 回去，结构（item 数 / 内部 types）完整保留。
-    fileprivate static func snapshotPasteboardItems(_ pb: NSPasteboard) -> [NSPasteboardItem] {
+    static func snapshotPasteboardItems(_ pb: NSPasteboard) -> [NSPasteboardItem] {
         guard let items = pb.pasteboardItems else { return [] }
         return items.map { source in
             let copy = NSPasteboardItem()
@@ -194,6 +194,16 @@ enum SelectionFetcher {
             }
             return copy
         }
+    }
+
+    static func restorePasteboardItems(_ items: [NSPasteboardItem], to pasteboard: NSPasteboard) {
+        let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+        // Mark each item before publishing so history managers can skip the restored copy.
+        for item in items where !item.types.contains(transient) {
+            item.setData(Data(), forType: transient)
+        }
+        pasteboard.clearContents()
+        if !items.isEmpty { pasteboard.writeObjects(items) }
     }
 }
 
@@ -289,11 +299,11 @@ private final class SystemSelectionProbeProvider: SelectionProbeProviding {
         case .readableText(let copied):
             return finishFound(copied, pasteboard: pasteboard, savedItems: savedItems)
         case .image:
-            restore(savedItems, to: pasteboard)
+            SelectionFetcher.restorePasteboardItems(savedItems, to: pasteboard)
             AppLog.info("Cmd+C 兜底：剪贴板变为图片，没有可读文字")
             return .image
         case .noReadableText:
-            restore(savedItems, to: pasteboard)
+            SelectionFetcher.restorePasteboardItems(savedItems, to: pasteboard)
             AppLog.info("Cmd+C 兜底：剪贴板变化但文本未就绪")
             return .dataUnavailable
         }
@@ -335,7 +345,7 @@ private final class SystemSelectionProbeProvider: SelectionProbeProviding {
         let focused = SelectionFetcher.focusedElement()
         let rect = focused.flatMap(SelectionFetcher.currentSelectionRectViaAX)
         let context = focused.flatMap { SelectionFetcher.currentTextContext($0, selected: copied) }
-        restore(savedItems, to: pasteboard)
+        SelectionFetcher.restorePasteboardItems(savedItems, to: pasteboard)
         AppLog.info("Cmd+C 兜底命中: len=\(copied.count)")
         return .found(SelectionFetcher.Selection(text: copied, screenRectTopLeft: rect, context: context))
     }
@@ -346,18 +356,12 @@ private final class SystemSelectionProbeProvider: SelectionProbeProviding {
         pasteboard: NSPasteboard,
         result: PasteboardSelectionProbe
     ) -> PasteboardSelectionProbe {
-        if copyOccurred { restore(savedItems, to: pasteboard) }
+        if copyOccurred { SelectionFetcher.restorePasteboardItems(savedItems, to: pasteboard) }
         return result
     }
 
     private func applicationStillMatches(_ expectedPID: pid_t?) -> Bool {
         guard let expectedPID else { return true }
         return currentApplicationPID == expectedPID
-    }
-
-    /// 保留原有的逐 item 恢复语义，不把多 item 剪贴板压成单 item。
-    private func restore(_ items: [NSPasteboardItem], to pasteboard: NSPasteboard) {
-        pasteboard.clearContents()
-        if !items.isEmpty { pasteboard.writeObjects(items) }
     }
 }

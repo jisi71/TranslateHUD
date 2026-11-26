@@ -34,3 +34,29 @@
 [`trial-stream-tokenizer-warm.patch`](trial-stream-tokenizer-warm.patch) 以线上读回包 `8b1277a75d73e4355dcc9543ae4393be8734169f34eef01b148fcfdad1f2c0aa` 为基线，仅修改 `server.js`。编号版本在监听端口前初始化并缓存 tokenizer。上线后记录 `trial_tokenizer_ready`。设置相同解包目录运行 `node --test backend/deployment-tests/trial-stream-tokenizer-warm.test.js backend/deployment-tests/trial-stream-quota-timing.test.js`，3 项通过。
 
 2026-11-18，`trial-stream` 版本 1 已发布，1 个预置实例可用。云端日志记录 tokenizer 启动预加载 718 毫秒。`/v1-screenshot/chat/completions` 指向版本 1，保留身份认证与路径透传。未登录空请求返回 HTTP 401。现有路由及 `$DEFAULT` 别名核对一致。正式签名的本机测试构建 18.5 通过新路径提交官方体验截图翻译。真实截图请求耗时待用户复测。部署、验证和回滚包保存在主工作区的 `build/trial-stream-warm-20261118`。
+
+## 同轮质量重试免扣费
+
+客户端首轮发送 `X-TranslateHUD-Request-Id`。模型返回有效用量、账本提交成功后，结算回执才会返回对应的 `retryRequestId`。客户端只在自动质量重试的第二次请求发送 `X-TranslateHUD-Retry-Of`。第二次请求体还会声明必须豁免，版本回滚或转发漏掉请求头时，服务会拒绝该请求。
+
+服务端按已认证的账号查找首轮回执。回执有效三分钟，绑定原文、目标语言、上下文、翻译模式及格式。每个账号最多保存 64 条近期凭证元数据。重试凭证的核销和并发占位在同一事务完成。usage event 记录模型成本和 `retryWaived: true`，体验余额和每日免费用量保持不变。凭证一旦核销，模型请求失败也不会恢复。现有截图批量入口维持单次请求。
+
+原始包于 2026-11-24 从 CloudBase 读回并核对 SHA-256。正式截图和划词路径经 `trial-queue-shared` 版本 2 到 `trial-stream-shared` 版本 1。
+
+| 函数版本 | 原始包 SHA-256 | 补丁 |
+| --- | --- | --- |
+| `trial` `$LATEST` | `580aec2c9f64f39781698a0ac6782103c56f1f42b72f07cce82be8b69c2f4677` | `trial-quality-retry.patch` |
+| `trial-stream-shared` 1 | `a93a05e0b0304d8edd914cf3a482c52bb332d2fd910c41765bd6694899348dc6` | `trial-stream-shared-quality-retry.patch` |
+| `trial-queue-shared` 2 | `bfaffd2775ecc35aab854205994bec00e06bbc86bac091c9b2c456435e3c04da` | `trial-queue-shared-quality-retry.patch` |
+
+分别核验原始包哈希，在各自解包目录应用对应补丁（`patch -p1`）。将同一份 `backend/src/retryWaiver.js` 复制到两个翻译函数的 `src/`，队列只需应用它自己的补丁。保持原包依赖、函数设置和启动器执行权限。将 `TRIAL_RETRY_TEST_ROOT` 指向每个翻译候选的 `src/`，运行 `backend/test/retryWaiver.test.js`。将 `TRIAL_RETRY_QUEUE_ROOT` 指向队列候选根目录，运行 `quality-retry-queue.test.js`。这些测试使用模拟身份和模型响应。
+
+正式发布前应重新核对函数版本和当前路由，先验证翻译函数和队列，再同步客户端与官网。历史 `backend/src` 仍用于本地回归，正式函数采用各自线上基线的补丁。
+
+## 正式翻译入口直连
+
+2026-11-26，正式截图和划词入口从 `trial-queue-shared` 版本 3 切换至 `trial-stream-shared` 版本 3。由线上 v2 包应用 [直连入口补丁](trial-stream-shared-direct.patch) 后发布。仅两条正式路径的 POST 可直接进入既有 JWT 验证。内部路径继续使用队列签名，并绑定 v2。两条正式路径各保留 200 QPS、网关鉴权和路径透传。v3 保持单实例 10 并发和 1 个预置实例，冒烟后释放了 v2 的预置实例，保留 v2 和旧队列。
+
+本地仓库后端测试 159 项通过，候选包通过 16 项，包括 [入口鉴权测试](trial-worker-direct-routes.test.js)。44 张表格截图与上一轮逐张一致，50 张普通文字样本仍待补充。真实冒烟核对两条路由的未登录拦截、空请求、正常流式输出，以及截图同轮重试免扣。用相同合成句单次对照，划词首字由 2,808.42 ms 降至 1,644.31 ms，截图由 1,360.34 ms 降至 1,003.37 ms。划词基线的队列冷启动为 517 ms。
+
+本机证据保存在 `build/direct-worker-20261126/verification.json`。在该工作树根目录执行 `bash build/direct-worker-20261126/route.sh trial-queue-shared 3` 可将两条正式路由一起切回队列。保留的内部路由将继续调用 worker v2。

@@ -208,6 +208,25 @@ kbd { font: 550 .85em/1.6 var(--sans); white-space: nowrap; border-radius: 5px; 
 .setup-body { padding: 0 24px 20px 33px; font-size: 16px; color: var(--muted); }
 .setup-body p, .setup-stage { margin: 0; }
 .setup-body p + p { margin-top: 12px; }
+#usage-options { scroll-margin-top: 80px; }
+.usage-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.usage-table caption { text-align: left; color: var(--ink); font-weight: 600; padding-bottom: 6px; }
+.usage-table th, .usage-table td {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.usage-table th { color: var(--ink); font-weight: 600; }
+.usage-table th:first-child { width: 32%; padding-right: 12px; }
+.setup-body .usage-terms { margin-top: 12px; font-size: 13px; line-height: 1.6; }
 .help-answers { margin: 0; padding: 0 0 24px; font-size: 16px; line-height: 1.65; }
 .help-answers dt { font-weight: 600; }
 .help-answers dd { margin: 4px 0 0; color: var(--muted); }

@@ -61,6 +61,7 @@ struct TrialSettlement: Equatable, Sendable {
     var promptTokens: Int
     var completionTokens: Int
     var dailyQuota: DailyTranslationQuota? = nil
+    var retryRequestId: String? = nil
 
     var costFen: Int { TrialPricing.displayFen(microYuan: costMicroYuan) }
     var chargedFen: Int { TrialPricing.displayFen(microYuan: chargedMicroYuan) }
@@ -111,7 +112,8 @@ struct TrialSettlement: Equatable, Sendable {
                 balanceMicroYuan: balance,
                 promptTokens: prompt,
                 completionTokens: completion,
-                dailyQuota: DailyTranslationQuota.parse(fields)
+                dailyQuota: DailyTranslationQuota.parse(fields),
+                retryRequestId: fields["retryRequestId"] as? String
             )
         }
         guard let cost = intValue(fields["costFen"]),

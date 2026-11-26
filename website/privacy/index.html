@@ -55,7 +55,7 @@
         </button>
         <span class="download-slot" data-download-slot>
           <span class="btn-glow">
-            <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.10/TranslateHUD-0.4.10.dmg">
+            <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.11/TranslateHUD-0.4.11.dmg">
               <span class="lang-zh">下载</span>
               <span class="lang-en">Download</span>
             </a>
@@ -81,12 +81,12 @@
         </p>
         <ul>
           <li>
-            <span class="lang-zh">自备 API：翻译正文由本机直连你填写的服务，不经过我们的中转；密钥只保存在本机钥匙串。</span>
-            <span class="lang-en">Bring your own API: translation text goes from your Mac straight to the service you configure; it does not pass through our relay. Keys stay only in the on-device Keychain.</span>
+            <span class="lang-zh">自备 API Key 时，Mac 把正文直接发送给你选择的模型服务商，由该服务商按自己的条款和隐私政策处理。密钥保存在本机钥匙串。使用本机 Ollama 时，请求发送到你配置的本地地址。</span>
+            <span class="lang-en">With your own API key, your Mac sends the text directly to your chosen model provider, which processes it under its terms and privacy policy. The key stays in your Mac’s Keychain. With local Ollama, requests go to the local address you configure.</span>
           </li>
           <li>
-            <span class="lang-zh">登录体验额度：为完成翻译与扣费，原文会经我们的服务转发；我们不会把原文或译文写入账本或失败日志。</span>
-            <span class="lang-en">Signed-in trial credit: to complete translation and billing, the source text is forwarded through our service; we do not write source or translated text into ledgers or failure logs.</span>
+            <span class="lang-zh">使用官方每日免费额度或邀请码体验余额时，腾讯云开发（上海）会把待译文本及请求所需的目标语言、参考上下文等转交给当前的上游模型服务商 DeepSeek（深度求索），用于翻译或名词解释。原文和译文不写入使用账本或失败日志。</span>
+            <span class="lang-en">When you use the official daily free allowance or invitation trial credit, Tencent CloudBase (Shanghai) relays source text and any required details, such as the target language or reference context, to DeepSeek, our current upstream provider. DeepSeek processes them for translation or term explanations. Usage ledgers and failure logs exclude source and translated text.</span>
           </li>
           <li>
             <span class="lang-zh">框选翻译：本机识别出文字后再送去翻译；正常流程不上传整张截图。</span>
@@ -100,18 +100,44 @@
             <span class="lang-zh">翻译质量反馈：仅在你点击反馈并确认预览后，上传当次原文、模型候选译文、显示内容、目标语言、质量标记、版本、入口、模型名称及提交账号标识，用于排查漏译。不会包含截图、密钥、登录凭证、其他剪贴板内容或后续编辑，也不会自动上传或重试。整条反馈保留 30 天，到期由每小时运行的任务删除；执行周期或待处理数量可能使清理延后。</span>
             <span class="lang-en">Translation quality feedback: only after you click Feedback and confirm the preview, we receive that result's source, model candidate, displayed content, target language, quality flags, version, entry point, model name and submitting account identifier to investigate missing translations. It excludes screenshots, keys, session credentials, other clipboard content and later edits. Uploads and retries are never automatic. The entire record is retained for 30 days, then deleted by an hourly job; the schedule or a processing backlog may delay deletion.</span>
           </li>
-          <li>
-            <span class="lang-zh">手机号或邮箱登录：你提供的手机号或邮箱用于发送验证码、账号登录与额度管理。</span>
-            <span class="lang-en">Phone or email sign-in: the phone number or email address you provide is used for verification codes, account sign-in, and allowance management.</span>
-          </li>
         </ul>
+        <h2><span class="lang-zh">账号数据与留存</span><span class="lang-en">Account data and retention</span></h2>
         <p class="release-copy">
-          <span class="lang-zh">联系邮箱：</span><span class="lang-en">Contact: </span><a href="mailto:translatehud@gmail.com">translatehud@gmail.com</a>
+          <span class="lang-zh">账号和额度数据存储在腾讯云开发上海环境。手机号或邮箱在账号存续期间用于登录与额度管理。余额变动、用量及时间等账本记录按计费、对账、防滥用和法定需要保留。</span>
+          <span class="lang-en">Account and allowance data are stored in Tencent CloudBase in Shanghai. We retain the phone number or email address while the account is active for sign-in and allowance management. We keep ledger records such as balance changes, usage and timestamps as needed for billing, reconciliation, abuse prevention and legal requirements.</span>
         </p>
         <p class="release-copy">
-          <span class="lang-zh">生效及更新日期：</span><span class="lang-en">Effective and last updated: </span><time datetime="2026-11-17">2026-11-17</time>
+          <span class="lang-zh">登录验证码由腾讯云开发为发送和校验作短期处理，有效期为 10 分钟。翻译账本不保存验证码。</span>
+          <span class="lang-en">Tencent CloudBase handles sign-in codes briefly to send and verify them. Codes are valid for 10 minutes and are excluded from the translation ledger.</span>
+        </p>
+        <h2><span class="lang-zh">注销账号与删除个人信息</span><span class="lang-en">Close an account or delete personal data</span></h2>
+        <p class="release-copy">
+          <span class="lang-zh">向 <a href="mailto:translatehud@agent.qq.com">translatehud@agent.qq.com</a> 发邮件，注明与请求相关的账号和希望处理的数据。请勿发送验证码、密码或 API Key。我们由人工核实身份，并在核实后 15 日内或法律规定的期限内答复。</span>
+          <span class="lang-en">Email <a href="mailto:translatehud@agent.qq.com">translatehud@agent.qq.com</a> with the account concerned and what data you want us to act on. Leave out verification codes, passwords and API keys. We review requests manually and respond within 15 days of verifying your identity or within the period required by law.</span>
+        </p>
+        <p class="release-copy">
+          <span class="lang-zh">注销后，我们会停止提供账号服务，删除或匿名化相关个人信息。法律要求保留的记录按规定处理，账号内的体验余额等权益可能失效。</span>
+          <span class="lang-en">Once your account is closed, we stop account services and delete or anonymize the relevant personal data. We handle legally required records under applicable law. Any remaining trial credit or other account benefits may expire.</span>
+        </p>
+        <p class="release-copy">
+          <span class="lang-zh">运营者为齐亚浩（个人）。政策自本版本公布之日起生效。更新于</span>
+          <span class="lang-en">Operated by Qi Yahao, an individual. This policy takes effect on publication. Updated</span>
+          <time datetime="2026-11-24">2026-11-24</time>
         </p>
       </article>
+
+      <section class="release" id="hosted-terms" aria-labelledby="hosted-terms-title">
+        <h2 id="hosted-terms-title"><span class="lang-zh">官方托管服务条款</span><span class="lang-en">Official hosted service terms</span></h2>
+        <p class="release-copy">
+          <span class="lang-zh">仓库发布的客户端和代码采用 <a href="https://github.com/jisi71/TranslateHUD/blob/main/LICENSE">MIT 协议</a>，第三方组件按各自许可使用。官方服务器、每日免费额度及邀请码体验余额适用独立的托管服务条款。客户端内「帮助 → 用户协议」也提供这些条款。</span>
+          <span class="lang-en">The client and code released in the repository are available under the <a href="https://github.com/jisi71/TranslateHUD/blob/main/LICENSE">MIT License</a>. Third-party components follow their own licenses. Access to our servers, the daily free allowance and invitation trial credit are subject to separate hosted service terms, also available in the app under Help → User Agreement.</span>
+        </p>
+        <ul>
+          <li><span class="lang-zh">我们可调整免费额度、邀请码规则及服务范围，并尽量提前在官网或应用内告知。</span><span class="lang-en">We may adjust the free allowance, invitation rules and service availability. We try to give advance notice on the website or in the app.</span></li>
+          <li><span class="lang-zh">对刷量、冒用账号或绕过限制等滥用行为，我们可限流、暂停账号访问或冻结体验余额。情节严重时可终止账号的托管服务。</span><span class="lang-en">For abuse such as artificial usage, account misuse or bypassing limits, we may rate-limit, suspend hosted access or freeze trial credit. We may end hosted access for serious violations.</span></li>
+          <li><span class="lang-zh">在适用法律允许的范围内，托管服务按现状提供。我们会维护服务，但无法保证持续可用或完全无误。你依法享有的权利仍然适用。</span><span class="lang-en">To the extent permitted by applicable law, the hosted service is provided as is. We maintain it, but cannot guarantee uninterrupted or error-free service. Your statutory rights continue to apply.</span></li>
+        </ul>
+      </section>
     </div>
   </main>
 
@@ -123,7 +149,7 @@
       </a>
       <span class="download-slot" data-download-slot>
         <span class="btn-glow">
-          <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.10/TranslateHUD-0.4.10.dmg">
+          <a class="button" data-download href="https://github.com/jisi71/TranslateHUD/releases/download/v0.4.11/TranslateHUD-0.4.11.dmg">
             <span class="lang-zh">下载 macOS 版</span>
             <span class="lang-en">Download for macOS</span>
           </a>
@@ -135,10 +161,10 @@
       </a>
       <a href="https://github.com/jisi71/TranslateHUD">GitHub</a>
       <a href="./"><span class="lang-zh">隐私声明</span><span class="lang-en">Privacy</span></a>
-      <a href="mailto:translatehud@gmail.com"><span class="lang-zh">反馈</span><span class="lang-en">Feedback</span></a>
+      <a href="mailto:translatehud@agent.qq.com"><span class="lang-zh">反馈</span><span class="lang-en">Feedback</span></a>
     </div>
   </footer>
   <script src="../js/lang.js"></script>
-  <script src="../js/download.js?v=0.4.10"></script>
+  <script src="../js/download.js?v=0.4.11"></script>
 </body>
 </html>

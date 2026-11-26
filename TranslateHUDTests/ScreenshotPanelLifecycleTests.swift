@@ -118,6 +118,173 @@ final class ScreenshotPanelLifecycleTests: XCTestCase {
         try attach(try panel(), name: "qr-and-ocr-in-one-panel")
     }
 
+    func testPlainScreenshotStreamsWithQRCodeAndClosesOnEscape() async throws {
+        let feed = AsyncThrowingStream<TranslationStreamEvent, Error>.makeStream()
+        let cancelled = expectation(description: "Underlying translation stream cancelled")
+        feed.continuation.onTermination = { reason in
+            if case .cancelled = reason { cancelled.fulfill() }
+        }
+        var requests: [String] = []
+        let screen = try XCTUnwrap(NSScreen.main).visibleFrame
+        let result = ScreenshotFlow.openCaptured(
+            image: NSImage(size: NSSize(width: 400, height: 300)),
+            mouseLocation: NSPoint(x: screen.minX + 70, y: screen.maxY - 90),
+            prepare: { source in
+                requests.append(source)
+                return .ready(.init(translator: TestScreenshotStream(stream: feed.stream),
+                                    explainer: FailingTermExplainer(message: "unused")))
+            },
+            recognize: { _, source in
+                source.showCodes([.init(payload: self.payload, box: .zero)])
+                source.finishRecognition(plan: Self.plainPlan("Recognized content"))
+            }
+        )
+        defer { result.window.dismiss() }
+        let window = try panel()
+        try await waitUntil { result.window.contentTextSnapshot().contains("Recognized content") }
+        XCTAssertEqual(requests, ["Recognized content"])
+        XCTAssertEqual(result.source.resultText, payload)
+        let initial = window.frame
+        feed.continuation.yield(.delta("初步译文"))
+        try await waitUntil { result.window.contentTextSnapshot().contains("初步译文") }
+        guard case .streaming = result.source.progress.state else { return XCTFail("Expected a live partial result") }
+        XCTAssertEqual(result.source.resultText, payload + "\n\n初步译文")
+        let longer = "初步译文" + String(repeating: "继续翻译这一段文字", count: 150)
+        feed.continuation.yield(.delta(longer))
+        try await waitUntil { window.frame.height > initial.height + 20 }
+        XCTAssertEqual(window.frame.minX, initial.minX, accuracy: 1)
+        XCTAssertEqual(window.frame.maxY, initial.maxY, accuracy: 1)
+        XCTAssertEqual(window.frame.width, initial.width, accuracy: 1)
+        let content = try XCTUnwrap(window.contentView)
+        func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+        func translationViewport() -> NSScrollView? {
+            descendants(content).compactMap { $0 as? NSScrollView }.first {
+                guard let document = $0.documentView, !(document is NSTextView),
+                      document.bounds.height > $0.contentView.bounds.height + 60 else { return false }
+                return descendants(document).contains { ($0 as? NSTextView)?.string == longer }
+            }
+        }
+        try await waitUntil {
+            result.window.contentTextSnapshot().contains(longer) && translationViewport() != nil
+        }
+        let viewport = try XCTUnwrap(translationViewport())
+        XCTAssertEqual(viewport.contentView.bounds.minY, 0, accuracy: 1)
+        viewport.contentView.scroll(to: NSPoint(x: 0, y: 60))
+        viewport.reflectScrolledClipView(viewport.contentView)
+        XCTAssertEqual(viewport.contentView.bounds.minY, 60, accuracy: 1)
+        let appended = longer + "段末新到的文字"
+        feed.continuation.yield(.delta(appended))
+        try await waitUntil { result.window.contentTextSnapshot().contains(appended) }
+        XCTAssertEqual(viewport.contentView.bounds.minY, 60, accuracy: 1)
+        let screenshotWindow = try XCTUnwrap(window as? TranslationPanelWindow)
+        screenshotWindow.cancelOperation(nil)
+        await fulfillment(of: [cancelled], timeout: 3)
+        feed.continuation.yield(.delta("取消后迟到的内容"))
+        XCTAssertTrue(result.source.isCancelled)
+        XCTAssertFalse(window.isVisible)
+        XCTAssertFalse(result.source.resultText.contains("迟到"))
+    }
+
+    func testScreenshotStreamingRoutingAndParagraphBoundaries() async throws {
+        let plain = Self.plainPlan("First paragraph", "Second paragraph")
+        XCTAssertTrue(plain.supportsStreaming)
+        XCTAssertEqual(plain.streamingSource, "First paragraph\n\nSecond paragraph")
+        XCTAssertFalse(Self.plainPlan("A hard\nline break").supportsStreaming)
+        XCTAssertFalse(Self.plainPlan(" ").supportsStreaming)
+        let structured: [ScreenshotTranslationPlan.Block] = [
+            .table(rows: [["One", "Two"]]),
+            .text(runs: [.init(text: "Heading", isStrong: false)], heading: 2),
+            .text(runs: [.init(text: "Bold", isStrong: true)], heading: nil)
+        ]
+        for block in structured {
+            XCTAssertFalse(ScreenshotTranslationPlan(blocks: plain.blocks + [block]).supportsStreaming)
+        }
+        let feed = AsyncThrowingStream<TranslationStreamEvent, Error>.makeStream()
+        let translator = ScreenshotPlanTranslator(base: TestScreenshotStream(stream: feed.stream), plan: plain)
+        let progress = TranslationProgress()
+        defer { progress.cancel() }
+        progress.startStreaming(translator: translator, original: plain.originalMarkdown, target: .chinese)
+        feed.continuation.yield(.delta("# 一\n\n**二"))
+        feed.continuation.finish()
+        try await waitUntil { !progress.isTranslating }
+        guard case .success = progress.state else { return XCTFail("Expected completed plain paragraphs") }
+        XCTAssertEqual(progress.displayedTranslation, "\\# 一\n\n\\*\\*二")
+    }
+
+    func testScreenshotStreamRetryUsesCurrentTargetAndKeepsSoftWarning() async throws {
+        let failed = AsyncThrowingStream<TranslationStreamEvent, Error>.makeStream()
+        let retry = AsyncThrowingStream<TranslationStreamEvent, Error>.makeStream()
+        let plan = Self.plainPlan("First paragraph", "Second paragraph")
+        let sourceText = try XCTUnwrap(plan.streamingSource)
+        var requests: [String] = []
+        let source = ScreenshotSourceState(plan: plan, prepare: { text in
+            requests.append(text)
+            let stream = requests.count == 1 ? failed.stream : retry.stream
+            return .ready(.init(translator: TestScreenshotStream(stream: stream), explainer: FailingTermExplainer(message: "unused")))
+        })
+        defer { source.cancel() }
+        source.retry(target: .english)
+        failed.continuation.yield(.delta("Misplaced\nnewlines\nin one paragraph"))
+        failed.continuation.finish()
+        try await waitUntil { !source.progress.isTranslating }
+        guard case .failed = source.progress.state else { return XCTFail("Expected failure for incorrect paragraph boundaries") }
+        XCTAssertEqual(requests, [sourceText])
+        XCTAssertTrue(source.resultText.isEmpty)
+        source.retry(target: .chinese)
+        retry.continuation.yield(.delta("第一段"))
+        try await waitUntil { source.progress.displayedTranslation == "第一段" }
+        let candidate = "第一段\n\n保留部分英文"
+        let warning = try XCTUnwrap(TranslationSoftWarning.make(
+            sources: [sourceText], candidates: [candidate], target: .chinese,
+            failures: [[.underTranslated]], model: "test", origin: "provider.completedStream"
+        ))
+        retry.continuation.finish(throwing: warning)
+        try await waitUntil { !source.progress.isTranslating }
+        guard case .success = source.progress.state else { return XCTFail("Expected a usable result and soft warning") }
+        XCTAssertEqual(source.resultText, candidate)
+        XCTAssertEqual(source.progress.qualityWarning?.providerCandidates, [candidate])
+        XCTAssertEqual(source.progress.qualityWarning?.displaySources, [plan.originalMarkdown])
+        XCTAssertEqual(source.progress.targetLanguage, .chinese)
+        XCTAssertEqual(requests, [sourceText, sourceText])
+    }
+
+    func testScreenshotStreamEditsSwitchToBatchForAddedHeadingOrTable() async throws {
+        let plain = Self.plainPlan("Original")
+        for (edited, expectedItems) in [("## New heading", ["New heading"]),
+                                       ("| Label | Value |\n| --- | --- |\n| Alpha | 1 |", ["Label", "Value", "Alpha", "1"])] {
+            var requests: [String] = []
+            let feed = AsyncThrowingStream<TranslationStreamEvent, Error>.makeStream()
+            let source = ScreenshotSourceState(plan: plain, prepare: { text in
+                requests.append(text)
+                if requests.count == 1 {
+                    return .ready(.init(translator: TestScreenshotStream(stream: feed.stream), explainer: FailingTermExplainer(message: "unused")))
+                }
+                return .ready(.init(translator: PanelLifecycleTranslator(), explainer: FailingTermExplainer(message: "unused")))
+            })
+            defer { source.cancel() }
+            source.progress.editSource("Revised text")
+            source.retry(target: .chinese)
+            XCTAssertNil(source.progress.sourceDraft)
+            XCTAssertTrue(source.plan.supportsStreaming)
+            feed.continuation.yield(.delta("校正"))
+            try await waitUntil { source.progress.displayedTranslation == "校正" }
+            source.progress.editSource(edited)
+            source.retry(target: .english)
+            try await waitUntil { !source.progress.isTranslating }
+            guard case .success = source.progress.state else { return XCTFail("Expected a structured batch result") }
+            XCTAssertNil(source.editError)
+            XCTAssertFalse(source.plan.supportsStreaming)
+            XCTAssertEqual(source.plan.sourceTexts, expectedItems)
+            XCTAssertEqual(source.progress.targetLanguage, .english)
+            XCTAssertTrue(source.resultText.contains("译" + expectedItems[0]))
+            XCTAssertEqual(requests, ["Revised text", expectedItems.joined(separator: "\n")])
+        }
+    }
+
+    private static func plainPlan(_ paragraphs: String...) -> ScreenshotTranslationPlan {
+        .init(blocks: paragraphs.map { .text(runs: [.init(text: $0, isStrong: false)], heading: nil) })
+    }
+
     func testClosingDuringRecognitionPreventsLateResultAndTranslation() async throws {
         var finish: CheckedContinuation<Void, Never>?
         var finished = false
@@ -274,6 +441,19 @@ final class ScreenshotPanelLifecycleTests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+}
+
+private struct TestScreenshotStream: Translator {
+    let stream: AsyncThrowingStream<TranslationStreamEvent, Error>
+
+    func translateStreaming(_ text: String, to target: TargetLanguage,
+                            context: SelectionFetcher.TextContext?) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
+        stream
+    }
+
+    func translate(_ texts: [String], to target: TargetLanguage, context: SelectionFetcher.TextContext?) async throws -> [String] {
+        throw TranslationError.parse("Unexpected batch request")
     }
 }
 

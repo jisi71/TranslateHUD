@@ -47,6 +47,7 @@ struct TrialStreamingAccount: Sendable {
 }
 
 struct TrialProxyTranslator: ScreenshotStyledTranslator, ScreenshotTrialBillingRoute {
+    var allowsAutomaticLineFallback: Bool { false }
     let proxyBaseURL: String
     let session: URLSession
     private let streamingAccount: TrialStreamingAccount
@@ -135,7 +136,23 @@ struct TrialProxyTranslator: ScreenshotStyledTranslator, ScreenshotTrialBillingR
         to target: TargetLanguage,
         context: SelectionFetcher.TextContext?
     ) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
-        let proxyBaseURL = proxyBaseURL
+        translateStreaming(text, to: target, context: context, proxyBaseURL: proxyBaseURL)
+    }
+
+    func translateScreenshotStreaming(
+        _ text: String,
+        to target: TargetLanguage,
+        context: SelectionFetcher.TextContext?
+    ) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
+        translateStreaming(text, to: target, context: context, proxyBaseURL: TrialConfig.screenshotProxy(for: proxyBaseURL))
+    }
+
+    private func translateStreaming(
+        _ text: String,
+        to target: TargetLanguage,
+        context: SelectionFetcher.TextContext?,
+        proxyBaseURL: String
+    ) -> AsyncThrowingStream<TranslationStreamEvent, Error> {
         let session = session
         let account = streamingAccount
         return AsyncThrowingStream { continuation in

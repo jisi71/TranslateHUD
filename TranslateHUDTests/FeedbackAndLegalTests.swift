@@ -118,7 +118,7 @@ final class FeedbackAndLegalTests: XCTestCase {
         XCTAssertTrue(agreement.contains("齐亚浩（个人）"))
         XCTAssertTrue(agreement.contains("translatehud@agent.qq.com"))
         XCTAssertTrue(agreement.contains("运营者住所地（北京市）"))
-        XCTAssertTrue(agreement.contains("2026-10-26"))
+        XCTAssertTrue(agreement.contains("生效日期：本版本公布之日"))
         XCTAssertTrue(privacy.contains("隐私政策"))
         XCTAssertTrue(privacy.contains("腾讯云开发"))
         XCTAssertTrue(privacy.contains("意见反馈"))
@@ -166,6 +166,23 @@ final class FeedbackAndLegalTests: XCTestCase {
             let text = try source(relative)
             XCTAssertFalse(text.lowercased().contains("mailto:"))
             if !relative.hasSuffix("SettingsView.swift") { XCTAssertFalse(text.contains("邮箱")) }
+        }
+    }
+
+    func testUpdatedLegalDocumentsLoadFromApplicationBundle() {
+        let requirements = [
+            ("privacy-policy", ["DeepSeek", "translatehud@agent.qq.com", "十五（15）日", "MIT"]),
+            ("privacy-policy-en", ["DeepSeek", "translatehud@agent.qq.com", "15 days", "MIT"]),
+            ("user-agreement", ["DeepSeek", "MIT 协议", "官方托管服务"]),
+            ("user-agreement-en", ["DeepSeek", "MIT License", "official hosted service"])
+        ]
+        for (resource, phrases) in requirements {
+            let document = LegalDocument.load(resource: resource, unavailable: "<unavailable>")
+            let text = String(document.characters)
+            XCTAssertNotEqual(text, "<unavailable>", resource)
+            for phrase in phrases {
+                XCTAssertTrue(text.contains(phrase), "\(resource): missing \(phrase)")
+            }
         }
     }
 

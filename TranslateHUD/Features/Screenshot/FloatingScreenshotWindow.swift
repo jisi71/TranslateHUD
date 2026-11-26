@@ -74,7 +74,7 @@ final class FloatingScreenshotWindow {
         window.closeHandler = { [weak self] in self?.close(reason: .explicit) }
         window.escapeHandler = { [weak self] in self?.close(reason: .escape) }
         closeRef = { [weak self] in self?.close(reason: .explicit) }
-        retryRef = { [weak self] in self?.source.progress.retry() }
+        retryRef = { [weak self] in self?.source.retry() }
         pinRef = { [weak self] pinned in
             self?.isPinned = pinned
         }

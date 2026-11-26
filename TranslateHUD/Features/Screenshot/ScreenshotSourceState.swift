@@ -106,9 +106,22 @@ final class ScreenshotSourceState: ObservableObject {
         termProgress.cancel()
     }
 
+    func retry(target: TargetLanguage? = nil) {
+        guard canTranslate else { return }
+        if let draft = progress.sourceDraft {
+            retranslate(markdown: draft, target: target)
+            return
+        }
+        progress.prepareManualRetranslation()
+        translate(plan, target: target ?? progress.targetLanguage ?? TargetLanguage.resolved(
+            for: plan.sourceTexts, configured: SettingsStore.shared.targetLanguage
+        ))
+    }
+
     private func translate(_ snapshot: ScreenshotTranslationPlan, target: TargetLanguage) {
-        let source = snapshot.sourceForQuota
-        let originals = [snapshot.originalMarkdown]
+        let streamingSource = snapshot.streamingSource
+        let source = streamingSource ?? snapshot.sourceForQuota
+        let original = snapshot.originalMarkdown
         progress.mapTranslator = { ScreenshotPlanTranslator(base: $0, plan: snapshot) }
         progress.retrySourceText = source
         let translator: any Translator
@@ -118,7 +131,11 @@ final class ScreenshotSourceState: ObservableObject {
         case .ready(let ready):
             translator = progress.mapTranslator?(ready.translator) ?? ready.translator
         }
-        progress.start(translator: translator, originals: originals, target: target)
+        if streamingSource != nil {
+            progress.startStreaming(translator: translator, original: original, target: target)
+        } else {
+            progress.start(translator: translator, originals: [original], target: target)
+        }
     }
 
     private static func makeTerms(plan: ScreenshotTranslationPlan, progress: TranslationProgress) -> TermExplanationProgress {
@@ -143,6 +160,11 @@ extension ScreenshotSourceState {
         do {
             var blocks: [ScreenshotTranslationPlan.Block] = []
             var tableIndex = 0
+            let oldTables = plan.blocks.compactMap { block -> [[String]]? in
+                guard case .table(let rows, _, _) = block else { return nil }
+                return rows
+            }
+            let oldSpans = plan.tableSpans
             func runs(_ text: String) -> [ScreenshotTextRun] {
                 let parsed = MarkdownDisplay.parse(text)
                 return parsed.runs.map { run in
@@ -155,14 +177,15 @@ extension ScreenshotSourceState {
                     let cells = ranges.map { $0.map { (markdown as NSString).substring(with: $0) } }
                     let parsedRuns = cells.map { $0.map(runs) }
                     let rows = parsedRuns.map { $0.map { $0.map(\.text).joined() } }
-                    let oldTables = plan.blocks.compactMap { block -> [[String]]? in
-                        if case .table(let rows, _, _) = block { return rows }; return nil
+                    var spans: [ScreenshotCellSpan] = []
+                    if !oldTables.isEmpty {
+                        guard oldTables.indices.contains(tableIndex), rows.count == oldTables[tableIndex].count,
+                              rows.map(\.count) == oldTables[tableIndex].map(\.count) else {
+                            throw ScreenshotProofreadModel.EditError.unrenderable
+                        }
+                        spans = oldSpans[tableIndex]
                     }
-                    guard oldTables.indices.contains(tableIndex), rows.count == oldTables[tableIndex].count,
-                          rows.map(\.count) == oldTables[tableIndex].map(\.count) else {
-                        throw ScreenshotProofreadModel.EditError.unrenderable
-                    }
-                    blocks.append(.table(rows: rows, cellRuns: parsedRuns, spans: plan.tableSpans[tableIndex]))
+                    blocks.append(.table(rows: rows, cellRuns: parsedRuns, spans: spans))
                     tableIndex += 1
                 } else {
                     for paragraph in block.text.components(separatedBy: "\n\n") where !paragraph.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -176,13 +199,14 @@ extension ScreenshotSourceState {
                     }
                 }
             }
-            guard tableIndex == plan.tableSpans.count else { throw ScreenshotProofreadModel.EditError.unrenderable }
+            guard oldTables.isEmpty || tableIndex == oldTables.count else { throw ScreenshotProofreadModel.EditError.unrenderable }
             let updated = ScreenshotTranslationPlan(blocks: blocks, tableStylesNeedReview: plan.tableStylesNeedReview)
             guard updated.sourceIsRepresentable, !updated.sourceItems.isEmpty else { throw ScreenshotProofreadModel.EditError.unrenderable }
             plan = updated
             termProgress.cancel()
             termProgress = Self.makeTerms(plan: updated, progress: progress)
             editError = nil
+            if updated.supportsStreaming { progress.commitSourceDraft() }
             progress.prepareManualRetranslation()
             translate(updated, target: target ?? progress.targetLanguage ?? TargetLanguage.resolved(for: updated.sourceTexts, configured: SettingsStore.shared.targetLanguage))
         } catch {

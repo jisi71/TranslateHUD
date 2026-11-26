@@ -6,15 +6,17 @@ const {
   applyCharge,
   assignDisplayNumbers,
   credit,
+  displayFen,
+  MESSAGES,
   normalizeRecord,
   openAccount,
   readDisplayNo,
   releaseFeedbackSlot,
-  reserveFeedbackSlot,
-  settleCharge
+  reserveFeedbackSlot
 } = require('./trialPolicy')
 const { decideRedeem, publicInviteStatus } = require('./invite')
-const { acquireSlot, releaseSlot } = require('./inflight')
+const { MAX_INFLIGHT, INFLIGHT_LEASE_MS, acquireSlot, releaseSlot, settleSlot } = require('./inflight')
+const { reserveRetry, finishAttempt } = require('./retryWaiver')
 
 function clone(record) {
   const normalized = normalizeRecord(record)
@@ -41,6 +43,46 @@ function backfillEntries(listed, uid, record) {
     })
     .slice(0, 19)
   return [...older, { uid: String(uid), record }]
+}
+
+function localNumbering(users, invite, uid, existing, now) {
+  const opened = openAccount(existing, now).record
+  const entries = Array.from(users, ([uid, record]) => ({ uid, record }))
+    .filter(entry => entry.uid !== uid)
+  entries.push({ uid, record: opened })
+  const plan = assignDisplayNumbers(entries, invite, uid)
+  return {
+    record: plan.updates.find(update => update.uid === String(uid))?.record ?? opened,
+    others: plan.updates.filter(update => update.uid !== String(uid)),
+    counter: plan.counter
+  }
+}
+
+async function transactionNumbering(tx, uid, existing, now) {
+  const opened = openAccount(existing, now).record
+  let listed = null
+  try {
+    if (typeof tx.listUsers === 'function') listed = await tx.listUsers()
+  } catch {
+    // Number the current account when the optional legacy backfill list is unavailable.
+  }
+  const fresh = [{ uid: String(uid), record: opened }]
+  for (const entry of backfillEntries(listed, uid, opened)) {
+    if (String(entry.uid) === String(uid)) continue
+    const current = await tx.get(entry.uid)
+    if (current && readDisplayNo(current) <= 0) fresh.push({ uid: String(entry.uid), record: current })
+  }
+  const plan = assignDisplayNumbers(fresh, await tx.getInvite(), uid)
+  return {
+    record: plan.updates.find(update => update.uid === String(uid))?.record ?? opened,
+    others: plan.updates.filter(update => update.uid !== String(uid)),
+    counter: plan.counter
+  }
+}
+
+async function saveNumbering(tx, plan) {
+  for (const update of plan.others) await tx.save(update.uid, update.record)
+  await tx.saveInvite(plan.counter)
 }
 
 class MemoryAccountStore {
@@ -100,32 +142,30 @@ class MemoryAccountStore {
   }
 
   prepareNumber(uid, existing, now) {
-    const opened = openAccount(existing, now)
-    if (readDisplayNo(opened.record) > 0) return { record: opened.record, counter: this.invite, others: [] }
-    const entries = []
-    for (const [id, record] of this.users) {
-      if (id === uid) continue
-      entries.push({ uid: id, record: clone(record) })
-    }
-    entries.push({ uid, record: opened.record })
-    const plan = assignDisplayNumbers(entries, this.invite, uid)
-    const mine = plan.updates.find((update) => update.uid === uid)
-    return {
-      record: mine ? mine.record : opened.record,
-      counter: plan.updates.length > 0 ? plan.counter : this.invite,
-      others: plan.updates.filter((update) => update.uid !== uid)
-    }
+    if (readDisplayNo(existing) > 0) return { record: existing, counter: this.invite, others: [] }
+    return localNumbering(this.users, this.invite, uid, existing, now)
   }
 
-  async acquireInflight(uid, now = Date.now()) {
-    return this.lock(uid, async () => {
+  async acquireInflight(uid, now = Date.now(), attempt) {
+    const acquire = () => this.lock(uid, async () => {
       const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
-      const decision = acquireSlot(existing, now)
-      if (decision.record && (decision.ok || decision.record.inflight !== (existing && existing.inflight))) {
-        if (existing || decision.ok) this.users.set(uid, clone(decision.record))
+      const plan = !attempt?.retry && readDisplayNo(existing) <= 0
+        ? localNumbering(this.users, this.invite, uid, existing, now)
+        : null
+      const account = plan?.record ?? existing
+      const decision = attempt?.retry
+        ? reserveRetry(account, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
+        : acquireSlot(account, now)
+      if (plan) {
+        for (const update of plan.others) this.users.set(update.uid, clone(update.record))
+        this.invite = plan.counter
       }
+      if (decision.record || plan) this.users.set(uid, clone(decision.record ?? account))
       return decision
     })
+    return !attempt?.retry && readDisplayNo(this.users.get(uid)) <= 0
+      ? this.inviteLock(acquire)
+      : acquire()
   }
 
   async releaseInflight(uid, slotId) {
@@ -148,10 +188,11 @@ class MemoryAccountStore {
     })
   }
 
-  async settle(uid, costMicroYuan) {
+  async settle(uid, costMicroYuan, slotId, now = Date.now(), attempt) {
     return this.lock(uid, async () => {
       const existing = this.users.get(uid)
-      const decision = settleCharge(existing ? clone(existing) : null, costMicroYuan)
+      const settled = settleSlot(existing ? clone(existing) : null, attempt?.retry ? 0 : costMicroYuan, slotId)
+      const decision = finishAttempt(settled, attempt, now, costMicroYuan, displayFen)
       if (decision.record) this.users.set(uid, clone(decision.record))
       return decision
     })
@@ -297,15 +338,24 @@ class FileAccountStore {
     })
   }
 
-  async acquireInflight(uid, now = Date.now()) {
+  async acquireInflight(uid, now = Date.now(), attempt) {
     return this.lock(async () => {
       const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
-      const decision = acquireSlot(existing, now)
-      if (decision.record && (decision.ok || JSON.stringify(decision.record.inflight) !== JSON.stringify(existing && existing.inflight))) {
-        if (existing || decision.ok) {
-          this.users.set(uid, clone(decision.record))
-          await this.persist()
-        }
+      const plan = !attempt?.retry && readDisplayNo(existing) <= 0
+        ? localNumbering(this.users, this.invite, uid, existing, now)
+        : null
+      const account = plan?.record ?? existing
+      const decision = attempt?.retry
+        ? reserveRetry(account, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
+        : acquireSlot(account, now)
+      if (plan) {
+        for (const update of plan.others) this.users.set(update.uid, clone(update.record))
+        this.invite = plan.counter
+      }
+      const changed = decision.record && JSON.stringify(decision.record.inflight) !== JSON.stringify(account?.inflight)
+      if (plan || decision.ok || changed) {
+        this.users.set(uid, clone(decision.record ?? account))
+        await this.persist()
       }
       return decision
     })
@@ -336,9 +386,10 @@ class FileAccountStore {
     })
   }
 
-  async settle(uid, costMicroYuan) {
+  async settle(uid, costMicroYuan, slotId, now = Date.now(), attempt) {
     return this.lock(async () => {
-      const decision = settleCharge(this.users.has(uid) ? clone(this.users.get(uid)) : null, costMicroYuan)
+      const settled = settleSlot(this.users.has(uid) ? clone(this.users.get(uid)) : null, attempt?.retry ? 0 : costMicroYuan, slotId)
+      const decision = finishAttempt(settled, attempt, now, costMicroYuan, displayFen)
       if (decision.record) {
         this.users.set(uid, clone(decision.record))
         await this.persist()
@@ -410,36 +461,12 @@ class TransactionalAccountStore {
           await tx.rollback().catch(() => {})
           return { record: clone(opened.record), giftedNow: false }
         }
-        let listed = null
-        if (typeof tx.listUsers === 'function') {
-          try {
-            listed = await tx.listUsers()
-          } catch {
-            listed = null
-          }
-        }
-        const entries = backfillEntries(listed, uid, opened.record)
-        const fresh = []
-        for (const entry of entries) {
-          if (String(entry.uid) === String(uid)) {
-            fresh.push({ uid: String(uid), record: opened.record })
-            continue
-          }
-          const current = await tx.get(entry.uid)
-          if (!current || readDisplayNo(current) > 0) continue
-          fresh.push({ uid: String(entry.uid), record: current })
-        }
-        const invite = await tx.getInvite()
-        const plan = assignDisplayNumbers(fresh, invite, uid)
-        for (const update of plan.updates) {
-          if (update.uid === String(uid) && !existing) await tx.create(update.uid, update.record)
-          else await tx.save(update.uid, update.record)
-        }
-        if (plan.updates.length === 0 && !existing) await tx.create(uid, opened.record)
-        if (plan.updates.length > 0) await tx.saveInvite(plan.counter)
+        const plan = await transactionNumbering(tx, uid, existing, now)
+        await saveNumbering(tx, plan)
+        if (existing) await tx.save(uid, plan.record)
+        else await tx.create(uid, plan.record)
         await tx.commit()
-        const mine = plan.updates.find((update) => update.uid === String(uid))
-        return { record: clone(mine ? mine.record : opened.record), giftedNow: false }
+        return { record: clone(plan.record), giftedNow: false }
       } catch (error) {
         await tx.rollback().catch(() => {})
         throw error
@@ -492,16 +519,24 @@ class TransactionalAccountStore {
     })
   }
 
-  async acquireInflight(uid, now = Date.now()) {
+  async acquireInflight(uid, now = Date.now(), attempt) {
     return this.withRetry(async () => {
       const tx = await this.begin()
       try {
         const existing = await tx.get(uid)
-        const decision = acquireSlot(existing, now)
-        const changed = decision.record && JSON.stringify((decision.record && decision.record.inflight) || []) !== JSON.stringify((existing && existing.inflight) || [])
-        if (decision.ok || changed) {
-          if (existing) await tx.save(uid, decision.record)
-          else if (decision.ok) await tx.create(uid, decision.record)
+        const plan = !attempt?.retry && readDisplayNo(existing) <= 0
+          ? await transactionNumbering(tx, uid, existing, now)
+          : null
+        const account = plan?.record ?? existing
+        const decision = attempt?.retry
+          ? reserveRetry(account, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
+          : acquireSlot(account, now)
+        const changed = decision.record && JSON.stringify(decision.record.inflight || []) !== JSON.stringify(account?.inflight || [])
+        if (plan) await saveNumbering(tx, plan)
+        if (plan || decision.ok || changed) {
+          const saved = decision.record ?? account
+          if (existing) await tx.save(uid, saved)
+          else await tx.create(uid, saved)
         }
         await tx.commit()
         return decision
@@ -549,12 +584,13 @@ class TransactionalAccountStore {
     })
   }
 
-  async settle(uid, costMicroYuan) {
+  async settle(uid, costMicroYuan, slotId, now = Date.now(), attempt) {
     return this.withRetry(async () => {
       const tx = await this.begin()
       try {
         const existing = await tx.get(uid)
-        const decision = settleCharge(existing, costMicroYuan)
+        const settled = settleSlot(existing, attempt?.retry ? 0 : costMicroYuan, slotId)
+        const decision = finishAttempt(settled, attempt, now, costMicroYuan, displayFen)
         if (decision.record) await tx.save(uid, decision.record)
         await tx.commit()
         return decision

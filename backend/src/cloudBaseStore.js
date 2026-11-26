@@ -237,10 +237,10 @@ function createCloudBaseStore(db) {
     ensure: (uid, now) => run('ensure', [uid, now]),
     inviteStatus: (env) => run('inviteStatus', [env]),
     redeem: (uid, code, now, env) => run('redeem', [uid, code, now, env]),
-    acquireInflight: (uid, now) => run('acquireInflight', [uid, now]),
+    acquireInflight: (uid, now, attempt) => run('acquireInflight', [uid, now, attempt]),
     releaseInflight: (uid, slotId) => run('releaseInflight', [uid, slotId]),
     charge: (uid, costMicroYuan) => run('charge', [uid, costMicroYuan]),
-    settle: (uid, costMicroYuan) => run('settle', [uid, costMicroYuan]),
+    settle: (uid, costMicroYuan, slotId, now, attempt) => run('settle', [uid, costMicroYuan, slotId, now, attempt]),
     refund: (uid, microYuan) => run('refund', [uid, microYuan]),
     takeFeedback: (uid, now, limit) => run('takeFeedback', [uid, now, limit]),
     releaseFeedback: (uid, now) => run('releaseFeedback', [uid, now])

@@ -604,9 +604,10 @@ extension ScreenshotDatasetExportTests {
             }
             XCTAssertNil(opened.source.progress.translationDraft)
             XCTAssertFalse(opened.source.progress.hasLocalEdits)
-            XCTAssertTrue(sessionInputs.allSatisfy { $0 == ready.plan.sourceForQuota })
+            XCTAssertEqual(sessionInputs, [ready.plan.streamingSource ?? ready.plan.sourceForQuota])
             record["business"] = [
-                "scope": "Actual shared ScreenshotFlow ready-plan continuation -> FloatingScreenshotWindow -> TranslationPanel -> ScreenshotSourceState.start -> ScreenshotPlanTranslator -> TranslationProgress.start (batch, not streaming)",
+                "scope": "Actual shared ScreenshotFlow ready-plan continuation -> FloatingScreenshotWindow -> TranslationPanel -> ScreenshotSourceState.start -> ScreenshotPlanTranslator -> TranslationProgress",
+                "translationMode": ready.plan.supportsStreaming ? "streaming" : "batch",
                 "omitted": "native capture/selection UI, QR UI, external session gate, real provider and historical manual edits",
                 "provider": "OFFLINE deterministic fake; NOT historical/model output, NOT OCR ground truth",
                 "previewImage": codes.isEmpty ? "actual prepared.image" : "actual authorized original (QR preview policy)",

@@ -128,13 +128,13 @@ async function dispatchUnsafe(event, deps) {
   if (isInviteStatus) result = await handleInviteStatus(ctx)
   else if (isRedeem) result = await handleRedeem(ctx)
   else if (isAccount) result = await handleAccount(ctx)
-  else result = await handleTranslate(ctx)
-  if (typeof result.release === 'function') {
-    if (result.stream) result.stream.once('close', () => { result.release() })
-    else await result.release()
-  }
+  else result = await handleTranslate({ ...ctx, allowAuthCache: clean.endsWith('/chat/completions') })
   let body = result.body || ''
-  if (result.stream) body = await bufferStream(result.stream)
+  try {
+    if (result.stream) body = await bufferStream(result.stream)
+  } finally {
+    await result.release?.()
+  }
   return {
     statusCode: result.status,
     headers: result.headers || { 'Content-Type': 'application/json; charset=utf-8' },

@@ -8,6 +8,10 @@ enum ModeRouter {
         let s2 = KeyboardShortcuts.getShortcut(for: .triggerSelection)
         let same = s1 != nil && s1 == s2
 
+        if (same || reason == .selection), OnboardingController.shared.tryShortcut(context: context) {
+            return
+        }
+
         if same {
             let result = await SelectionFetcher.fetch(expectedApplicationPID: context.applicationPID)
             handleSelectionResult(result, context: context, screenshotWhenConfirmedEmpty: true)

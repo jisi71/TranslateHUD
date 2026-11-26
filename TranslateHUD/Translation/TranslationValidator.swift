@@ -6,6 +6,7 @@ enum TranslationValidator {
 
     enum Failure: Equatable, Sendable {
         case emptyOutput
+        case lineStructureChanged
         case echoedInput        // 输出与输入完全相同，且原文不是目标语言 → 模型没翻译
         case refusalDetected    // 输出含「I cannot translate / 抱歉无法...」之类拒绝词
         case codeFenceWrapped   // 整段被 ``` 包裹（应当只有内层译文）
@@ -15,6 +16,7 @@ enum TranslationValidator {
         var explanation: String {
             switch self {
             case .emptyOutput: return "译文为空"
+            case .lineStructureChanged: return "译文的换行结构无法对应"
             case .echoedInput: return "模型返回了未翻译的原文"
             case .refusalDetected: return "模型拒绝翻译"
             case .codeFenceWrapped: return "模型额外包裹了代码围栏"
@@ -596,7 +598,7 @@ enum TranslationValidator {
         return !containsHan(output)
     }
 
-    private static func containsHan(_ text: String) -> Bool {
+    static func containsHan(_ text: String) -> Bool {
         text.unicodeScalars.contains(where: isHanScalar)
     }
 

@@ -45,7 +45,8 @@ test('help pages do not link to a website or an email address', () => {
     assert.equal(text.includes('如实际收集请保留'), false)
     assert.equal(text.includes('齐亚浩（个人）'), true)
     assert.equal(text.includes('translatehud@agent.qq.com'), true)
-    assert.equal(text.includes(text === agreement ? '2026-10-26' : '2026-11-17'), true)
+    assert.match(text, /更新日期：\d{4}-\d{2}-\d{2}/)
+    assert.match(text, /生效日期：本版本公布之日/)
     assert.equal(text.includes('可通过上述邮箱索取'), true)
   }
   assert.equal(agreement.includes('运营者住所地（北京市）'), true)

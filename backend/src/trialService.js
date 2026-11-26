@@ -1,5 +1,10 @@
 'use strict'
 
+const { createTranslationTiming } = require('./translationTiming')
+const { verifyTranslationUser } = require('./translationAuthCache')
+const { holdTranslationSlot } = require('./translationSlot')
+const { readAttempt } = require('./retryWaiver')
+
 const { GIFT_FEN, GIFT_MICRO_YUAN, MESSAGES, decodeSourceHeader, formatDisplayId, quoteSource } = require('./trialPolicy')
 const { prepareUpstreamPayload, readUpstreamConfig } = require('./upstream')
 const { costMicroYuanFromUsage, parseUsage, readTrialPrices, settlementFields } = require('./usageBilling')
@@ -37,6 +42,8 @@ function readEnv(source = process.env) {
     TRIAL_PRICE_INPUT_YUAN_PER_MILLION: source.TRIAL_PRICE_INPUT_YUAN_PER_MILLION,
     TRIAL_PRICE_CACHE_HIT_YUAN_PER_MILLION: source.TRIAL_PRICE_CACHE_HIT_YUAN_PER_MILLION,
     TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION: source.TRIAL_PRICE_OUTPUT_YUAN_PER_MILLION,
+    TRIAL_AUTH_CACHE_TTL_MS: source.TRIAL_AUTH_CACHE_TTL_MS,
+    TRIAL_TRANSLATE_TIMING: source.TRIAL_TRANSLATE_TIMING,
     TRIAL_INVITE_CODE: source.TRIAL_INVITE_CODE || '',
     TRIAL_INVITE_MAX_REDEEMS: source.TRIAL_INVITE_MAX_REDEEMS || '',
     FEEDBACK_DAILY_LIMIT: source.FEEDBACK_DAILY_LIMIT || ''
@@ -69,11 +76,14 @@ async function defaultVerifyUser({ gateway, token, fetchImpl }) {
   return { uid, hasEligiblePhone }
 }
 
-async function identify(ctx) {
+async function identify(ctx, cache = false) {
   const token = bearerToken(ctx.headers || {})
   if (!token) return errorResult(401, 'trial_auth', MESSAGES.auth)
   try {
-    const user = await ctx.verifyUser({ gateway: ctx.env.gateway, token })
+    const gateway = ctx.env.gateway
+    const user = cache ? await verifyTranslationUser({
+      gateway, token, verifyUser: ctx.verifyUser, ttlValue: ctx.env.TRIAL_AUTH_CACHE_TTL_MS, now: ctx.now
+    }) : await ctx.verifyUser({ gateway, token })
     if (!user || !user.uid) return errorResult(401, 'trial_auth', MESSAGES.auth)
     return { uid: String(user.uid), hasEligiblePhone: user.hasEligiblePhone === true }
   } catch {
@@ -128,11 +138,15 @@ function billingHeaders(settled, usage) {
   }
 }
 
-async function settleUsage(ctx, uid, usage, prices) {
+async function settleUsage(ctx, uid, usage, prices, slotId, attempt, metrics) {
   const cost = costMicroYuanFromUsage(usage, prices)
   if (cost == null) return null
-  const settled = await ctx.store.settle(uid, cost)
-  return settled
+  const endSettle = metrics?.start('settleMs')
+  try {
+    return await ctx.store.settle(uid, cost, slotId, ctx.now(), attempt)
+  } finally {
+    endSettle?.()
+  }
 }
 
 // Only explicit accounting fields belong here; never include request/response text.
@@ -148,6 +162,7 @@ async function recordUsageEvent(ctx, { uid, usage, settled, startedAt }) {
       extraTokens: usage.extraTokens,
       costMicroYuan: settled.costMicroYuan,
       chargedMicroYuan: settled.chargedMicroYuan,
+      ...(settled.retryWaived && { retryWaived: true }),
       costFen: settled.costFen,
       chargedFen: settled.chargedFen,
       durationMs: Math.max(0, createdAt - startedAt),
@@ -245,26 +260,31 @@ async function handleRedeem(ctx) {
   }
 }
 
-function holdRelease(release) {
-  let released = false
-  return async function releaseOnce() {
-    if (released) return
-    released = true
-    try {
-      await release()
-    } catch (error) {
-      console.error(`trial release failed code=${(error && (error.causeCode || error.code)) || 'unknown'}`)
-    }
+async function handleTranslate(ctx) {
+  const metrics = createTranslationTiming(ctx.env?.TRIAL_TRANSLATE_TIMING, ctx.logTranslationTiming)
+  if (!metrics) return translate(ctx)
+  let result
+  try {
+    result = await translate(ctx, metrics)
+    return result
+  } finally {
+    if (result?.stream) {
+      result.stream.once('close', () => {
+        result.release().finally(() => metrics.finish(result.status, true))
+      })
+    } else metrics.finish(result?.status ?? 500, false)
   }
 }
 
-async function handleTranslate(ctx) {
+async function translate(ctx, metrics) {
   const startedAt = ctx.now()
   const rawBody = ctx.rawBody || ''
   if (Buffer.byteLength(rawBody) > MAX_BODY_BYTES) {
     return errorResult(413, 'trial_body_limit', MESSAGES.body)
   }
-  const identified = await identify(ctx)
+  const endAuth = metrics?.start('authMs')
+  const identified = await identify(ctx, ctx.allowAuthCache !== false)
+  endAuth?.()
   if (identified.status) return identified
 
   const decoded = decodeSourceHeader(sourceHeader(ctx.headers || {}))
@@ -280,33 +300,29 @@ async function handleTranslate(ctx) {
   let payload
   let stream
   let format
+  let attempt
   try {
     const prepared = prepareUpstreamPayload(rawBody, config, decoded.text)
     payload = prepared.payload
     stream = prepared.stream
     format = prepared.format
+    attempt = readAttempt(ctx.headers || {}, prepared.retrySubject && [config.endpoint, config.model, prepared.retrySubject])
+    if (attempt?.invalid || (prepared.requiresWaiver && !attempt?.retry)) {
+      return errorResult(400, 'trial_retry_invalid', '重试请求标识不正确。')
+    }
+    if (attempt?.retry) payload.temperature = 0.4
   } catch (error) {
     return errorResult(error.status || 400, error.code || 'trial_body', error.publicMessage || MESSAGES.body)
   }
 
-  // The account is created with a zero balance. The ¥2 gift comes from an
-  // invite code, not from this call. A rejected request above does not
-  // create the account. Exact tokens are unknown until the upstream
-  // responds, so a balance above zero may start the call. Zero does not.
-  // The in-flight slot is taken before the upstream call and held until a
-  // stream finishes, so one account cannot run more than 3 at once.
-  try {
-    await ctx.store.ensure(identified.uid, ctx.now())
-  } catch (error) {
-    return storeFailure(error)
-  }
-
+  const endAcquire = metrics?.start('acquireMs')
   let held
   try {
-    held = await ctx.store.acquireInflight(identified.uid, ctx.now())
+    held = await ctx.store.acquireInflight(identified.uid, ctx.now(), attempt)
   } catch (error) {
     return storeFailure(error)
   }
+  endAcquire?.()
   if (!held || !held.ok) {
     const status = held && held.status ? held.status : 429
     const code = held && held.code ? held.code : 'trial_concurrency'
@@ -314,22 +330,21 @@ async function handleTranslate(ctx) {
     return errorResult(status, code, message)
   }
 
-  const release = holdRelease(() => ctx.store.releaseInflight(identified.uid, held.slotId))
-  const releaseOnClose = (stream) => {
-    if (stream && typeof stream.once === 'function') stream.once('close', () => { release() })
-    return stream
-  }
+  const slot = holdTranslationSlot(() => ctx.store.releaseInflight(identified.uid, held.slotId))
+  const release = slot.release
 
   try {
+    const endUpstream = metrics?.start('upstreamMs')
     const upstream = await ctx.forward({
       endpoint: config.endpoint,
       apiKey: config.apiKey,
       payload,
       signal: ctx.signal
     })
+    if (!stream) endUpstream?.()
     if (!upstream || upstream.status < 200 || upstream.status >= 300) {
       await release()
-      console.error(`trial upstream failed status=${upstream && upstream.status} uid=${identified.uid}`)
+      console.error(`trial upstream failed status=${upstream && upstream.status}`)
       return errorResult(502, 'trial_upstream', MESSAGES.upstream)
     }
     if (stream) {
@@ -338,17 +353,31 @@ async function handleTranslate(ctx) {
         return errorResult(502, 'trial_upstream', MESSAGES.upstream)
       }
       const billed = createSettlingStream(upstream.stream, async (usage) => {
-        if (!usage) return usageMissingSSE()
+        endUpstream?.()
+        if (!usage) {
+          await release()
+          return usageMissingSSE()
+        }
         try {
-          const settled = await settleUsage(ctx, identified.uid, usage, prices)
-          if (!settled) return usageMissingSSE()
-          await recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt })
+          const settled = await slot.settle(async () => {
+            const result = await settleUsage(ctx, identified.uid, usage, prices, held.slotId, attempt, metrics)
+            if (result) {
+              await recordUsageEvent(ctx, { uid: identified.uid, usage, settled: result, startedAt })
+            }
+            return result
+          })
+          if (!settled) {
+            await release()
+            return usageMissingSSE()
+          }
           return settlementSSE(settled, usage)
         } catch (error) {
+          await release()
           console.error(`trial settle failed code=${(error && (error.causeCode || error.code)) || 'unknown'}`)
           return formatSSE({ error: { code: 'trial_store', message: MESSAGES.store } })
         }
       })
+      billed.once('close', release)
       return {
         status: 200,
         headers: {
@@ -356,7 +385,7 @@ async function handleTranslate(ctx) {
           'X-Accel-Buffering': 'no',
           'Content-Type': 'text/event-stream; charset=utf-8'
         },
-        stream: releaseOnClose(billed),
+        stream: billed,
         release
       }
     }
@@ -365,7 +394,7 @@ async function handleTranslate(ctx) {
     try { parsed = JSON.parse(text) } catch { parsed = null }
     if (parsed && parsed.error) {
       await release()
-      console.error(`trial upstream error object uid=${identified.uid}`)
+      console.error(`trial upstream error object`)
       return errorResult(502, 'trial_upstream', MESSAGES.upstream)
     }
     const usage = parseUsage(parsed && parsed.usage)
@@ -375,7 +404,7 @@ async function handleTranslate(ctx) {
     }
     let settled
     try {
-      settled = await settleUsage(ctx, identified.uid, usage, prices)
+      settled = await slot.settle(() => settleUsage(ctx, identified.uid, usage, prices, held.slotId, attempt, metrics))
     } catch (error) {
       await release()
       return storeFailure(error)
@@ -384,37 +413,49 @@ async function handleTranslate(ctx) {
       await release()
       return errorResult(502, 'trial_usage_missing', MESSAGES.usageMissing)
     }
-    await recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt })
-    if (format) {
-      try {
-        parsed = restoreBoldResult(parsed, format)
-      } catch (error) {
-        console.error(`trial format invalid reason=${formatFailureReason(error)}`)
-        return {
-          status: 422,
-          headers: { ...billingHeaders(settled, usage), 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify({ error: { code: 'trial_format_invalid', message: '译文格式校验失败；本次请求已按实际用量结算。' }, translatehud_trial: settlementFields(settled, usage) })
-        }
-      }
-    }
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      parsed.translatehud_trial = settlementFields(settled, usage)
-    }
-    return {
-      status: 200,
-      headers: {
-        ...billingHeaders(settled, usage),
-        'Content-Type': 'application/json; charset=utf-8'
-      },
-      body: JSON.stringify(parsed)
+    const endUsage = metrics?.start('usageWriteMs')
+    // Start the write before formatting and join it before returning to SCF.
+    const usageWrite = recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt }).finally(endUsage)
+    const endFormat = metrics?.start('formatMs')
+    try {
+      return translationResponse(parsed, format, settled, usage)
+    } finally {
+      endFormat?.()
+      await usageWrite
     }
   } catch (error) {
     await release()
     if (ctx.signal && ctx.signal.aborted) return { status: 499, aborted: true, headers: {}, body: '' }
-    console.error(`trial upstream threw uid=${identified.uid}`)
+    console.error(`trial upstream threw`)
     return errorResult(502, 'trial_upstream', MESSAGES.upstream)
   } finally {
     if (!stream) await release()
+  }
+}
+
+function translationResponse(parsed, format, settled, usage) {
+  if (format) {
+    try {
+      parsed = restoreBoldResult(parsed, format)
+    } catch (error) {
+      console.error(`trial format invalid reason=${formatFailureReason(error)}`)
+      return {
+        status: 422,
+        headers: { ...billingHeaders(settled, usage), 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ error: { code: 'trial_format_invalid', message: '译文格式校验失败；本次请求已按实际用量结算。' }, translatehud_trial: settlementFields(settled, usage) })
+      }
+    }
+  }
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    parsed.translatehud_trial = settlementFields(settled, usage)
+  }
+  return {
+    status: 200,
+    headers: {
+      ...billingHeaders(settled, usage),
+      'Content-Type': 'application/json; charset=utf-8'
+    },
+    body: JSON.stringify(parsed)
   }
 }
 

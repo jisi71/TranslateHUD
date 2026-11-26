@@ -38,6 +38,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
         guard !texts.isEmpty else { throw TranslationError.empty }
 
         var strict = false
+        let billing = onTrialSettlement == nil ? nil : TrialQualityRetry()
         var retrySession: URLSession?
         defer { retrySession?.invalidateAndCancel() }
         for attemptIndex in 0..<TranslationAttemptPolicy.maximumAttempts {
@@ -49,9 +50,12 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                     to: target,
                     strict: strict,
                     context: context,
-                    using: retrySession ?? session
+                    using: retrySession ?? session,
+                    attemptHeaders: await billing?.headers(attemptIndex: attemptIndex, qualityRetry: strict) ?? [:],
+                    billing: billing
                 ).map(\.text)
             } catch TranslationError.parse where !strict && TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) {
+                guard await billing?.canRetryQuality != false else { throw TranslationError.quality("译文未通过质量检查，请重试。") }
                 AppLog.info("批量响应结构不完整，执行一次严格重试")
                 strict = true
                 continue
@@ -69,11 +73,14 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                 failures: failures.warningFailures, additional: batchUnder ? [.underTranslated] : [], model: config.model, origin: "provider.batch") {
                 throw warning // Entire mapped batch has completed; no extra paid quality retry.
             }
-            if TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) {
+            if TranslationAttemptPolicy.shouldRetryQuality(
+                afterAttempt: attemptIndex, hasFailures: true, trialEligible: await billing?.canRetryQuality
+            ) {
                 AppLog.info("批量第 \(attemptIndex + 1) 轮质量校验失败 → 最后一次严格重试")
                 strict = true
                 continue
             }
+            if attemptIndex == 0 { throw TranslationError.service("译文未通过质量检查，请重试。") }
             throw TranslationError.quality("已尝试两次，仍有未翻译内容；请缩短原文或更换模型后重试")
         }
         throw TranslationError.quality("翻译未能在请求次数上限内完成，请重新发起；若持续失败，请更换模型。")
@@ -87,7 +94,9 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
         using session: URLSession,
         boldRanges: [[ScreenshotTextSpan]]? = nil,
         markerRules: String? = nil,
-        screenshotDiagnostics: Bool = false
+        screenshotDiagnostics: Bool = false,
+        attemptHeaders: [String: String] = [:],
+        billing: TrialQualityRetry? = nil
     ) async throws -> [ScreenshotStyledText] {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
             throw TranslationError.missingConfig(config.validationMessage ?? "请打开设置检查 Base URL 和 Model。")
@@ -99,7 +108,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
 
         let example = compactExample(for: target)
         let strictPrefix = strict ? """
-        CRITICAL: A previous attempt left too many ordinary words untranslated. Translate ordinary words into L, including words in logs and errors, JSON keys, and snake_case / camelCase made of ordinary words. Do not leave a run of ordinary words in the source language just because the text looks technical.
+        CRITICAL: The previous attempt failed. Translate ordinary words into L, including words in logs and errors, JSON keys, and snake_case / camelCase made of ordinary words. Do not leave a run of ordinary words in the source language just because the text looks technical.
 
         """ : ""
 
@@ -143,7 +152,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
         applyVendorParams(into: &body)
         applyJSONResponseFormat(into: &body)
 
-        let req = try makeRequest(url: endpoint, timeout: 60, accept: nil, body: body)
+        let req = try makeRequest(url: endpoint, timeout: 60, accept: nil, body: body, attemptHeaders: attemptHeaders)
 
         let started = DispatchTime.now().uptimeNanoseconds
         let (data, response) = try await session.data(for: req)
@@ -179,6 +188,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
             throw responseError(.responseEnvelope, "服务响应格式无法读取，请确认接口兼容性或更换服务后重试。")
         }
         if let settlement = TrialSettlement.parse(json: json) {
+            await billing?.note(settlement)
             await onTrialSettlement?(settlement)
         } else if let http, let settlement = TrialSettlement.parse(response: http) {
             await onTrialSettlement?(settlement)
@@ -257,18 +267,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
         let results = try await performBatch(texts: items.map(\.text), to: target, strict: false,
                                              context: context, using: session,
                                              boldRanges: items.map(\.boldRanges), screenshotDiagnostics: screenshotDiagnostics)
-        let failures = batchValidate(originals: items.map(\.text), translations: results.map(\.text), target: target,
-                                     screenshotItems: items)
-        let batchUnder = TranslationValidator.isBatchUnderTranslated(originals: items.map(\.text), translations: results.map(\.text), target: target)
-        if let warning = TranslationSoftWarning.make(sources: items.map(\.text), candidates: results.map(\.text), target: target,
-            failures: failures.warningFailures, additional: batchUnder ? [.underTranslated] : [], model: config.model, origin: "provider.styledBatch", styled: results) {
-            throw warning
-        }
-        if !failures.applied.flatMap({ $0 }).isEmpty || batchUnder {
-            if screenshotDiagnostics { throw ScreenshotFailureStage.quality }
-            throw TranslationError.quality("译文未通过质量检查，请重试。")
-        }
-        return results
+        return try validateStyledBatch(items, results: results, target: target, screenshotDiagnostics: screenshotDiagnostics)
     }
 
     func translateStyled(_ items: [ScreenshotStyledText], to target: TargetLanguage,
@@ -281,14 +280,27 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
         let response = try await performBatch(texts: markers.inputs, to: target, strict: false,
                                               context: context, using: session, markerRules: rules)
         let results = try markers.restore(response.map(\.text))
-        let failures = batchValidate(originals: items.map(\.text), translations: results.map(\.text), target: target,
-                                     screenshotItems: items)
-        let batchUnder = TranslationValidator.isBatchUnderTranslated(originals: items.map(\.text), translations: results.map(\.text), target: target)
-        if let warning = TranslationSoftWarning.make(sources: items.map(\.text), candidates: results.map(\.text), target: target,
-            failures: failures.warningFailures, additional: batchUnder ? [.underTranslated] : [], model: config.model, origin: "provider.styledBatch", styled: results) {
+        return try validateStyledBatch(items, results: results, target: target)
+    }
+
+    private func validateStyledBatch(
+        _ items: [ScreenshotStyledText], results: [ScreenshotStyledText],
+        target: TargetLanguage, screenshotDiagnostics: Bool = false
+    ) throws -> [ScreenshotStyledText] {
+        let originals = items.map(\.text)
+        let outputs = results.map(\.text)
+        let failures = batchValidate(originals: originals, translations: outputs, target: target, screenshotItems: items)
+        let batchUnder = TranslationValidator.isBatchUnderTranslated(originals: originals, translations: outputs, target: target)
+        let warningFlags = batchUnder
+            ? failures.warningFailures
+            : failures.warningFlagsForTable(items: items, outputs: outputs, target: target)
+        if let warning = TranslationSoftWarning.make(sources: originals, candidates: outputs, target: target,
+            failures: warningFlags, additional: batchUnder ? [.underTranslated] : [], model: config.model,
+            origin: "provider.styledBatch", styled: results) {
             throw warning
         }
         if !failures.applied.flatMap({ $0 }).isEmpty || batchUnder {
+            if screenshotDiagnostics { throw ScreenshotFailureStage.quality }
             throw TranslationError.quality("译文未通过质量检查，请重试。")
         }
         return results
@@ -301,6 +313,25 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
             // Union raw flags with context-added hard flags; neither removal nor later
             // table checks may hide a hard failure from the new warning policy.
             zip(raw, applied).map { pair in pair.0 + pair.1.filter { !pair.0.contains($0) } }
+        }
+
+        func warningFlagsForTable(
+            items: [ScreenshotStyledText], outputs: [String], target: TargetLanguage
+        ) -> [[TranslationValidator.Failure]] {
+            var flags = warningFailures
+            let missingLanguage = flags.indices.filter { flags[$0].contains(.missingTargetLanguageContent) }
+            guard target == .chinese, missingLanguage.count == 1, let cell = missingLanguage.first,
+                  items[cell].isTableCell, applied[cell] == [.missingTargetLanguageContent],
+                  flags[cell] == [.missingTargetLanguageContent] else { return flags }
+            let translatedCells = zip(items, outputs).filter { item, output in
+                item.isTableCell && !TranslationValidator.containsHan(item.text)
+                    && TranslationValidator.containsHan(output)
+            }
+            guard translatedCells.count >= 2 else { return flags }
+
+            // A complete table can show one untranslated cell alongside its translated neighbors.
+            flags[cell] = [.underTranslated]
+            return flags
         }
     }
 
@@ -344,6 +375,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
         AsyncThrowingStream { continuation in
             let task = Task {
                 var strict = false
+                let billing = onTrialSettlement == nil ? nil : TrialQualityRetry()
                 var retrySession: URLSession?
                 defer { retrySession?.invalidateAndCancel() }
                 do {
@@ -356,7 +388,9 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                                 strict: strict,
                                 context: context,
                                 using: retrySession ?? session,
-                                continuation: continuation
+                                continuation: continuation,
+                                attemptHeaders: await billing?.headers(attemptIndex: attemptIndex, qualityRetry: strict) ?? [:],
+                                billing: billing
                             )
                             continuation.finish()
                             return
@@ -365,9 +399,10 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                                 failures: [rejection.failures], model: config.model, origin: "provider.completedStream") {
                                 throw warning
                             }
-                            let shouldRetry = TranslationAttemptPolicy.shouldRetry(
+                            let shouldRetry = TranslationAttemptPolicy.shouldRetryQuality(
                                 afterAttempt: attemptIndex,
-                                hasFailures: !rejection.failures.isEmpty
+                                hasFailures: !rejection.failures.isEmpty,
+                                trialEligible: await billing?.canRetryQuality
                             )
                             if shouldRetry {
                                 strict = true
@@ -375,6 +410,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                                 continuation.yield(.reset(reason: "首轮译文未通过校验，重试中"))
                                 continue
                             }
+                            if attemptIndex == 0 { throw TranslationError.service("译文未通过质量检查，请重试。") }
                             throw TranslationError.qualityFailures(rejection.failures)
                         } catch let failure as ConnectionInterrupted {
                             guard TranslationAttemptPolicy.shouldRetry(afterAttempt: attemptIndex, hasFailures: true) else {
@@ -402,7 +438,9 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
         strict: Bool,
         context: SelectionFetcher.TextContext?,
         using session: URLSession,
-        continuation: AsyncThrowingStream<TranslationStreamEvent, Error>.Continuation
+        continuation: AsyncThrowingStream<TranslationStreamEvent, Error>.Continuation,
+        attemptHeaders: [String: String],
+        billing: TrialQualityRetry?
     ) async throws -> String {
         guard config.isUsable, let endpoint = config.chatCompletionsURL else {
             throw TranslationError.missingConfig(config.validationMessage ?? "请打开设置检查 Base URL 和 Model。")
@@ -416,7 +454,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
 
         let example = compactExample(for: target)
         let strictPrefix = strict ? """
-        CRITICAL: A previous attempt left too many ordinary words untranslated. Translate EVERY ordinary non-L word, including words in logs and errors, JSON keys, bare names, and snake_case/camelCase made of ordinary words. Do not leave a run of ordinary words untranslated because the text looks technical. Keep numbers, dates, versions, URLs, emails, file paths, and unordered random letter or password strings unchanged.
+        CRITICAL: The previous attempt failed. Translate EVERY ordinary non-L word, including words in logs and errors, JSON keys, bare names, and snake_case/camelCase made of ordinary words. Do not leave a run of ordinary words untranslated because the text looks technical. Keep numbers, dates, versions, URLs, emails, file paths, and unordered random letter or password strings unchanged.
 
         """ : ""
 
@@ -447,7 +485,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
         ]
         applyVendorParams(into: &body)
 
-        let req = try makeRequest(url: endpoint, timeout: 60, accept: "text/event-stream", body: body)
+        let req = try makeRequest(url: endpoint, timeout: 60, accept: "text/event-stream", body: body, attemptHeaders: attemptHeaders)
 
         var accumulated = ""
         do {
@@ -466,6 +504,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
             var dataLines: [String] = []
             var eventCount = 0
             var contentChunkCount = 0
+            var earlyEcho = false
 
             // 处理一个完整的 SSE event（多个 data: 行用 "\n" 拼接成 payload）。
             // Own-key streams can stop at the final choice; trial streams must also
@@ -486,6 +525,7 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                 }
                 if json["translatehud_trial"] != nil {
                     if let settlement = TrialSettlement.parse(json: json) {
+                        await billing?.note(settlement)
                         await onTrialSettlement?(settlement)
                     }
                     if (json["choices"] as? [[String: Any]])?.first == nil {
@@ -512,13 +552,14 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
                 accumulated += chunk
 
                 // 早期 echo 检测：仅 strict=false 时启用
-                if !strict,
+                if !strict, !earlyEcho,
                    TranslationValidator.looksLikeEarlyEcho(accumulated: accumulated, fullInput: text, target: target) {
                     AppLog.info("流式早期检测到原文回吐（累积 \(accumulated.count) 字符匹配原文前缀），中断重试")
-                    throw QualityRejected(failures: [.echoedInput], output: accumulated)
+                    if billing == nil { throw QualityRejected(failures: [.echoedInput], output: accumulated) }
+                    earlyEcho = true
                 }
 
-                continuation.yield(.delta(accumulated))
+                if !earlyEcho { continuation.yield(.delta(accumulated)) }
                 return stopHere
             }
 
@@ -566,11 +607,18 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
             }
             guard completed else { throw TranslationError.parse("连接在译文完成前结束，结果不完整。请检查网络或代理后重试。") }
 
-            let failures = TranslationValidator.validate(input: text, output: accumulated, target: target)
+            var failures = TranslationValidator.validate(input: text, output: accumulated, target: target)
+            if billing != nil {
+                let lines = text.filter { $0 == "\n" }.count
+                if lines >= 2 && lines != accumulated.filter({ $0 == "\n" }).count {
+                    failures.append(.lineStructureChanged)
+                }
+            }
             if !failures.isEmpty {
                 AppLog.info("流式第 \(strict ? 2 : 1) 轮终末校验失败 \(failures)")
                 throw QualityRejected(failures: failures, output: accumulated, complete: true)
             }
+            if earlyEcho { continuation.yield(.delta(accumulated)) }
             return accumulated
         } catch {
             if TranslationAttemptPolicy.isTransientTLSFailure(error, hasOutput: !accumulated.isEmpty) {
@@ -614,7 +662,8 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
 
     // MARK: - 厂商专属参数
 
-    private func makeRequest(url: URL, timeout: TimeInterval, accept: String?, body: [String: Any]) throws -> URLRequest {
+    private func makeRequest(url: URL, timeout: TimeInterval, accept: String?, body: [String: Any],
+                             attemptHeaders: [String: String] = [:]) throws -> URLRequest {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.timeoutInterval = timeout
@@ -626,7 +675,13 @@ struct OpenAICompatibleTranslator: ScreenshotStyledTranslator {
         for (field, value) in extraHTTPHeaders where !value.isEmpty {
             req.setValue(value, forHTTPHeaderField: field)
         }
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        for (field, value) in attemptHeaders { req.setValue(value, forHTTPHeaderField: field) }
+        var payload = body
+        if attemptHeaders["X-TranslateHUD-Retry-Of"] != nil {
+            // Older workers reject this field before billing if a rollout removes retry support.
+            payload["translatehud_quality_retry"] = true
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         return req
     }
 

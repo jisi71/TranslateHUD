@@ -1,0 +1,26 @@
+--- a/workerGate.js
++++ b/workerGate.js
+@@ -2,6 +2,11 @@
+ 
+ const { createHmac, timingSafeEqual } = require('node:crypto')
+ 
++const DIRECT_TRANSLATION_PATHS = new Set([
++  '/v1/chat/completions',
++  '/v1-screenshot/chat/completions'
++])
++
+ function workerKey(accessKey) {
+   if (!accessKey) throw new Error('Worker authentication is unconfigured')
+   return createHmac('sha256', accessKey).update('TranslateHUD:queue-worker:v1').digest('hex')
+@@ -14,6 +19,11 @@
+ function restrictWorker(listener, accessKey) {
+   const key = workerKey(accessKey)
+   return (req, res) => {
++    const path = req.url?.split('?', 1)[0]
++    if (req.method === 'POST' && DIRECT_TRANSLATION_PATHS.has(path)) {
++      return listener(req, res)
++    }
++
+     const signature = req.headers['x-translatehud-worker-signature']
+     const timestamp = req.headers['x-translatehud-worker-time']
+     const jobId = req.headers['x-translatehud-queue-job']

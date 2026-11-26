@@ -4,6 +4,7 @@ import Foundation
 struct FormatPreservingTranslator: Translator, @unchecked Sendable {
     let base: any Translator
     let prepared: SelectionFormatPrepared
+    var allowsAutomaticLineFallback: Bool { base.allowsAutomaticLineFallback }
 
     func translate(
         _ texts: [String],

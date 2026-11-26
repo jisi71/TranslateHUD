@@ -24,6 +24,7 @@ enum TranslationError: Error, LocalizedError, Sendable {
 }
 
 protocol Translator: Sendable {
+    var allowsAutomaticLineFallback: Bool { get }
     /// 批量：把每条 text 翻译为指定目标语言；已是目标语言的文本直通返回。
     /// 返回数组顺序与输入一致，长度相同。
     /// `context` 是选区前后文，只供消歧；nil 时请求与只发送原文相同。
@@ -47,6 +48,8 @@ protocol Translator: Sendable {
 }
 
 extension Translator {
+    var allowsAutomaticLineFallback: Bool { true }
+
     func translateStreaming(
         _ text: String,
         to target: TargetLanguage,

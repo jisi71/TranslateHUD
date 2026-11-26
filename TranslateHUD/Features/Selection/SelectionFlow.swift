@@ -3,7 +3,8 @@ import AppKit
 /// 翻译选中文字的完整流程：取选区 → 假换行/Markdown 保格式 → 立即显示 loading 浮窗 → 异步翻译。
 enum SelectionFlow {
     @MainActor
-    static func start(selection: SelectionFetcher.Selection, context: SelectionTriggerContext) {
+    @discardableResult
+    static func start(selection: SelectionFetcher.Selection, context: SelectionTriggerContext) -> TranslationProgress {
         AppLog.debug("待译选区：\(selection.text.count) 字符")
 
         let formatOptions = SelectionFormatOptions(
@@ -64,5 +65,6 @@ enum SelectionFlow {
                 )
             }
         }
+        return progress
     }
 }

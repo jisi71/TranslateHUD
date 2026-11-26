@@ -31,7 +31,18 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     }
 }
 
+final class SettingsNavigation: ObservableObject {
+    @Published private(set) var pane: SettingsPane = .general
+    @Published var path: [SettingsRoute] = []
+
+    func show(_ pane: SettingsPane) {
+        path.removeAll()
+        self.pane = pane
+    }
+}
+
 struct SettingsView: View {
+    @ObservedObject var navigation: SettingsNavigation
     @ObservedObject private var store = SettingsStore.shared
     @ObservedObject private var trial = TrialAccountStore.shared
     @ObservedObject private var appearance = PanelAppearance.shared
@@ -43,8 +54,6 @@ struct SettingsView: View {
     @State private var testFailure: Error?
     @StateObject private var speechPreview = SpeechController()
     @State private var voiceRefreshToken = 0
-    @State private var path: [SettingsRoute] = []
-    @State private var selectedPane: SettingsPane? = .general
 
     enum TestStatus {
         case idle
@@ -64,7 +73,7 @@ struct SettingsView: View {
                 .padding(.bottom, 14)
                 ForEach(SettingsPane.allCases) { pane in
                     Button {
-                        selectedPane = pane
+                        navigation.show(pane)
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: pane.symbol)
@@ -90,7 +99,7 @@ struct SettingsView: View {
             .frame(width: 188)
             .background(colors.settingsSidebar)
             Rectangle().fill(colors.border).frame(width: 1)
-            NavigationStack(path: $path) {
+            NavigationStack(path: $navigation.path) {
                 paneContent
                     .navigationTitle(LocalizedStringKey(activePane.title))
                     .navigationDestination(for: SettingsRoute.self) { route in
@@ -101,8 +110,7 @@ struct SettingsView: View {
         }
         .panelChrome()
         .frame(minWidth: 720, minHeight: 560)
-        .onChange(of: selectedPane) { _, _ in
-            path.removeAll()
+        .onChange(of: activePane) { _, _ in
             speechPreview.stop()
         }
         .onAppear { syncPresetPicker() }
@@ -112,7 +120,7 @@ struct SettingsView: View {
         }
     }
 
-    private var activePane: SettingsPane { selectedPane ?? .general }
+    private var activePane: SettingsPane { navigation.pane }
 
     @ViewBuilder
     private var paneContent: some View {
@@ -383,7 +391,7 @@ struct SettingsView: View {
             Text("登录即表示已阅读")
                 .foregroundStyle(colors.muted)
             Button {
-                path.append(SettingsRoute.agreement)
+                navigation.path.append(SettingsRoute.agreement)
             } label: {
                 Text("用户协议").underline()
             }
@@ -392,7 +400,7 @@ struct SettingsView: View {
             Text("和")
                 .foregroundStyle(colors.muted)
             Button {
-                path.append(SettingsRoute.privacy)
+                navigation.path.append(SettingsRoute.privacy)
             } label: {
                 Text("隐私政策").underline()
             }
@@ -405,9 +413,9 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func settingsDestination(_ route: SettingsRoute) -> some View {
-        SettingsBackContainer(title: route.parentTitle(in: path, rootTitle: activePane.title), goBack: {
-            guard !path.isEmpty else { return }
-            path.removeLast()
+        SettingsBackContainer(title: route.parentTitle(in: navigation.path, rootTitle: activePane.title), goBack: {
+            guard !navigation.path.isEmpty else { return }
+            navigation.path.removeLast()
         }) {
             switch route {
             case .help:

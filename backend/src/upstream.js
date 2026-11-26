@@ -67,6 +67,8 @@ function prepareUpstreamPayload(rawBody, config, sourceText) {
     throw error
   }
   // Rebuild messages from the billed source. Client instructions are not forwarded.
+  const requiresWaiver = body.translatehud_quality_retry === true
+  if (requiresWaiver) delete body.translatehud_quality_retry
   const bound = bindUpstreamMessages(body, sourceText)
   const payload = {
     model: config.model,
@@ -90,7 +92,7 @@ function prepareUpstreamPayload(rawBody, config, sourceText) {
   if (!stream && JSON_RESPONSE_HOSTS.has(host)) {
     payload.response_format = { type: 'json_object' }
   }
-  return { payload, stream, format: bound.format }
+  return { payload, stream, format: bound.format, retrySubject: bound.retrySubject, requiresWaiver }
 }
 
 async function defaultForward({ endpoint, apiKey, payload, signal }) {

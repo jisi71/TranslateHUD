@@ -1,0 +1,302 @@
+--- a/src/accountStore.js
++++ b/src/accountStore.js
+@@ -6,6 +6,7 @@
+   applyCharge,
+   assignDisplayNumbers,
+   credit,
++  displayFen,
+   normalizeRecord,
+   openAccount,
+   readDisplayNo,
+@@ -13,7 +14,9 @@
+   reserveFeedbackSlot
+ } = require('./trialPolicy')
+ const { decideRedeem, publicInviteStatus } = require('./invite')
+-const { acquireSlot, releaseSlot, settleSlot } = require('./inflight')
++const { MAX_INFLIGHT, INFLIGHT_LEASE_MS, acquireSlot, releaseSlot, settleSlot } = require('./inflight')
++const { MESSAGES } = require('./trialPolicy')
++const { reserveRetry, finishAttempt } = require('./retryWaiver')
+ 
+ function clone(record) {
+   const normalized = normalizeRecord(record)
+@@ -116,10 +119,12 @@
+     }
+   }
+ 
+-  async acquireInflight(uid, now = Date.now(), sourceTokens = 0) {
++  async acquireInflight(uid, now = Date.now(), sourceTokens = 0, _timing, attempt) {
+     return this.lock(uid, async () => {
+       const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+-      const decision = acquireSlot(existing, now, sourceTokens)
++      const decision = attempt?.retry
++        ? reserveRetry(existing, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
++        : acquireSlot(existing, now, sourceTokens)
+       if (decision.record && (decision.ok || decision.record.inflight !== (existing && existing.inflight))) {
+         if (existing || decision.ok) this.users.set(uid, clone(decision.record))
+       }
+@@ -147,10 +152,11 @@
+     })
+   }
+ 
+-  async settle(uid, costMicroYuan, slotId, now = Date.now()) {
++  async settle(uid, costMicroYuan, slotId, now = Date.now(), attempt) {
+     return this.lock(uid, async () => {
+       const existing = this.users.get(uid)
+-      const decision = settleSlot(existing ? clone(existing) : null, costMicroYuan, slotId, now)
++      const settled = settleSlot(existing ? clone(existing) : null, attempt?.retry ? 0 : costMicroYuan, slotId, now)
++      const decision = finishAttempt(settled, attempt, now, costMicroYuan, displayFen)
+       if (decision.record) this.users.set(uid, clone(decision.record))
+       return decision
+     })
+@@ -296,10 +302,12 @@
+     })
+   }
+ 
+-  async acquireInflight(uid, now = Date.now(), sourceTokens = 0) {
+-    return this.lock(async () => {
+-      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
+-      const decision = acquireSlot(existing, now, sourceTokens)
++  async acquireInflight(uid, now = Date.now(), sourceTokens = 0, _timing, attempt) {
++    return this.lock(async () => {
++      const existing = this.users.has(uid) ? clone(this.users.get(uid)) : null
++      const decision = attempt?.retry
++        ? reserveRetry(existing, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
++        : acquireSlot(existing, now, sourceTokens)
+       if (decision.record && (decision.ok || JSON.stringify(decision.record.inflight) !== JSON.stringify(existing && existing.inflight))) {
+         if (existing || decision.ok) {
+           this.users.set(uid, clone(decision.record))
+@@ -335,9 +343,10 @@
+     })
+   }
+ 
+-  async settle(uid, costMicroYuan, slotId, now = Date.now()) {
+-    return this.lock(async () => {
+-      const decision = settleSlot(this.users.has(uid) ? clone(this.users.get(uid)) : null, costMicroYuan, slotId, now)
++  async settle(uid, costMicroYuan, slotId, now = Date.now(), attempt) {
++    return this.lock(async () => {
++      const settled = settleSlot(this.users.has(uid) ? clone(this.users.get(uid)) : null, attempt?.retry ? 0 : costMicroYuan, slotId, now)
++      const decision = finishAttempt(settled, attempt, now, costMicroYuan, displayFen)
+       if (decision.record) {
+         this.users.set(uid, clone(decision.record))
+         await this.persist()
+@@ -491,14 +500,16 @@
+     })
+   }
+ 
+-  async acquireInflight(uid, now = Date.now(), sourceTokens = 0, timing) {
++  async acquireInflight(uid, now = Date.now(), sourceTokens = 0, timing, attempt) {
+     const db = (step, operation) => timing ? timing.measureQuota(step, operation) : operation()
+     return this.withRetry(async () => {
+       const tx = await db('quota_db_begin_ms', () => this.begin())
+       try {
+         const existing = await db('quota_db_read_ms', () => tx.get(uid))
+         const start = timing?.now()
+-        const decision = acquireSlot(existing, now, sourceTokens)
++        const decision = attempt?.retry
++          ? reserveRetry(existing, attempt, now, MAX_INFLIGHT, INFLIGHT_LEASE_MS, MESSAGES.concurrency)
++          : acquireSlot(existing, now, sourceTokens)
+         const changed = decision.record && JSON.stringify((decision.record && decision.record.inflight) || []) !== JSON.stringify((existing && existing.inflight) || [])
+         timing?.addQuota('quota_slot_decision_ms', start)
+         if (decision.ok || changed) {
+@@ -551,12 +562,13 @@
+     })
+   }
+ 
+-  async settle(uid, costMicroYuan, slotId, now = Date.now()) {
+-    return this.withRetry(async () => {
+-      const tx = await this.begin()
+-      try {
+-        const existing = await tx.get(uid)
+-        const decision = settleSlot(existing, costMicroYuan, slotId, now)
++  async settle(uid, costMicroYuan, slotId, now = Date.now(), attempt) {
++    return this.withRetry(async () => {
++      const tx = await this.begin()
++      try {
++        const existing = await tx.get(uid)
++        const settled = settleSlot(existing, attempt?.retry ? 0 : costMicroYuan, slotId, now)
++        const decision = finishAttempt(settled, attempt, now, costMicroYuan, displayFen)
+         if (decision.record) await tx.save(uid, decision.record)
+         await tx.commit()
+         return decision
+--- a/src/cloudBaseStore.js
++++ b/src/cloudBaseStore.js
+@@ -243,10 +243,10 @@
+     ensure: (uid, now) => run('ensure', [uid, now]),
+     inviteStatus: (env) => run('inviteStatus', [env]),
+     redeem: (uid, code, now, env) => run('redeem', [uid, code, now, env]),
+-    acquireInflight: (uid, now, sourceTokens, timing) => run('acquireInflight', [uid, now, sourceTokens, timing], timing),
++    acquireInflight: (uid, now, sourceTokens, timing, attempt) => run('acquireInflight', [uid, now, sourceTokens, timing, attempt], timing),
+     releaseInflight: (uid, slotId) => run('releaseInflight', [uid, slotId]),
+     charge: (uid, costMicroYuan) => run('charge', [uid, costMicroYuan]),
+-    settle: (uid, costMicroYuan, slotId, now) => run('settle', [uid, costMicroYuan, slotId, now]),
++    settle: (uid, costMicroYuan, slotId, now, attempt) => run('settle', [uid, costMicroYuan, slotId, now, attempt]),
+     refund: (uid, microYuan) => run('refund', [uid, microYuan]),
+     takeFeedback: (uid, now, limit) => run('takeFeedback', [uid, now, limit]),
+     releaseFeedback: (uid, now) => run('releaseFeedback', [uid, now])
+--- a/src/trialPolicy.js
++++ b/src/trialPolicy.js
+@@ -1,4 +1,6 @@
+ 'use strict'
++
++const { normalizeReceipts } = require('./retryWaiver')
+ 
+ // Length rules stay in sync with TranslateHUD/Trial/TrialPricing.swift.
+ // Length is Unicode extended grapheme clusters (Intl.Segmenter), same as Swift String.count.
+@@ -261,6 +263,8 @@
+     displayNo: readDisplayNo(record),
+     inflight: sanitizeSlots(record && record.inflight)
+   }
++  const receipts = normalizeReceipts(record && record.retryReceipts)
++  if (receipts.length) saved.retryReceipts = receipts
+   const feedbackDay = readFeedbackDay(record)
+   const feedbackCount = readFeedbackCount(record)
+   if (feedbackDay && feedbackCount > 0) {
+--- a/src/trialService.js
++++ b/src/trialService.js
+@@ -1,4 +1,6 @@
+ 'use strict'
++
++const { readAttempt } = require('./retryWaiver')
+ 
+ const { GIFT_FEN, GIFT_MICRO_YUAN, MESSAGES, decodeSourceHeader, formatDisplayId, quoteSource } = require('./trialPolicy')
+ const { prepareUpstreamPayload, readUpstreamConfig } = require('./upstream')
+@@ -135,10 +137,10 @@
+   }
+ }
+ 
+-async function settleUsage(ctx, uid, usage, prices, slotId) {
++async function settleUsage(ctx, uid, usage, prices, slotId, attempt) {
+   const cost = costMicroYuanFromUsage(usage, prices)
+   if (cost == null) return null
+-  const settled = await ctx.store.settle(uid, cost, slotId, ctx.now())
++  const settled = await ctx.store.settle(uid, cost, slotId, ctx.now(), attempt)
+   return settled
+ }
+ 
+@@ -155,6 +157,7 @@
+       extraTokens: usage.extraTokens,
+       costMicroYuan: settled.costMicroYuan,
+       chargedMicroYuan: settled.chargedMicroYuan,
++      ...(settled.retryWaived && { retryWaived: true }),
+       costFen: settled.costFen,
+       chargedFen: settled.chargedFen,
+       durationMs: Math.max(0, createdAt - startedAt),
+@@ -292,12 +295,18 @@
+   let payload
+   let stream
+   let format
++  let attempt
+   try {
+     const prepared = prepareUpstreamPayload(rawBody, config, decoded.text)
+     payload = prepared.payload
+     stream = prepared.stream
+     if (timing) timing.stream = stream
+     format = prepared.format
++    attempt = readAttempt(ctx.headers || {}, prepared.retrySubject && [config.endpoint, config.model, prepared.retrySubject])
++    if (attempt?.invalid || (prepared.requiresWaiver && !attempt?.retry)) {
++      return errorResult(400, 'trial_retry_invalid', '重试请求标识不正确。')
++    }
++    if (attempt?.retry) payload.temperature = 0.4
+   } catch (error) {
+     return errorResult(error.status || 400, error.code || 'trial_body', error.publicMessage || MESSAGES.body)
+   }
+@@ -307,7 +316,7 @@
+   const quotaTiming = stream ? null : timing
+   let held
+   try {
+-    held = await ctx.store.acquireInflight(identified.uid, ctx.now(), 0, quotaTiming)
++    held = await ctx.store.acquireInflight(identified.uid, ctx.now(), 0, quotaTiming, attempt)
+     if (held && held.needsAccount) {
+       const start = quotaTiming?.now()
+       try {
+@@ -315,7 +324,7 @@
+       } finally {
+         quotaTiming?.addQuota('quota_account_ensure_ms', start)
+       }
+-      held = await ctx.store.acquireInflight(identified.uid, ctx.now(), 0, quotaTiming)
++      held = await ctx.store.acquireInflight(identified.uid, ctx.now(), 0, quotaTiming, attempt)
+     }
+   } catch (error) {
+     return storeFailure(error)
+@@ -328,7 +337,7 @@
+       return errorResult(503, 'trial_not_configured', MESSAGES.notConfigured)
+     }
+     try {
+-      held = await ctx.store.acquireInflight(identified.uid, ctx.now(), sourceTokens, quotaTiming)
++      held = await ctx.store.acquireInflight(identified.uid, ctx.now(), sourceTokens, quotaTiming, attempt)
+     } catch (error) {
+       return storeFailure(error)
+     }
+@@ -368,7 +377,7 @@
+       const billed = createSettlingStream(upstream.stream, async (usage) => {
+         if (!usage) return usageMissingSSE()
+         try {
+-          const settled = await settleUsage(ctx, identified.uid, usage, prices, held.slotId)
++          const settled = await settleUsage(ctx, identified.uid, usage, prices, held.slotId, attempt)
+           if (!settled) return usageMissingSSE()
+           await recordUsageEvent(ctx, { uid: identified.uid, usage, settled, startedAt })
+           return settlementSSE(settled, usage)
+@@ -404,7 +413,7 @@
+     let settled
+     try {
+       timing?.step('settlement_ms')
+-      settled = await settleUsage(ctx, identified.uid, usage, prices, held.slotId)
++      settled = await settleUsage(ctx, identified.uid, usage, prices, held.slotId, attempt)
+     } catch (error) {
+       await release()
+       return storeFailure(error)
+--- a/src/upstream.js
++++ b/src/upstream.js
+@@ -67,6 +67,8 @@
+     throw error
+   }
+   // Rebuild messages from the billed source. Client instructions are not forwarded.
++  const requiresWaiver = body.translatehud_quality_retry === true
++  if (requiresWaiver) delete body.translatehud_quality_retry
+   const bound = bindUpstreamMessages(body, sourceText)
+   const payload = {
+     model: config.model,
+@@ -90,7 +92,7 @@
+   if (!stream && JSON_RESPONSE_HOSTS.has(host)) {
+     payload.response_format = { type: 'json_object' }
+   }
+-  return { payload, stream, format: bound.format }
++  return { payload, stream, format: bound.format, retrySubject: bound.retrySubject, requiresWaiver }
+ }
+ 
+ async function defaultForward({ endpoint, apiKey, payload, signal }) {
+--- a/src/trialMessages.js
++++ b/src/trialMessages.js
+@@ -411,9 +411,10 @@
+   }
+   const format = parsed.kind === 'batch' && parsed.ranges
+     ? makeBoldFormat(parsed.texts, parsed.ranges, parsed.passage || '') : null
++  const language = detectLanguage(system)
+   const messages = buildMessages({
+     mode,
+-    language: detectLanguage(system),
++    language,
+     strict: isStrict(system),
+     source: sourceText,
+     texts: format ? format.marked : parsed.texts,
+@@ -427,7 +428,8 @@
+     messages,
+     stream,
+     format,
+-    temperature: temperatureFor(body, mode)
++    temperature: temperatureFor(body, mode),
++    retrySubject: mode === 'terms' ? null : [mode, language, sourceText, parsed.texts, parsed.passage, parsed.ranges]
+   }
+ }
+ 
+--- a/src/usageBilling.js
++++ b/src/usageBilling.js
+@@ -125,6 +125,8 @@
+     dailyCharacters: settled.dailyCharacters,
+     dailyLimit: settled.dailyLimit,
+     dailyResetsAt: settled.dailyResetsAt,
++    ...(settled.retryRequestId && { retryRequestId: settled.retryRequestId }),
++    ...(settled.retryWaived && { retryWaived: true }),
+     costMicroYuan: settled.costMicroYuan,
+     chargedMicroYuan: settled.chargedMicroYuan,
+     balanceMicroYuan: settled.balanceMicroYuan,

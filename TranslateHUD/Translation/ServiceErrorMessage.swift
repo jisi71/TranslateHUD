@@ -103,6 +103,7 @@ enum ServiceErrorMessage {
         case "trial_source_required": return TrialCopy.sourceRequired
         case "trial_store": return TrialCopy.store
         case "trial_concurrency": return TrialCopy.concurrency
+        case "trial_retry_invalid", "trial_retry_unavailable": return "本次自动重试不可用。可手动重新翻译。"
         case "trial_invite_required": return TrialCopy.inviteRequired
         case "trial_invite_claimed": return TrialCopy.inviteClaimed
         case "trial_invite_invalid": return TrialCopy.inviteInvalid

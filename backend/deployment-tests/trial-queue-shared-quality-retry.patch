@@ -1,0 +1,12 @@
+--- a/index.js
++++ b/index.js
+@@ -35,6 +35,9 @@
+   const headers = { Authorization: req.headers.authorization, 'Content-Type': 'application/json',
+     'Content-Length': body.length }
+   if (req.headers['x-translatehud-source']) headers['X-TranslateHUD-Source'] = req.headers['x-translatehud-source']
++  for (const name of ['x-translatehud-request-id', 'x-translatehud-retry-of']) {
++    if (req.headers[name] !== undefined) headers[name] = req.headers[name]
++  }
+   if (tag) headers['X-TranslateHUD-QA-Request'] = tag
+   if (secret) {
+     const timestamp = String(Date.now())

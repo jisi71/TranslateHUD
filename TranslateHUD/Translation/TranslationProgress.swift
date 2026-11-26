@@ -65,6 +65,10 @@ final class TranslationProgress: ObservableObject {
         if text != (sourceDraft ?? lastOriginals.joined(separator: "\n")) { sourceWasEdited = true }
         sourceDraft = text
     }
+    func commitSourceDraft() {
+        sourceDraft = nil
+        sourceWasEdited = false
+    }
     func editTranslation(_ text: String) {
         if text != displayedTranslation { translationWasEdited = true }
         translationDraft = text
@@ -101,6 +105,7 @@ final class TranslationProgress: ObservableObject {
     var prepareRetry: @MainActor (String) -> TranslationSession.Outcome = { TranslationSession.prepare(sourceText: $0) }
 
     private var task: Task<Void, Never>?
+    var isTranslating: Bool { task != nil }
     private var elapsedTimer: Timer?
     private var lastOriginals: [String] = []
     private var lastContext: SelectionFetcher.TextContext?
@@ -240,7 +245,9 @@ final class TranslationProgress: ObservableObject {
                     let inputNL  = layoutSource.filter { $0 == "\n" }.count
                     let outputNL = lastPartial.filter { $0 == "\n" }.count
                     if inputNL >= 2 && outputNL != inputNL {
-                        if soft != nil { throw TranslationError.parse("完整候选的换行结构无法对应，请手动重译。") }
+                        guard soft == nil, translator.allowsAutomaticLineFallback else {
+                            throw TranslationError.parse("完整候选的换行结构无法对应，请手动重译。")
+                        }
                         AppLog.info("流式输出行数不匹配（inNL=\(inputNL) outNL=\(outputNL)），fallback 逐行 JSON 批量")
                         do {
                             return try await translateLineByLine(

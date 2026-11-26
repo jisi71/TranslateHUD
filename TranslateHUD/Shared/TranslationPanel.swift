@@ -301,7 +301,7 @@ struct TranslationPanel: View {
                     ScrollView {
                         ProposedWidth { translationContents }
                     }
-                    .defaultScrollAnchor(.top)
+                    .modifier(InitialTopScrollAnchor())
                     .scrollBounceBehavior(.basedOnSize)
                 }
             } else {
@@ -313,11 +313,16 @@ struct TranslationPanel: View {
         .panelSectionRole(.translation)
     }
 
+    private var isStreamingScreenshot: Bool {
+        screenshotSource?.plan.supportsStreaming == true && progress.isTranslating
+    }
+
     private var translationContents: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !codes.isEmpty { ScreenshotQRCodeContents(codes: codes) }
             if !translated.isEmpty || progress.translationDraft != nil {
                 DirectMarkdownEditor(markdown: translated, role: .translation, colors: colors, width: translationTextWidth, tableSpans: tableSpans, onFocus: progress.focusTranslation, onChange: progress.editTranslation)
+                    .allowsHitTesting(!isStreamingScreenshot)
             }
             if let warning = progress.qualityWarning {
                 HStack(spacing: 8) {
@@ -522,9 +527,8 @@ struct TranslationPanel: View {
         }
         if let target { settings.targetLanguage = target }
         speech.stop()
-        if let screenshotSource, let draft = progress.sourceDraft {
-            screenshotSource.retranslate(markdown: draft, target: target)
-        } else if let target { progress.retry(target: target) }
+        if let screenshotSource { screenshotSource.retry(target: target) }
+        else if let target { progress.retry(target: target) }
         else { onRetry() }
     }
 
@@ -923,10 +927,18 @@ private struct HeightFitting<Content: View>: View {
         ScrollView {
             ProposedWidth { content() }
         }
-        // Holds the start of the text while content is appended. After a manual
-        // scroll, SwiftUI stops applying this anchor for the life of this scroll view.
-        .defaultScrollAnchor(.top)
+        .modifier(InitialTopScrollAnchor())
         .scrollBounceBehavior(.basedOnSize)
+    }
+}
+
+private struct InitialTopScrollAnchor: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15, *) {
+            content.defaultScrollAnchor(.top, for: .initialOffset)
+        } else {
+            content.defaultScrollAnchor(.top)
+        }
     }
 }
 
